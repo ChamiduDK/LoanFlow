@@ -52,7 +52,10 @@ export default function EMICalculator() {
             <Input
               type="number"
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value || 0))}
+              min={100000}
+              max={50000000}
+              step={100000}
+              onChange={(e) => setAmount(Math.min(50000000, Math.max(100000, Number(e.target.value) || 100000)))}
             />
           </div>
 
@@ -72,7 +75,9 @@ export default function EMICalculator() {
               type="number"
               value={rate}
               step="0.5"
-              onChange={(e) => setRate(Number(e.target.value || 0))}
+              min={5}
+              max={30}
+              onChange={(e) => setRate(Math.min(30, Math.max(5, Number(e.target.value) || 5)))}
             />
           </div>
 
@@ -91,7 +96,10 @@ export default function EMICalculator() {
             <Input
               type="number"
               value={tenure}
-              onChange={(e) => setTenure(Number(e.target.value || 0))}
+              min={6}
+              max={120}
+              step={6}
+              onChange={(e) => setTenure(Math.min(120, Math.max(6, Number(e.target.value) || 6)))}
             />
           </div>
         </CardContent>

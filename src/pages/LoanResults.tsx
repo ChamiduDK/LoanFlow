@@ -192,7 +192,7 @@ export default function LoanResults() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">Max EMI (LKR)</Label>
                 <Input value={maxEmiFilter || ""} onChange={(e) => setMaxEmiFilter(Number(e.target.value || 0))} type="number" />
@@ -334,10 +334,7 @@ export default function LoanResults() {
                 <CardTitle>Comparison Table</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">Side-by-side view of ranked recommendations.</p>
               </div>
-              <Button variant="outline" size="sm">
-                <SlidersHorizontal className="h-4 w-4" />
-                Configure Columns
-              </Button>
+
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -362,7 +359,7 @@ export default function LoanResults() {
                       <TableCell>{scheme.estimatedRate}%</TableCell>
                       <TableCell>{formatLKR(scheme.emi)}</TableCell>
                       <TableCell>
-                        <StatusBadge status={scheme.approvalProbability >= 80 ? "approved" : "under review"} />
+                        <StatusBadge status={scheme.approvalProbability >= 80 ? "approved" : "under_review"} />
                       </TableCell>
                       <TableCell>{scheme.eligibilityScore.toFixed(1)}</TableCell>
                       <TableCell className="text-muted-foreground">{formatLKR(scheme.totalPayable)}</TableCell>

@@ -19,6 +19,7 @@ import StatusBadge from "@/components/shared/StatusBadge";
 import { apiFetch } from "@/lib/api/client";
 import type { DocumentRow, LoanApplication, TrackerSummary } from "@/types/backend";
 import EmptyState from "@/components/shared/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatLKR } from "@/lib/currency";
 
 function formatDate(value: string | null): string {
@@ -100,6 +101,31 @@ export default function ApplicationTracker() {
     return (
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader title="Application Tracker" subtitle="Loading tracker data..." />
+        <Card>
+          <CardContent className="space-y-4 p-6">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-6 w-3/4" />
+          </CardContent>
+        </Card>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card><CardContent className="space-y-3 p-6">{[1,2,3,4].map(i => <Skeleton key={i} className="h-4 w-full" />)}</CardContent></Card>
+          <Card><CardContent className="space-y-3 p-6">{[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</CardContent></Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (dataQuery.isError) {
+    return (
+      <div className="space-y-6 px-2 md:px-6">
+        <PageHeader title="Application Tracker" subtitle="Monitor every stage of your application from submission to final bank decision." />
+        <EmptyState
+          title="Failed to load tracker"
+          description="There was an error loading this application's tracker data. Please try again."
+          action={<Button onClick={() => void dataQuery.refetch()}>Retry</Button>}
+        />
       </div>
     );
   }

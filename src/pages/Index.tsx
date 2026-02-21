@@ -113,7 +113,7 @@ export default function Index() {
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {features.map((feature, idx) => (
-                <Card key={feature.title} className="blur-fade-in surface-card border-border/80" style={{ animationDelay: `${idx * 50}ms` }}>
+                <Card key={feature.title} className="border-border/80" style={{ animationDelay: `${idx * 50}ms` }}>
                   <CardContent className="space-y-4 p-6">
                     <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-muted/45 text-foreground">
                       <feature.icon className="h-5 w-5" />

@@ -76,7 +76,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (payload === null) {
-    throw new Error("API returned an empty response body");
+    // Successful response with no body (e.g., 204 No Content or empty 200)
+    return null as T;
   }
 
   return payload as T;

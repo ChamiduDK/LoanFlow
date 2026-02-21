@@ -139,7 +139,7 @@ export default function Dashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item, idx) => (
-          <Card key={item.label} className="blur-fade-in surface-card border-border/50 bg-gradient-to-br from-card to-card/50 hover:shadow-lg" style={{ animationDelay: `${idx * 50}ms` }}>
+          <Card key={item.label} className="border-border/50 bg-gradient-to-br from-card to-card/50 hover:shadow-lg" style={{ animationDelay: `${idx * 50}ms` }}>
             <CardContent className="p-5">
               {isLoading ? (
                 <div className="space-y-3">
@@ -165,7 +165,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="xl:col-span-2 surface-card">
+        <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle className="gradient-text">Quick Actions</CardTitle>
           </CardHeader>
@@ -174,7 +174,7 @@ export default function Dashboard() {
               <Link
                 key={action.title}
                 to={action.path}
-                className="blur-fade-in group rounded-lg border border-border/50 bg-gradient-to-br from-muted/50 to-muted/30 p-4 transition-all duration-300 hover:border-primary/50 hover:bg-gradient-to-br hover:from-primary/10 hover:to-blue-500/10 hover:shadow-md"
+                className="group rounded-lg border border-border/50 bg-gradient-to-br from-muted/50 to-muted/30 p-4 transition-all duration-300 hover:border-primary/50 hover:bg-gradient-to-br hover:from-primary/10 hover:to-blue-500/10 hover:shadow-md"
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -188,13 +188,13 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-        <Card className="xl:col-span-3 surface-card">
+        <Card className="xl:col-span-3">
           <CardHeader>
             <CardTitle className="gradient-text">Reminder Alerts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {reminders.map((reminder, idx) => (
-              <div key={reminder.title} className="blur-fade-in flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-gradient-to-br from-card/50 to-muted/20 p-4 transition-all duration-300 hover:shadow-md" style={{ animationDelay: `${idx * 50}ms` }}>
+              <div key={reminder.title} className="flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-gradient-to-br from-card/50 to-muted/20 p-4 transition-all duration-300 hover:shadow-md" style={{ animationDelay: `${idx * 50}ms` }}>
                 <div className="flex items-start gap-3">
                   <div className={`mt-0.5 rounded-lg p-2 transition-transform duration-300 hover:scale-110 ${reminder.tone}`}>
                     <reminder.icon className="h-4 w-4" />
@@ -211,7 +211,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card className="data-table-wrap surface-card">
+      <Card className="data-table-wrap">
         <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/50 pb-4">
           <div>
             <CardTitle className="gradient-text">Recent Applications</CardTitle>
