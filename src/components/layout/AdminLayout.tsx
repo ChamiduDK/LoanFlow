@@ -1,30 +1,36 @@
 import { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
+  LayoutDashboard,
   Building2,
   ChevronLeft,
   Database,
   FileCheck,
   Menu,
-  Plus,
   Shield,
   Users,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const adminNav = [
-  { label: "Banks", icon: Building2, path: "/admin" },
+  { label: "Overview", icon: LayoutDashboard, path: "/admin" },
+  { label: "Banks", icon: Building2, path: "/admin/banks" },
   { label: "Loan Schemes", icon: Database, path: "/admin/schemes" },
   { label: "Eligibility Rules", icon: Shield, path: "/admin/rules" },
   { label: "Documents", icon: FileCheck, path: "/admin/documents" },
   { label: "Users", icon: Users, path: "/admin/users" },
+  { label: "Audit Logs", icon: ScrollText, path: "/admin/audit-logs" },
 ];
 
 export default function AdminLayout() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  const active = adminNav.find((item) => item.path === location.pathname) ?? adminNav[0];
+  const active =
+    adminNav.find((item) =>
+      item.path === "/admin" ? location.pathname === "/admin" : location.pathname.startsWith(item.path),
+    ) ?? adminNav[0];
 
   return (
     <div className="flex min-h-screen overflow-hidden app-shell-bg">
@@ -60,7 +66,7 @@ export default function AdminLayout() {
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  location.pathname === item.path
+                  (item.path === "/admin" ? location.pathname === "/admin" : location.pathname.startsWith(item.path))
                     ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                     : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 )}
@@ -88,17 +94,13 @@ export default function AdminLayout() {
               <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setOpen(true)}>
                 <Menu className="h-5 w-5" />
               </Button>
-              <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold text-foreground">{active.label}</h1>
-                <p className="hidden text-xs text-muted-foreground sm:block">Manage lenders, schemes, and underwriting rules</p>
-              </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold text-foreground">{active.label}</h1>
+              <p className="hidden text-xs text-muted-foreground sm:block">Production administration console</p>
             </div>
-            <Button className="hidden sm:inline-flex">
-              <Plus className="h-4 w-4" />
-              Add Record
-            </Button>
-            <Button className="sm:hidden" size="icon">
-              <Plus className="h-4 w-4" />
+          </div>
+            <Button asChild variant="outline">
+              <Link to="/dashboard">Open User App</Link>
             </Button>
           </div>
         </header>

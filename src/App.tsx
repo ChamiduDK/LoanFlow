@@ -13,7 +13,13 @@ import EMICalculator from "./pages/EMICalculator";
 import DocumentUpload from "./pages/DocumentUpload";
 import ApplicationTracker from "./pages/ApplicationTracker";
 import LoanManagement from "./pages/LoanManagement";
+import AdminOverview from "./pages/admin/AdminOverview";
 import AdminBanks from "./pages/admin/AdminBanks";
+import AdminSchemes from "./pages/admin/AdminSchemes";
+import AdminRules from "./pages/admin/AdminRules";
+import AdminDocuments from "./pages/admin/AdminDocuments";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
 import AppLayout from "./components/layout/AppLayout";
 import AdminLayout from "./components/layout/AdminLayout";
 import NotFound from "./pages/NotFound";
@@ -44,11 +50,13 @@ const App = () => (
 
           {/* Admin routes */}
           <Route element={<AdminLayout />}>
-            <Route path="/admin" element={<AdminBanks />} />
-            <Route path="/admin/schemes" element={<AdminBanks />} />
-            <Route path="/admin/rules" element={<AdminBanks />} />
-            <Route path="/admin/documents" element={<AdminBanks />} />
-            <Route path="/admin/users" element={<AdminBanks />} />
+            <Route path="/admin" element={<AdminOverview />} />
+            <Route path="/admin/banks" element={<AdminBanks />} />
+            <Route path="/admin/schemes" element={<AdminSchemes />} />
+            <Route path="/admin/rules" element={<AdminRules />} />
+            <Route path="/admin/documents" element={<AdminDocuments />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />
