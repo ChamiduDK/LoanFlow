@@ -37,7 +37,7 @@ export default function LoanApplication() {
   const StepIcon = stepLabels[step].icon;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="New Loan Application"
         subtitle="Complete each step to generate lender recommendations tailored to your business profile."
@@ -84,7 +84,7 @@ export default function LoanApplication() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+      <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
