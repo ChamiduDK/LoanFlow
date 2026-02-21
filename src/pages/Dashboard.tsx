@@ -119,7 +119,7 @@ export default function Dashboard() {
     { title: "New Loan Application", desc: "Start a guided multi-step form", icon: Plus, path: "/apply" },
     { title: "Upload Documents", desc: "Complete verification checklist", icon: Upload, path: "/documents" },
     { title: "Track Applications", desc: "See status and bank timelines", icon: GitBranch, path: "/tracker" },
-    { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/calculator" },
+    { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/#calculator" },
   ];
 
   return (

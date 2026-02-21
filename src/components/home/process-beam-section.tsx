@@ -77,8 +77,8 @@ export default function ProcessBeamSection() {
 
   return (
     <section id="how-it-works" className="py-16 sm:py-20">
-      <div className="container">
-        <div className="relative overflow-hidden rounded-2xl border border-border bg-card/95 p-5 shadow-sm sm:p-8 lg:p-10">
+      <div className="container px-4 xl:px-0">
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-card/95 p-5 shadow-sm sm:p-8 lg:p-12">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,hsl(var(--info)/0.12),transparent_40%)]" />
 
           <div className="relative z-10 mx-auto max-w-3xl text-center">
@@ -89,7 +89,7 @@ export default function ProcessBeamSection() {
           </div>
 
           <div
-            className="relative mt-10 hidden h-[560px] w-full items-center justify-center overflow-hidden md:flex"
+            className="relative mt-12 hidden h-[580px] w-full items-center justify-center overflow-hidden lg:flex"
             ref={containerRef}
           >
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 blur-3xl" />
@@ -199,10 +199,10 @@ export default function ProcessBeamSection() {
             <AnimatedBeam containerRef={containerRef} fromRef={platformRef} toRef={trackerRef} curvature={88} delay={0.46} reverse />
           </div>
 
-          <div className="relative z-10 mt-8 space-y-4 md:hidden">
-            <div className="rounded-xl border border-border bg-muted/30 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Input Signals</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="relative z-10 mt-10 space-y-6 lg:hidden">
+            <div className="rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Input Signals</p>
+              <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 <NodeChip icon={<Building2 className="h-4 w-4" />} label="SME Profile" />
                 <NodeChip icon={<HandCoins className="h-4 w-4" />} label="Loan Request" />
                 <NodeChip icon={<Upload className="h-4 w-4" />} label="Documents" />
@@ -220,32 +220,32 @@ export default function ProcessBeamSection() {
               </Circle>
             </div>
 
-            <div className="rounded-xl border border-border bg-muted/30 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Output Services</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Output Services</p>
+              <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 <NodeChip icon={<Landmark className="h-4 w-4" />} label="Bank Match" />
                 <NodeChip icon={<Calculator className="h-4 w-4" />} label="EMI Calculator" />
                 <NodeChip icon={<TrendingUp className="h-4 w-4" />} label="Approval Score" />
                 <NodeChip icon={<ShieldCheck className="h-4 w-4" />} label="Doc Check" />
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <NodeChip icon={<CalendarCheck className="h-4 w-4" />} label="Loan Tracker" />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="relative z-10 mt-8 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-border bg-muted/25 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Analyze</p>
-              <p className="mt-1 text-sm text-foreground">Matches bank schemes with SME profile and request details.</p>
+          <div className="relative z-10 mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-xl border border-border bg-muted/25 px-5 py-4">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">1. Analyze</p>
+              <p className="mt-2 text-sm leading-relaxed text-foreground/90">Matches your unique SME profile and loan requirements with specific bank schemes.</p>
             </div>
-            <div className="rounded-lg border border-border bg-muted/25 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Score</p>
-              <p className="mt-1 text-sm text-foreground">Calculates EMI affordability and approval probability in one pass.</p>
+            <div className="rounded-xl border border-border bg-muted/25 px-5 py-4">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">2. Score</p>
+              <p className="mt-2 text-sm leading-relaxed text-foreground/90">Instantly evaluates EMI affordability and approval probability using our scoring engine.</p>
             </div>
-            <div className="rounded-lg border border-border bg-muted/25 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Guide</p>
-              <p className="mt-1 text-sm text-foreground">AI support and tracker keep users aligned until submission and decision.</p>
+            <div className="rounded-xl border border-border bg-muted/25 px-5 py-4 sm:col-span-2 lg:col-span-1">
+              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">3. Guide</p>
+              <p className="mt-2 text-sm leading-relaxed text-foreground/90">Our AI assistant and live tracker guide you through verification and final bank submission.</p>
             </div>
           </div>
         </div>

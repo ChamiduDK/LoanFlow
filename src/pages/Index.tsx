@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import ProcessBeamSection from "@/components/home/process-beam-section";
+import EMICalculatorSection from "@/components/home/EMICalculatorSection";
 import {
   ArrowRight,
   Building2,
@@ -45,7 +46,7 @@ export default function Index() {
           <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
             <a href="#how-it-works" className="transition-colors hover:text-foreground">How it works</a>
-            <Link to="/calculator" className="transition-colors hover:text-foreground">EMI Calculator</Link>
+            <a href="#calculator" className="transition-colors hover:text-foreground">EMI Calculator</a>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -126,6 +127,8 @@ export default function Index() {
             </div>
           </div>
         </section>
+        
+        <EMICalculatorSection />
 
         <section className="py-16">
           <div className="container px-2 md:px-0">
