@@ -3,6 +3,7 @@ import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
 import { signInSchema, signUpSchema } from "../schemas/auth";
 import { createUserScopedClient, supabaseAdmin } from "../lib/supabase/client";
+import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
@@ -10,19 +11,21 @@ import { requireAuth } from "../middleware/auth";
 export const authRouter = Router();
 
 function applySessionCookies(res: Response, session: { access_token: string; refresh_token: string }): void {
-  const secure = process.env.NODE_ENV === "production";
+  const secure = env.NODE_ENV === "production";
+  const baseCookieOptions = {
+    httpOnly: true,
+    sameSite: secure ? "none" : "lax",
+    secure,
+    path: "/",
+  } as const;
 
   res.cookie("sb-access-token", session.access_token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure,
+    ...baseCookieOptions,
     maxAge: 1000 * 60 * 60,
   });
 
   res.cookie("sb-refresh-token", session.refresh_token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure,
+    ...baseCookieOptions,
     maxAge: 1000 * 60 * 60 * 24 * 14,
   });
 }
@@ -117,8 +120,16 @@ authRouter.post(
       throw badRequest(error.message, error);
     }
 
-    res.clearCookie("sb-access-token");
-    res.clearCookie("sb-refresh-token");
+    const secure = env.NODE_ENV === "production";
+    const clearOptions = {
+      httpOnly: true,
+      sameSite: secure ? "none" : "lax",
+      secure,
+      path: "/",
+    } as const;
+
+    res.clearCookie("sb-access-token", clearOptions);
+    res.clearCookie("sb-refresh-token", clearOptions);
 
     sendSuccess(res, { signed_out: true });
   }),

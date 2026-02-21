@@ -23,6 +23,8 @@ Copy `.env.example` to `.env` and configure:
 - `SUPABASE_DOCS_BUCKET`
 - `API_PORT`
 - `CORS_ORIGIN`
+- `NODE_ENV`
+- `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
 
 ## Backend Commands
 
@@ -74,6 +76,7 @@ Then apply baseline seed script:
   - `GET /api/applications/:id`
   - `PUT /api/applications/:id`
   - `POST /api/applications/:id/evaluate`
+  - `GET /api/applications/:id/evaluation`
 - Documents:
   - `POST /api/applications/:id/documents/upload`
   - `GET /api/applications/:id/documents`

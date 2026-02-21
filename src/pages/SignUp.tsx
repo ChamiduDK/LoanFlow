@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { apiFetch } from "@/lib/api/client";
 
 export default function SignUp() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
   const [first, setFirst] = useState("");
@@ -71,7 +72,8 @@ export default function SignUp() {
       description: "Welcome to SME Loan Hub.",
     });
 
-    navigate("/dashboard");
+    const state = location.state as { from?: string } | null;
+    navigate(state?.from ?? "/dashboard", { replace: true });
   };
 
   return (

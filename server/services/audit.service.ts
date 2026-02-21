@@ -1,5 +1,4 @@
 import { supabaseAdmin } from "../lib/supabase/client";
-import { internalError } from "../lib/errors";
 
 type AuditLogInput = {
   actorUserId?: string | null;
@@ -21,6 +20,6 @@ export async function logAudit(input: AuditLogInput): Promise<void> {
   });
 
   if (error) {
-    throw internalError("Failed to write audit log", error);
+    console.error("Failed to write audit log", error);
   }
 }

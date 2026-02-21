@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
 import { requireAuth } from "../middleware/auth";
+import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import {
@@ -16,19 +18,51 @@ import { getMissingDocumentsForApplication, getTrackerSummaryForAgent } from "..
 
 export const agentRouter = Router();
 
+function stripSignaturePrefix(signature: string): string {
+  return signature.replace(/^sha256=/i, "").trim().toLowerCase();
+}
+
+function verifyWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+  const normalizedSignature = stripSignaturePrefix(signature);
+
+  if (!/^[a-f0-9]{64}$/i.test(normalizedSignature)) {
+    return false;
+  }
+
+  const expected = Buffer.from(createHmac("sha256", secret).update(rawBody).digest("hex"), "hex");
+  const received = Buffer.from(normalizedSignature, "hex");
+
+  if (expected.length !== received.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expected, received);
+}
+
 agentRouter.post(
   "/agent/chat/webhook",
   asyncHandler(async (req, res) => {
-    const payload = parseWithSchema(chatWebhookSchema, req.body);
+    if (!env.AGENT_WEBHOOK_SECRET) {
+      throw internalError("AGENT_WEBHOOK_SECRET is not configured");
+    }
 
     const signature = req.header("x-agent-signature");
     if (!signature) {
       throw badRequest("Missing x-agent-signature header");
     }
 
+    const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    const signatureValid = verifyWebhookSignature(rawBody, signature, env.AGENT_WEBHOOK_SECRET);
+
+    if (!signatureValid) {
+      throw unauthorized("Invalid agent webhook signature");
+    }
+
+    const payload = parseWithSchema(chatWebhookSchema, req.body);
+
     sendSuccess(res, {
       accepted: true,
-      note: "Webhook accepted by placeholder handler",
+      note: "Webhook authenticated and accepted",
       event_type: payload.event_type,
     });
   }),
