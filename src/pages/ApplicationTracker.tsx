@@ -467,6 +467,16 @@ export default function ApplicationTracker() {
             <>
               <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Initial Probability</span><span className="text-sm font-semibold">{reEvaluation.scoring.initial_probability.toFixed(1)}%</span></div>
               <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Final Probability</span><span className="text-xl font-semibold text-primary">{reEvaluation.scoring.final_probability.toFixed(1)}%</span></div>
+              {reEvaluation.prediction ? (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Prediction Source</span>
+                  <span className="font-medium">
+                    {reEvaluation.prediction.source === "ml_model"
+                      ? `ML (${reEvaluation.prediction.model_version ?? "active"})`
+                      : "Rule-Based Fallback"}
+                  </span>
+                </div>
+              ) : null}
               <Progress value={reEvaluation.scoring.final_probability} />
               <div className="space-y-1">
                 {reEvaluation.reasons.map((reason, index) => <p key={`${index}-${reason}`} className="text-sm text-foreground">{index + 1}. {reason}</p>)}

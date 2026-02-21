@@ -25,6 +25,7 @@ Copy `.env.example` to `.env` and configure:
 - `CORS_ORIGIN`
 - `NODE_ENV`
 - `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
+- `ML_ASSETS_DIR` (filesystem path for trained ML model artifacts)
 
 ## Backend Commands
 
@@ -43,6 +44,7 @@ Apply migrations in order:
 3. `supabase/migrations/20260221121500_storage_setup.sql`
 4. `supabase/migrations/20260222013000_profile_metadata_on_signup.sql`
 5. `supabase/migrations/20260222030000_tracking_final_verification.sql`
+6. `supabase/migrations/20260222050000_ml_pipeline.sql`
 
 Then apply baseline seed script:
 
@@ -85,18 +87,29 @@ Then apply baseline seed script:
   - `PUT /api/applications/:id`
   - `POST /api/applications/:id/evaluate`
   - `GET /api/applications/:id/evaluation`
+  - `POST /api/applications/:id/track`
+  - `POST /api/applications/:id/proposal/generate`
+  - `GET /api/applications/:id/proposal`
+  - `GET /api/applications/:id/loan-management`
 - Documents:
   - `POST /api/applications/:id/documents/upload`
   - `GET /api/applications/:id/documents`
   - `POST /api/applications/:id/documents/check`
+  - `POST /api/applications/:id/documents/scan`
 - Outcomes + tracker:
   - `POST /api/applications/:id/outcome`
   - `GET /api/applications/:id/outcome`
   - `GET /api/applications/:id/tracker`
+  - `POST /api/applications/:id/tracker/re-evaluate`
   - `POST /api/applications/:id/tracker/installments`
   - `GET /api/applications/:id/tracker/installments`
 - Calculator:
   - `POST /api/calculator/emi`
+- ML:
+  - `POST /api/ml/train` (admin)
+  - `GET /api/ml/models` (admin)
+  - `POST /api/ml/activate-model/:modelId` (admin)
+  - `POST /api/ml/predict`
 - Agent foundation:
   - `POST /api/agent/link-whatsapp`
   - `POST /api/agent/chat/webhook`
