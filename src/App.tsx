@@ -16,7 +16,6 @@ const SignUp = lazy(() => import("./pages/SignUp"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const LoanApplication = lazy(() => import("./pages/LoanApplication"));
 const LoanResults = lazy(() => import("./pages/LoanResults"));
-const EMICalculator = lazy(() => import("./pages/EMICalculator"));
 const DocumentUpload = lazy(() => import("./pages/DocumentUpload"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker"));
 const LoanManagement = lazy(() => import("./pages/LoanManagement"));
@@ -62,7 +61,6 @@ function AppRoutes() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/apply" element={<LoanApplication />} />
             <Route path="/results" element={<LoanResults />} />
-            <Route path="/calculator" element={<EMICalculator />} />
             <Route path="/documents" element={<DocumentUpload />} />
             <Route path="/tracker" element={<ApplicationTracker />} />
             <Route path="/management" element={<LoanManagement />} />
