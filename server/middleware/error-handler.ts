@@ -1,15 +1,20 @@
 import type { ErrorRequestHandler } from "express";
+import { env } from "../config/env";
 import { ApiError } from "../lib/errors";
 import { sendError } from "../lib/response";
 
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  const isProduction = env.NODE_ENV === "production";
+
   if (error instanceof ApiError) {
+    const shouldHideDetails = isProduction && error.status >= 500;
+
     sendError(
       res,
       {
-        message: error.message,
+        message: shouldHideDetails ? "Internal server error" : error.message,
         code: error.code,
-        ...(error.details ? { details: error.details } : {}),
+        ...(!shouldHideDetails && error.details ? { details: error.details } : {}),
       },
       undefined,
       error.status,
@@ -17,12 +22,16 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  const message = error instanceof Error ? error.message : "Internal server error";
+  if (error instanceof Error) {
+    console.error(error);
+  } else {
+    console.error("Unhandled non-error thrown:", error);
+  }
 
   sendError(
     res,
     {
-      message,
+      message: isProduction ? "Internal server error" : error instanceof Error ? error.message : "Internal server error",
       code: "INTERNAL_ERROR",
     },
     undefined,

@@ -94,9 +94,37 @@ export default function LoanManagement() {
   const totalInstallments = tracker.loanSummary.approvedTenureMonths ?? tracker.installmentHistory.length;
   const paidCount = tracker.installmentHistory.filter((item) => item.status === "paid").length;
   const remainingBalance =
-    tracker.loanSummary.approvedAmount && totalInstallments > 0 && tracker.loanSummary.emi
+    tracker.loanSummary.approvedAmount !== null &&
+    totalInstallments > 0 &&
+    tracker.loanSummary.emi !== null
       ? Math.max(tracker.loanSummary.approvedAmount - paidCount * tracker.loanSummary.emi, 0)
       : null;
+
+  const exportRepaymentPlan = () => {
+    const headers = ["Installment ID", "Due Date", "Amount", "Status", "Paid Date", "Notes"];
+    const rows = tracker.installmentHistory.map((item) => [
+      item.id,
+      item.dueDate,
+      item.amount.toString(),
+      item.status,
+      item.paidDate ?? "",
+      item.notes ?? "",
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `repayment-plan-${applicationId.slice(0, 8)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6 px-2 md:px-6">
@@ -208,7 +236,7 @@ export default function LoanManagement() {
             </CardContent>
           </Card>
 
-          <Button variant="outline" className="w-full">
+          <Button variant="outline" className="w-full" onClick={exportRepaymentPlan}>
             <Download className="h-4 w-4" />
             Export Repayment Plan
           </Button>

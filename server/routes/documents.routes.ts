@@ -18,6 +18,12 @@ import {
 
 export const documentsRouter = Router();
 
+const ALLOWED_UPLOAD_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+]);
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -40,6 +46,11 @@ documentsRouter.post(
 
     if (!req.file) {
       throw badRequest("Missing file input. Expected multipart field 'file'");
+    }
+
+    const mimeType = req.file.mimetype.toLowerCase();
+    if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType)) {
+      throw badRequest("Unsupported file type. Allowed formats: PDF, JPG, PNG");
     }
 
     const payload = parseWithSchema(documentUploadBodySchema, req.body);

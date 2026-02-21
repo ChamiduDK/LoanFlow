@@ -12,7 +12,7 @@ import { requireAuth } from "../middleware/auth";
 import { forbidden, internalError, notFound, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { supabaseAdmin } from "../lib/supabase/client";
-import { evaluateApplicationRecommendations } from "../services/evaluation.service";
+import { evaluateApplicationRecommendations, getStoredEvaluationResults } from "../services/evaluation.service";
 
 export const applicationsRouter = Router();
 
@@ -158,6 +158,22 @@ applicationsRouter.post(
     }
 
     const result = await evaluateApplicationRecommendations(userId, params.id, req.ip);
+
+    sendSuccess(res, result);
+  }),
+);
+
+applicationsRouter.get(
+  "/applications/:id/evaluation",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(evaluateApplicationParamsSchema, req.params);
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const result = await getStoredEvaluationResults(userId, params.id);
 
     sendSuccess(res, result);
   }),

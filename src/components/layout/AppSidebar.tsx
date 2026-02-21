@@ -1,4 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
@@ -13,6 +14,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api/client";
+import { supabaseClient } from "@/lib/supabase/client";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -31,6 +35,36 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ open, onClose }: AppSidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [signingOut, setSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (signingOut) {
+      return;
+    }
+
+    setSigningOut(true);
+
+    try {
+      await apiFetch("/api/auth/signout", { method: "POST" }).catch(() => undefined);
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) {
+        throw error;
+      }
+
+      onClose();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      toast({
+        title: "Sign out failed",
+        description: error instanceof Error ? error.message : "Could not sign out",
+        variant: "destructive",
+      });
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   return (
     <>
@@ -103,14 +137,15 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
               <Settings className="h-4 w-4" />
               Admin Panel
             </Link>
-            <Link
-              to="/"
-              onClick={onClose}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
             >
               <LogOut className="h-4 w-4" />
-              Back to Home
-            </Link>
+              {signingOut ? "Signing out..." : "Sign Out"}
+            </button>
           </div>
         </div>
       </aside>

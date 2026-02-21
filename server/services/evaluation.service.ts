@@ -66,6 +66,19 @@ type EvaluationResult = {
   };
 };
 
+function toStringArray(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.map((value) => String(value));
+}
+
+function toNumber(input: unknown, fallback = 0): number {
+  const parsed = Number(input);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export async function evaluateApplicationRecommendations(
   userId: string,
   applicationId: string,
@@ -188,39 +201,46 @@ export async function evaluateApplicationRecommendations(
 
   const ranked = rankRecommendations(eligible);
 
-  for (const item of [...ranked, ...ineligible.map((entry) => ({ ...entry, rankingScore: 0, rankPosition: null }))]) {
-    const { error: upsertError } = await supabaseAdmin
-      .from("application_results")
-      .upsert(
-        {
-          application_id: applicationId,
-          product_id: item.productId,
-          bank_id: item.bankId,
-          eligibility_passed: item.eligibilityPassed,
-          eligibility_score: item.eligibilityScore,
-          reasons_json: item.reasons,
-          emi: item.emi,
-          total_interest: item.totalInterest,
-          total_payable: item.totalPayable,
-          estimated_rate: item.estimatedRate,
-          approval_probability: item.approvalProbability,
-          document_completeness: item.docCompleteness,
-          ranking_score: item.rankingScore,
-          rank_position: item.rankPosition,
-          result_payload: {
-            whyRecommended: item.whyRecommended,
-            generatedAt: new Date().toISOString(),
-          },
-        },
-        {
-          onConflict: "application_id,product_id",
-        },
-      );
+  const persistedResults = [
+    ...ranked,
+    ...ineligible.map((entry) => ({ ...entry, rankingScore: 0, rankPosition: null })),
+  ];
 
-    if (upsertError) {
-      throw internalError("Failed to persist application result", upsertError);
-    }
-  }
+  await Promise.all(
+    persistedResults.map(async (item) => {
+      const { error: upsertError } = await supabaseAdmin
+        .from("application_results")
+        .upsert(
+          {
+            application_id: applicationId,
+            product_id: item.productId,
+            bank_id: item.bankId,
+            eligibility_passed: item.eligibilityPassed,
+            eligibility_score: item.eligibilityScore,
+            reasons_json: item.reasons,
+            emi: item.emi,
+            total_interest: item.totalInterest,
+            total_payable: item.totalPayable,
+            estimated_rate: item.estimatedRate,
+            approval_probability: item.approvalProbability,
+            document_completeness: item.docCompleteness,
+            ranking_score: item.rankingScore,
+            rank_position: item.rankPosition,
+            result_payload: {
+              whyRecommended: item.whyRecommended,
+              generatedAt: new Date().toISOString(),
+            },
+          },
+          {
+            onConflict: "application_id,product_id",
+          },
+        );
+
+      if (upsertError) {
+        throw internalError("Failed to persist application result", upsertError);
+      }
+    }),
+  );
 
   const topPick = ranked[0]?.productId ?? null;
 
@@ -263,6 +283,114 @@ export async function evaluateApplicationRecommendations(
       total_products: products.length,
       eligible_products: ranked.length,
       ineligible_products: ineligible.length,
+    },
+  };
+}
+
+export async function getStoredEvaluationResults(userId: string, applicationId: string): Promise<EvaluationResult> {
+  await loadOwnedApplication(userId, applicationId);
+
+  const [resultsResult, checksResult] = await Promise.all([
+    supabaseAdmin
+      .from("application_results")
+      .select("*, loan_products(name), banks(name)")
+      .eq("application_id", applicationId)
+      .order("rank_position", { ascending: true, nullsFirst: false })
+      .order("ranking_score", { ascending: false }),
+    supabaseAdmin
+      .from("document_checks")
+      .select("checklist_json, completeness_score")
+      .eq("application_id", applicationId)
+      .eq("user_id", userId),
+  ]);
+
+  if (resultsResult.error) {
+    throw internalError("Failed to load application evaluation results", resultsResult.error);
+  }
+
+  if (checksResult.error) {
+    throw internalError("Failed to load document check summary", checksResult.error);
+  }
+
+  const rows = resultsResult.data ?? [];
+
+  const mapped = rows.map((row) => {
+    const payload = (row.result_payload ?? {}) as Record<string, unknown>;
+    const whyRecommended = toStringArray(payload.whyRecommended);
+
+    const recommendation = {
+      productId: String(row.product_id),
+      bankId: String(row.bank_id),
+      bankName: Array.isArray(row.banks)
+        ? (row.banks[0] as { name?: string } | undefined)?.name ?? "Unknown Bank"
+        : (row.banks as { name?: string } | null)?.name ?? "Unknown Bank",
+      productName: Array.isArray(row.loan_products)
+        ? (row.loan_products[0] as { name?: string } | undefined)?.name ?? "Unknown Product"
+        : (row.loan_products as { name?: string } | null)?.name ?? "Unknown Product",
+      eligibilityPassed: Boolean(row.eligibility_passed),
+      eligibilityScore: toNumber(row.eligibility_score),
+      reasons: toStringArray(row.reasons_json),
+      emi: toNumber(row.emi),
+      totalInterest: toNumber(row.total_interest),
+      totalPayable: toNumber(row.total_payable),
+      estimatedRate: toNumber(row.estimated_rate),
+      approvalProbability: toNumber(row.approval_probability),
+      docCompleteness: toNumber(row.document_completeness),
+      whyRecommended,
+      rankingScore: toNumber(row.ranking_score),
+      rankPosition: row.rank_position ? Number(row.rank_position) : 0,
+    };
+
+    return recommendation;
+  });
+
+  const rankedResults = mapped
+    .filter((row) => row.eligibilityPassed)
+    .sort((left, right) => {
+      if (left.rankPosition > 0 && right.rankPosition > 0) {
+        return left.rankPosition - right.rankPosition;
+      }
+      return right.rankingScore - left.rankingScore;
+    })
+    .map((row, index) => ({
+      ...row,
+      rankPosition: row.rankPosition > 0 ? row.rankPosition : index + 1,
+    })) as RecommendationItem[];
+
+  const ineligibleResults = mapped
+    .filter((row) => !row.eligibilityPassed)
+    .map(({ rankingScore: _rankingScore, rankPosition: _rankPosition, ...rest }) => rest);
+
+  const checks = checksResult.data ?? [];
+  const checklistRows = checks.flatMap((row) =>
+    Array.isArray(row.checklist_json) ? row.checklist_json : [],
+  ) as Array<Record<string, unknown>>;
+
+  const requiredRows = checklistRows.filter((row) => row.required === true);
+  const missingRows = requiredRows.filter((row) => row.uploaded !== true);
+
+  const completenessFromChecks =
+    checks.length > 0
+      ? Number(
+          (
+            checks.reduce((sum, row) => sum + toNumber(row.completeness_score), 0) /
+            checks.length
+          ).toFixed(2),
+        )
+      : 0;
+
+  return {
+    ranked_results: rankedResults,
+    ineligible_results: ineligibleResults,
+    docs_summary: {
+      overall_completeness: completenessFromChecks,
+      total_required: requiredRows.length,
+      total_missing: missingRows.length,
+    },
+    summary: {
+      total_products: mapped.length,
+      eligible_products: rankedResults.length,
+      ineligible_products: ineligibleResults.length,
     },
   };
 }

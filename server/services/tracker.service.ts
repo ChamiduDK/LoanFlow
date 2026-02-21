@@ -59,7 +59,7 @@ export async function getTrackerSummary(userId: string, applicationId: string): 
   const approvedTenureMonths = (outcome?.approved_tenure_months as number | null) ?? null;
 
   const emi =
-    approvedAmount && approvedRate && approvedTenureMonths
+    approvedAmount !== null && approvedRate !== null && approvedTenureMonths !== null
       ? calculateEmi(approvedAmount, approvedRate, approvedTenureMonths).monthlyEmi
       : null;
 

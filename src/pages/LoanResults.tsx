@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   Info,
   LayoutGrid,
   Medal,
+  RefreshCcw,
   SlidersHorizontal,
   Table2,
 } from "lucide-react";
@@ -32,19 +33,21 @@ import { Progress } from "@/components/ui/progress";
 import { apiFetch } from "@/lib/api/client";
 import { formatLKR } from "@/lib/currency";
 import type { Bank, EvaluationResult } from "@/types/backend";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoanResults() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const applicationId = searchParams.get("applicationId") ?? "";
 
   const [view, setView] = useState<"grid" | "table">("grid");
   const [bankFilter, setBankFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"score" | "probability" | "emi">("score");
-  const [minAmountFilter, setMinAmountFilter] = useState(0);
-  const [tenureFilter, setTenureFilter] = useState(0);
-  const [collateralFilter, setCollateralFilter] = useState<"any" | "yes" | "no">("any");
+  const [maxEmiFilter, setMaxEmiFilter] = useState(0);
+  const [minProbabilityFilter, setMinProbabilityFilter] = useState(0);
 
   const banksQuery = useQuery({
     queryKey: ["banks"],
@@ -54,14 +57,32 @@ export default function LoanResults() {
 
   const evaluationQuery = useQuery({
     queryKey: ["application-evaluation", applicationId],
-    queryFn: () =>
+    queryFn: () => apiFetch<EvaluationResult>(`/api/applications/${applicationId}/evaluation`),
+    enabled: Boolean(applicationId),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const evaluateMutation = useMutation({
+    mutationFn: () =>
       apiFetch<EvaluationResult>(`/api/applications/${applicationId}/evaluate`, {
         method: "POST",
         body: JSON.stringify({}),
       }),
-    enabled: Boolean(applicationId),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["application-evaluation", applicationId], data);
+      toast({
+        title: "Evaluation updated",
+        description: "Recommendations were regenerated successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Evaluation failed",
+        description: error instanceof Error ? error.message : "Could not evaluate this application",
+        variant: "destructive",
+      });
+    },
   });
 
   const rankedSchemes = useMemo(() => {
@@ -71,16 +92,10 @@ export default function LoanResults() {
       if (bankFilter !== "all" && item.bankId !== bankFilter) {
         return false;
       }
-      if (minAmountFilter > 0 && item.totalPayable < minAmountFilter) {
+      if (maxEmiFilter > 0 && item.emi > maxEmiFilter) {
         return false;
       }
-      if (tenureFilter > 0 && item.emi <= 0) {
-        return false;
-      }
-      if (collateralFilter === "yes" && !item.whyRecommended.some((why) => why.toLowerCase().includes("collateral"))) {
-        return false;
-      }
-      if (collateralFilter === "no" && item.whyRecommended.some((why) => why.toLowerCase().includes("collateral support"))) {
+      if (minProbabilityFilter > 0 && item.approvalProbability < minProbabilityFilter) {
         return false;
       }
 
@@ -96,7 +111,7 @@ export default function LoanResults() {
     }
 
     return filtered;
-  }, [bankFilter, collateralFilter, evaluationQuery.data?.ranked_results, minAmountFilter, sortBy, tenureFilter]);
+  }, [bankFilter, evaluationQuery.data?.ranked_results, maxEmiFilter, minProbabilityFilter, sortBy]);
 
   if (!applicationId) {
     return (
@@ -114,16 +129,46 @@ export default function LoanResults() {
     );
   }
 
+  if (evaluationQuery.isError) {
+    return (
+      <div className="space-y-6 px-2 md:px-6">
+        <PageHeader
+          title="Loan Recommendations"
+          subtitle="Ranked matches based on your application profile and lender criteria."
+          actions={(
+            <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
+              {evaluateMutation.isPending ? "Evaluating..." : "Run Evaluation"}
+            </Button>
+          )}
+        />
+        <EmptyState
+          title="Could not load recommendations"
+          description="Refresh the page or re-run evaluation for this application."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Loan Recommendations"
         subtitle="Ranked matches based on your application profile and lender criteria."
         actions={(
-          <Button disabled={rankedSchemes.length === 0} onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>
-            Track Top Match
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={evaluateMutation.isPending}
+              onClick={() => evaluateMutation.mutate()}
+            >
+              <RefreshCcw className="h-4 w-4" />
+              {evaluateMutation.isPending ? "Evaluating..." : "Re-run Evaluation"}
+            </Button>
+            <Button disabled={rankedSchemes.length === 0} onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>
+              Track Top Match
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         )}
       />
 
@@ -149,23 +194,18 @@ export default function LoanResults() {
 
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div className="space-y-1.5">
-                <Label className="text-xs">Loan Amount</Label>
-                <Input value={minAmountFilter || ""} onChange={(e) => setMinAmountFilter(Number(e.target.value || 0))} type="number" />
+                <Label className="text-xs">Max EMI (LKR)</Label>
+                <Input value={maxEmiFilter || ""} onChange={(e) => setMaxEmiFilter(Number(e.target.value || 0))} type="number" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Tenure (months)</Label>
-                <Input value={tenureFilter || ""} onChange={(e) => setTenureFilter(Number(e.target.value || 0))} type="number" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Collateral</Label>
-                <Select value={collateralFilter} onValueChange={(value) => setCollateralFilter(value as "any" | "yes" | "no")}>
-                  <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any</SelectItem>
-                    <SelectItem value="yes">Required</SelectItem>
-                    <SelectItem value="no">Not Required</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs">Min Approval (%)</Label>
+                <Input
+                  value={minProbabilityFilter || ""}
+                  onChange={(e) => setMinProbabilityFilter(Number(e.target.value || 0))}
+                  type="number"
+                  min={0}
+                  max={100}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Bank</Label>
@@ -194,11 +234,16 @@ export default function LoanResults() {
 
         <TabsContent value="grid">
           {evaluationQuery.isLoading ? (
-            <Card><CardContent className="p-6 text-sm text-muted-foreground">Evaluating lender matches...</CardContent></Card>
+            <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading lender recommendations...</CardContent></Card>
           ) : rankedSchemes.length === 0 ? (
             <EmptyState
               title="No recommendations found"
-              description="Re-run evaluation after updating your application profile or adjusting filters."
+              description="Run evaluation for this application or adjust your filters."
+              action={(
+                <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
+                  {evaluateMutation.isPending ? "Evaluating..." : "Run Evaluation"}
+                </Button>
+              )}
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">

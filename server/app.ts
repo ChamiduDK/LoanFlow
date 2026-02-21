@@ -1,5 +1,5 @@
-import express from "express";
-import cors from "cors";
+import express, { type Request } from "express";
+import cors, { type CorsOptions } from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
@@ -19,15 +19,39 @@ import { agentRouter } from "./routes/agent.routes";
 
 const app = express();
 
+const allowedOrigins = env.CORS_ORIGIN
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
+
+const corsOrigin: CorsOptions["origin"] = allowedOrigins.includes("*")
+  ? true
+  : (requestOrigin, callback) => {
+      if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    };
+
+app.set("trust proxy", 1);
 app.use(
   cors({
-    origin: env.CORS_ORIGIN,
+    origin: corsOrigin,
     credentials: true,
   }),
 );
 app.use(helmet());
 app.use(morgan("dev"));
-app.use(express.json({ limit: "5mb" }));
+app.use(
+  express.json({
+    limit: "5mb",
+    verify: (req, _res, buffer) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 

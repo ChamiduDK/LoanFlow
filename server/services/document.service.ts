@@ -121,13 +121,13 @@ export async function listDocumentsForApplication(userId: string, applicationId:
 
   const withSignedUrls = await Promise.all(
     rows.map(async (row) => {
-      const signedUrl = await supabaseAdmin.storage
+      const signedUrlResult = await supabaseAdmin.storage
         .from(row.storage_bucket as string)
         .createSignedUrl(row.storage_path as string, 60 * 15);
 
       return {
         ...row,
-        signed_url: signedUrl.data?.signedUrl ?? null,
+        signed_url: signedUrlResult.error ? null : signedUrlResult.data?.signedUrl ?? null,
       };
     }),
   );
@@ -195,6 +195,7 @@ export async function checkDocumentCompleteness(
   const uploadedDocTypes = new Set((uploadedDocsResult.data ?? []).map((row) => String(row.document_type)));
 
   const checks: Array<Record<string, unknown>> = [];
+  const upsertRows: Array<Record<string, unknown>> = [];
   let requiredTotal = 0;
   let missingTotal = 0;
 
@@ -233,7 +234,7 @@ export async function checkDocumentCompleteness(
 
     checks.push(schemeCheck);
 
-    const upsertPayload = {
+    const upsertPayload: Record<string, unknown> = {
       application_id: applicationId,
       product_id: product.id,
       user_id: userId,
@@ -243,13 +244,15 @@ export async function checkDocumentCompleteness(
       checked_at: new Date().toISOString(),
     };
 
+    upsertRows.push(upsertPayload);
+  }
+
+  if (upsertRows.length > 0) {
     const upsert = await supabaseAdmin
       .from("document_checks")
-      .upsert(upsertPayload, {
+      .upsert(upsertRows, {
         onConflict: "application_id,product_id",
-      })
-      .select("id")
-      .maybeSingle();
+      });
 
     if (upsert.error) {
       throw internalError("Failed to upsert document checks", upsert.error);

@@ -232,9 +232,11 @@ export default function ApplicationTracker() {
           <Upload className="h-4 w-4" />
           Update Documents
         </Button>
-        <Button variant="outline">
-          <Send className="h-4 w-4" />
-          Contact Bank
+        <Button variant="outline" asChild>
+          <a href={`mailto:info@smeloanhub.lk?subject=Application%20Support%20${applicationId.slice(0, 8)}`}>
+            <Send className="h-4 w-4" />
+            Contact Support
+          </a>
         </Button>
         <Button onClick={() => void dataQuery.refetch()}>
           <RefreshCcw className="h-4 w-4" />

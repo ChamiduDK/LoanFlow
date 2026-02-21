@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { supabaseClient } from "@/lib/supabase/client";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -40,7 +41,8 @@ export default function Login() {
       description: "Welcome back.",
     });
 
-    navigate("/dashboard");
+    const state = location.state as { from?: string } | null;
+    navigate(state?.from ?? "/dashboard", { replace: true });
   };
 
   return (
