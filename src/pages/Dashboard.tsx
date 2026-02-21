@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
   ArrowRight,
   Bell,
@@ -13,7 +14,6 @@ import {
   TrendingUp,
   Upload,
 } from "lucide-react";
-import { recentApplications, formatLKR } from "@/data/mockData";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -21,42 +21,99 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import EmptyState from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiFetch } from "@/lib/api/client";
+import type { LoanApplication } from "@/types/backend";
+import { formatLKR } from "@/lib/currency";
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-LK", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 export default function Dashboard() {
-  const summary = [
-    {
-      label: "Active Applications",
-      value: "3",
-      trend: "+12% this month",
-      icon: FileText,
-      iconClass: "text-primary",
-      surfaceClass: "bg-primary/10",
-    },
-    {
-      label: "Recommended Banks",
-      value: "5",
-      trend: "2 new matches",
-      icon: Building2,
-      iconClass: "text-success",
-      surfaceClass: "bg-success/10",
-    },
-    {
-      label: "Documents Verified",
-      value: "70%",
-      trend: "4 pending checks",
-      icon: Upload,
-      iconClass: "text-warning",
-      surfaceClass: "bg-warning/15",
-    },
-    {
-      label: "Approval Probability",
-      value: "78%",
-      trend: "+6% from last run",
-      icon: TrendingUp,
-      iconClass: "text-info",
-      surfaceClass: "bg-info/10",
-    },
-  ];
+  const { data: applications = [], isLoading } = useQuery({
+    queryKey: ["applications"],
+    queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
+  });
+
+  const summary = useMemo(() => {
+    const active = applications.filter((item) => !["approved", "rejected", "withdrawn"].includes(item.status)).length;
+    const evaluated = applications.filter((item) => item.status === "evaluated").length;
+    const approved = applications.filter((item) => item.status === "approved").length;
+    const decisionPool = applications.filter((item) => ["approved", "rejected"].includes(item.status)).length;
+    const approvalRate = decisionPool > 0 ? Math.round((approved / decisionPool) * 100) : 0;
+
+    return [
+      {
+        label: "Active Applications",
+        value: String(active),
+        trend: `${applications.length} total submitted`,
+        icon: FileText,
+        iconClass: "text-primary",
+        surfaceClass: "bg-primary/10",
+      },
+      {
+        label: "Evaluated Profiles",
+        value: String(evaluated),
+        trend: "Ready for recommendations",
+        icon: Building2,
+        iconClass: "text-success",
+        surfaceClass: "bg-success/10",
+      },
+      {
+        label: "In Review",
+        value: String(applications.filter((item) => item.status === "under_review").length),
+        trend: "Awaiting lender decisions",
+        icon: Upload,
+        iconClass: "text-warning",
+        surfaceClass: "bg-warning/15",
+      },
+      {
+        label: "Approval Rate",
+        value: `${approvalRate}%`,
+        trend: "Based on final outcomes",
+        icon: TrendingUp,
+        iconClass: "text-info",
+        surfaceClass: "bg-info/10",
+      },
+    ];
+  }, [applications]);
+
+  const reminders = useMemo(() => {
+    if (applications.length === 0) {
+      return [
+        {
+          title: "No applications yet",
+          detail: "Create your first loan application to start eligibility evaluation.",
+          icon: Bell,
+          tone: "bg-info/10 text-info",
+          tag: "Info",
+        },
+      ];
+    }
+
+    const latest = applications[0];
+
+    return [
+      {
+        title: "Latest application status",
+        detail: `Application ${latest.id.slice(0, 8)} is currently ${latest.status.replace(/_/g, " ")}.`,
+        icon: Clock3,
+        tone: "bg-warning/15 text-warning",
+        tag: latest.status,
+      },
+      {
+        title: "Need recommendations?",
+        detail: "Run evaluation from results page after completing your application profile.",
+        icon: TrendingUp,
+        tone: "bg-primary/10 text-primary",
+        tag: "Action",
+      },
+    ];
+  }, [applications]);
 
   const quickActions = [
     { title: "New Loan Application", desc: "Start a guided multi-step form", icon: Plus, path: "/apply" },
@@ -65,37 +122,11 @@ export default function Dashboard() {
     { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/calculator" },
   ];
 
-  const reminders = [
-    {
-      title: "Missing Documents",
-      detail: "Bank statements are required for People's Bank application.",
-      icon: Bell,
-      tone: "bg-warning/15 text-warning",
-      tag: "Needs action",
-    },
-    {
-      title: "Application Under Review",
-      detail: "Commercial Bank is reviewing your Biz Growth Loan.",
-      icon: Clock3,
-      tone: "bg-info/10 text-info",
-      tag: "In progress",
-    },
-    {
-      title: "Loan Approved",
-      detail: "Commercial Bank approved LKR 15M. Next step is acceptance.",
-      icon: TrendingUp,
-      tone: "bg-success/10 text-success",
-      tag: "Approved",
-    },
-  ];
-
-  const isLoading = false;
-
   return (
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Dashboard"
-        subtitle="Welcome back, Kamal. Here is your SME lending snapshot for today."
+        subtitle="Live view of your SME loan pipeline and recommendation readiness."
         actions={(
           <Button asChild>
             <Link to="/apply">
@@ -126,7 +157,6 @@ export default function Dashboard() {
                   </div>
                   <p className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">{item.value}</p>
                   <p className="text-xs font-medium text-muted-foreground">{item.trend}</p>
-                  {item.label === "Documents Verified" ? <Progress value={70} className="h-1" /> : null}
                 </div>
               )}
             </CardContent>
@@ -185,7 +215,7 @@ export default function Dashboard() {
         <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/50 pb-4">
           <div>
             <CardTitle className="gradient-text">Recent Applications</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Track status and document readiness across active submissions.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Track status and submission updates for your applications.</p>
           </div>
           <Button variant="outline" size="sm" asChild className="hover:bg-primary/10">
             <Link to="/tracker">
@@ -195,11 +225,11 @@ export default function Dashboard() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          {recentApplications.length === 0 ? (
+          {applications.length === 0 ? (
             <div className="p-6">
               <EmptyState
-                title="No recent applications"
-                description="Start a new application to see your latest bank submissions here."
+                title="No applications"
+                description="Create your first application to start eligibility evaluation and recommendations."
                 action={(
                   <Button asChild>
                     <Link to="/apply">Create Application</Link>
@@ -212,29 +242,22 @@ export default function Dashboard() {
               <TableHeader>
                 <TableRow className="border-b border-border/50 hover:bg-transparent">
                   <TableHead className="font-semibold text-foreground">Application ID</TableHead>
-                  <TableHead className="font-semibold text-foreground">Bank</TableHead>
-                  <TableHead className="font-semibold text-foreground">Amount</TableHead>
+                  <TableHead className="font-semibold text-foreground">Requested Amount</TableHead>
+                  <TableHead className="font-semibold text-foreground">Purpose</TableHead>
                   <TableHead className="font-semibold text-foreground">Status</TableHead>
-                  <TableHead className="font-semibold text-foreground">Document Progress</TableHead>
                   <TableHead className="font-semibold text-foreground">Updated</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentApplications.map((app) => (
+                {applications.map((app) => (
                   <TableRow key={app.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs font-medium text-foreground">{app.id}</TableCell>
-                    <TableCell className="font-medium text-foreground">{app.bankName}</TableCell>
-                    <TableCell className="font-medium text-foreground">{formatLKR(app.amount)}</TableCell>
+                    <TableCell className="font-mono text-xs font-medium text-foreground">{app.id.slice(0, 8)}</TableCell>
+                    <TableCell className="font-medium text-foreground">{formatLKR(app.requested_amount)}</TableCell>
+                    <TableCell className="font-medium text-foreground">{app.purpose}</TableCell>
                     <TableCell>
                       <StatusBadge status={app.status} />
                     </TableCell>
-                    <TableCell>
-                      <div className="flex w-36 items-center gap-2">
-                        <Progress value={app.documentsComplete} className="h-1.5" />
-                        <span className="text-xs font-medium text-muted-foreground">{app.documentsComplete}%</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{app.date}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(app.updated_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

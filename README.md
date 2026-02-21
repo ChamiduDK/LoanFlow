@@ -4,10 +4,10 @@ Sri Lankan SME Loan Recommendation and Approval Prediction platform.
 
 ## Project Structure
 
-- `src/` React frontend (unchanged pages/UI)
+- `src/` React frontend (API-backed, no mock/demo data)
 - `server/` in-project TypeScript backend API layer
 - `supabase/migrations/` schema + RLS + storage SQL migrations
-- `supabase/seeds/` Sri Lankan bank and scheme seed data
+- `supabase/seeds/` production baseline seed scripts (no demo inserts)
 - `types/` shared API/domain TypeScript types
 - `src/lib/supabase/` frontend Supabase client helpers
 
@@ -40,7 +40,7 @@ Apply migrations in order:
 2. `supabase/migrations/20260221121000_rls_policies.sql`
 3. `supabase/migrations/20260221121500_storage_setup.sql`
 
-Then seed sample data:
+Then apply baseline seed script:
 
 - `supabase/seeds/20260221122000_sri_lanka_seed.sql`
 

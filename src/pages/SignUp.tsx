@@ -1,13 +1,81 @@
-import { Link } from "react-router-dom";
+import { useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, CheckCircle2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabaseClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/api/client";
 
 export default function SignUp() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      setSubmitting(false);
+      toast({
+        title: "Account creation failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const fullName = `${first} ${last}`.trim();
+
+    if (data.session?.access_token) {
+      try {
+        await apiFetch("/api/profile", {
+          method: "PUT",
+          body: JSON.stringify({
+            full_name: fullName || null,
+            phone: phone || null,
+          }),
+        });
+      } catch {
+        // profile update can be completed later in settings
+      }
+    }
+
+    setSubmitting(false);
+
+    if (!data.session) {
+      toast({
+        title: "Check your email",
+        description: "Verify your email address, then sign in.",
+      });
+      navigate("/login");
+      return;
+    }
+
+    toast({
+      title: "Account created",
+      description: "Welcome to SME Loan Hub.",
+    });
+
+    navigate("/dashboard");
+  };
+
   return (
-    <div className="min-h-screen bg-background px-2 md:px-4 py-8">
+    <div className="min-h-screen bg-background px-2 py-8 md:px-4">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md lg:grid-cols-2">
         <div className="hidden border-r border-border bg-muted/35 p-10 lg:flex lg:flex-col lg:justify-between">
           <div className="flex items-center gap-2">
@@ -43,31 +111,33 @@ export default function SignUp() {
               <CardDescription>Start comparing SME loan offers in minutes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 px-0">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="first">First Name</Label>
-                  <Input id="first" placeholder="Kamal" />
+              <form className="space-y-4" onSubmit={onSubmit}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="first">First Name</Label>
+                    <Input id="first" value={first} onChange={(e) => setFirst(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="last">Last Name</Label>
+                    <Input id="last" value={last} onChange={(e) => setLast(e.target.value)} required />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="last">Last Name</Label>
-                  <Input id="last" placeholder="Perera" />
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" placeholder="+94 7X XXX XXXX" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="Create a secure password" />
-              </div>
-              <Button className="w-full" asChild>
-                <Link to="/dashboard">Create Account</Link>
-              </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+                </div>
+                <Button className="w-full" type="submit" disabled={submitting}>
+                  {submitting ? "Creating account..." : "Create Account"}
+                </Button>
+              </form>
               <p className="text-center text-sm text-muted-foreground">
                 Already have an account? <Link to="/login" className="font-medium text-primary hover:underline">Sign in</Link>
               </p>
