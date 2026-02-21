@@ -119,7 +119,7 @@ export default function Dashboard() {
     { title: "New Loan Application", desc: "Start a guided multi-step form", icon: Plus, path: "/apply" },
     { title: "Upload Documents", desc: "Complete verification checklist", icon: Upload, path: "/documents" },
     { title: "Track Applications", desc: "See status and bank timelines", icon: GitBranch, path: "/tracker" },
-    { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/#calculator" },
+    { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/calculator" },
   ];
 
   return (
@@ -246,6 +246,7 @@ export default function Dashboard() {
                   <TableHead className="font-semibold text-foreground">Purpose</TableHead>
                   <TableHead className="font-semibold text-foreground">Status</TableHead>
                   <TableHead className="font-semibold text-foreground">Updated</TableHead>
+                  <TableHead className="font-semibold text-foreground">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -258,6 +259,19 @@ export default function Dashboard() {
                       <StatusBadge status={app.status} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{formatDate(app.updated_at)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to={`/results?applicationId=${app.id}`}>Results</Link>
+                        </Button>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to={`/tracker?applicationId=${app.id}`}>Tracker</Link>
+                        </Button>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to={`/documents?applicationId=${app.id}`}>Documents</Link>
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

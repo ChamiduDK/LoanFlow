@@ -94,6 +94,7 @@ export type LoanApplication = {
   profile_snapshot: Record<string, unknown> | null;
   business_context: Record<string, unknown> | null;
   selected_product_id: UUID | null;
+  tracking_started_at: string | null;
   submitted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -124,6 +125,8 @@ export type ApplicationResult = {
   total_payable: number;
   estimated_rate: number;
   approval_probability: number;
+  initial_probability: number | null;
+  final_probability: number | null;
   document_completeness: number;
   ranking_score: number;
   rank_position: number | null;

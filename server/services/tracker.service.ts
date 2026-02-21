@@ -25,10 +25,28 @@ async function loadOwnedApplication(userId: string, applicationId: string): Prom
   return data;
 }
 
+async function assertApprovedOutcome(userId: string, applicationId: string): Promise<void> {
+  const { data, error } = await supabaseAdmin
+    .from("outcomes")
+    .select("status")
+    .eq("application_id", applicationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw internalError("Failed to validate application outcome status", error);
+  }
+
+  if (!data || data.status !== "approved") {
+    throw forbidden("Installment tracking is available only after approval");
+  }
+}
+
 export async function getTrackerSummary(userId: string, applicationId: string): Promise<TrackerSummary> {
   const application = await loadOwnedApplication(userId, applicationId);
+  const selectedProductId = application.selected_product_id ? String(application.selected_product_id) : null;
 
-  const [outcomeResult, installmentsResult] = await Promise.all([
+  const [outcomeResult, installmentsResult, productResult] = await Promise.all([
     supabaseAdmin
       .from("outcomes")
       .select("*")
@@ -41,6 +59,13 @@ export async function getTrackerSummary(userId: string, applicationId: string): 
       .eq("application_id", applicationId)
       .eq("user_id", userId)
       .order("due_date", { ascending: true }),
+    selectedProductId
+      ? supabaseAdmin
+          .from("loan_products")
+          .select("id, rate_min, rate_max")
+          .eq("id", selectedProductId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (outcomeResult.error) {
@@ -51,12 +76,31 @@ export async function getTrackerSummary(userId: string, applicationId: string): 
     throw internalError("Failed to load installments", installmentsResult.error);
   }
 
+  if (productResult.error) {
+    throw internalError("Failed to load selected product for tracker summary", productResult.error);
+  }
+
   const outcome = outcomeResult.data;
   const installments = installmentsResult.data ?? [];
+  const selectedProduct = productResult.data;
 
-  const approvedAmount = (outcome?.approved_amount as number | null) ?? null;
-  const approvedRate = (outcome?.approved_rate as number | null) ?? null;
-  const approvedTenureMonths = (outcome?.approved_tenure_months as number | null) ?? null;
+  const amountFromOutcome = (outcome?.approved_amount as number | null) ?? null;
+  const rateFromOutcome = (outcome?.approved_rate as number | null) ?? null;
+  const tenureFromOutcome = (outcome?.approved_tenure_months as number | null) ?? null;
+
+  const approvedAmount =
+    amountFromOutcome ??
+    (outcome?.status === "approved" ? Number(application.requested_amount ?? 0) : null);
+  const approvedTenureMonths =
+    tenureFromOutcome ??
+    (outcome?.status === "approved" ? Number(application.preferred_tenure_months ?? 0) : null);
+
+  const derivedRate = selectedProduct
+    ? Number(((Number(selectedProduct.rate_min) + Number(selectedProduct.rate_max)) / 2).toFixed(2))
+    : null;
+  const approvedRate =
+    rateFromOutcome ??
+    (outcome?.status === "approved" ? derivedRate : null);
 
   const emi =
     approvedAmount !== null && approvedRate !== null && approvedTenureMonths !== null
@@ -106,6 +150,7 @@ export async function addInstallment(
   },
 ): Promise<Record<string, unknown>> {
   await loadOwnedApplication(userId, applicationId);
+  await assertApprovedOutcome(userId, applicationId);
 
   const { data, error } = await supabaseAdmin
     .from("installments")

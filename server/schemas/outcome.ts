@@ -22,6 +22,14 @@ export const createInstallmentSchema = z.object({
   status: z.enum(["pending", "paid", "late"]).optional(),
   paid_date: z.string().date().nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.status === "paid" && !value.paid_date) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["paid_date"],
+      message: "paid_date is required when status is paid",
+    });
+  }
 });
 
 export const trackerParamsSchema = z.object({

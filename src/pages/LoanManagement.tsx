@@ -1,8 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -23,8 +27,9 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { formatLKR } from "@/lib/currency";
 import { apiFetch } from "@/lib/api/client";
-import type { TrackerSummary } from "@/types/backend";
+import type { LoanApplication, LoanManagementAccessResponse, TrackerSummary } from "@/types/backend";
 import EmptyState from "@/components/shared/EmptyState";
+import { useToast } from "@/hooks/use-toast";
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -36,15 +41,96 @@ function formatDate(value: string | null): string {
 }
 
 export default function LoanManagement() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const applicationId = searchParams.get("applicationId") ?? "";
-
-  const trackerQuery = useQuery({
-    queryKey: ["tracker-summary", applicationId],
-    queryFn: () => apiFetch<TrackerSummary>(`/api/applications/${applicationId}/tracker`),
-    enabled: Boolean(applicationId),
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
+  const [installmentForm, setInstallmentForm] = useState({
+    due_date: "",
+    amount: "",
+    status: "pending" as "pending" | "paid" | "late",
+    paid_date: "",
+    notes: "",
   });
+
+  const applicationsQuery = useQuery({
+    queryKey: ["applications"],
+    queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
+    staleTime: 30_000,
+  });
+  const fallbackApplicationId = applicationsQuery.data?.find((item) => item.status === "approved")?.id
+    ?? applicationsQuery.data?.[0]?.id
+    ?? "";
+  const applicationId = applicationIdFromUrl || fallbackApplicationId;
+
+  useEffect(() => {
+    if (!applicationIdFromUrl && fallbackApplicationId) {
+      const next = new URLSearchParams(searchParams);
+      next.set("applicationId", fallbackApplicationId);
+      setSearchParams(next, { replace: true });
+    }
+  }, [applicationIdFromUrl, fallbackApplicationId, searchParams, setSearchParams]);
+
+  const loanManagementQuery = useQuery({
+    queryKey: ["loan-management", applicationId],
+    queryFn: () => apiFetch<LoanManagementAccessResponse>(`/api/applications/${applicationId}/loan-management`),
+    enabled: Boolean(applicationId),
+    retry: false,
+  });
+
+  const addInstallmentMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/applications/${applicationId}/tracker/installments`, {
+        method: "POST",
+        body: JSON.stringify({
+          due_date: installmentForm.due_date,
+          amount: Number(installmentForm.amount),
+          status: installmentForm.status,
+          paid_date: installmentForm.status === "paid" ? installmentForm.paid_date || null : null,
+          notes: installmentForm.notes.trim() || null,
+        }),
+      }),
+    onSuccess: () => {
+      toast({ title: "Installment added" });
+      setInstallmentForm({
+        due_date: "",
+        amount: "",
+        status: "pending",
+        paid_date: "",
+        notes: "",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["loan-management", applicationId] });
+      void queryClient.invalidateQueries({ queryKey: ["tracker-page", applicationId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to add installment",
+        description: error instanceof Error ? error.message : "Could not add installment",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddInstallment = () => {
+    if (!installmentForm.due_date) {
+      toast({ title: "Due date is required", variant: "destructive" });
+      return;
+    }
+
+    const amount = Number(installmentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({ title: "Installment amount must be greater than zero", variant: "destructive" });
+      return;
+    }
+
+    if (installmentForm.status === "paid" && !installmentForm.paid_date) {
+      toast({ title: "Paid date is required for paid installments", variant: "destructive" });
+      return;
+    }
+
+    addInstallmentMutation.mutate();
+  };
 
   if (!applicationId) {
     return (
@@ -54,15 +140,15 @@ export default function LoanManagement() {
           subtitle="Track repayments, monitor dues, and manage your approved facilities."
         />
         <EmptyState
-          title="No application selected"
-          description="Open /management?applicationId=<id> to view repayment tracking data."
-          action={<Button onClick={() => navigate("/tracker")}>Open Tracker</Button>}
+          title="No applications found"
+          description="Create your first application to access loan management."
+          action={<Button onClick={() => navigate("/apply")}>Create Application</Button>}
         />
       </div>
     );
   }
 
-  if (trackerQuery.isLoading) {
+  if (loanManagementQuery.isLoading) {
     return (
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
@@ -73,7 +159,26 @@ export default function LoanManagement() {
     );
   }
 
-  if (trackerQuery.isError) {
+  if (loanManagementQuery.isError) {
+    const isAccessLocked = loanManagementQuery.error instanceof Error &&
+      loanManagementQuery.error.message.toLowerCase().includes("only after approval");
+
+    if (isAccessLocked) {
+      return (
+        <div className="space-y-6 px-2 md:px-6">
+          <PageHeader
+            title="Loan Management"
+            subtitle="Track repayments, monitor dues, and manage your approved facilities."
+          />
+          <EmptyState
+            title="Repayment management is locked"
+            description="This feature becomes available after the application is marked as approved."
+            action={<Button onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>Open Tracker</Button>}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
@@ -83,13 +188,13 @@ export default function LoanManagement() {
         <EmptyState
           title="Failed to load repayment data"
           description="There was an error loading tracker data for this application. Please try again."
-          action={<Button onClick={() => void trackerQuery.refetch()}>Retry</Button>}
+          action={<Button onClick={() => void loanManagementQuery.refetch()}>Retry</Button>}
         />
       </div>
     );
   }
 
-  const tracker = trackerQuery.data;
+  const tracker = loanManagementQuery.data?.tracker_summary as TrackerSummary | undefined;
 
   if (!tracker) {
     return (
@@ -106,6 +211,8 @@ export default function LoanManagement() {
       </div>
     );
   }
+
+  const isApproved = loanManagementQuery.data?.unlocked === true;
 
   const totalInstallments = tracker.loanSummary.approvedTenureMonths ?? tracker.installmentHistory.length;
   const paidCount = tracker.installmentHistory.filter((item) => item.status === "paid").length;
@@ -147,7 +254,39 @@ export default function LoanManagement() {
       <PageHeader
         title="Loan Management"
         subtitle="Track repayments, monitor dues, and manage your approved facilities."
+        actions={(
+          <Select
+            value={applicationId}
+            onValueChange={(value) => {
+              const next = new URLSearchParams(searchParams);
+              next.set("applicationId", value);
+              setSearchParams(next);
+            }}
+          >
+            <SelectTrigger className="min-w-[220px]">
+              <SelectValue placeholder="Select application" />
+            </SelectTrigger>
+            <SelectContent>
+              {(applicationsQuery.data ?? []).map((application) => (
+                <SelectItem key={application.id} value={application.id}>
+                  {application.id.slice(0, 8)} - {application.purpose}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       />
+
+      {!isApproved ? (
+        <EmptyState
+          title="Repayment management is locked"
+          description="This feature becomes available after the application is marked as approved."
+          action={<Button onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>Open Tracker</Button>}
+        />
+      ) : null}
+
+      {isApproved ? (
+        <>
 
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-4">
         <Card>
@@ -234,12 +373,84 @@ export default function LoanManagement() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {tracker.installmentHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                      No installments recorded yet.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
 
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Add Installment</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-2">
+                <Label className="text-xs">Due date</Label>
+                <Input
+                  type="date"
+                  value={installmentForm.due_date}
+                  onChange={(event) => setInstallmentForm((prev) => ({ ...prev, due_date: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Amount (LKR)</Label>
+                <Input
+                  type="number"
+                  value={installmentForm.amount}
+                  onChange={(event) => setInstallmentForm((prev) => ({ ...prev, amount: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Status</Label>
+                <Select
+                  value={installmentForm.status}
+                  onValueChange={(value) => setInstallmentForm((prev) => ({ ...prev, status: value as "pending" | "paid" | "late" }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="late">Late</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {installmentForm.status === "paid" ? (
+                <div className="space-y-2">
+                  <Label className="text-xs">Paid date</Label>
+                  <Input
+                    type="date"
+                    value={installmentForm.paid_date}
+                    onChange={(event) => setInstallmentForm((prev) => ({ ...prev, paid_date: event.target.value }))}
+                  />
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label className="text-xs">Notes</Label>
+                <Input
+                  value={installmentForm.notes}
+                  onChange={(event) => setInstallmentForm((prev) => ({ ...prev, notes: event.target.value }))}
+                  placeholder="Optional note"
+                />
+              </div>
+              <Button
+                className="w-full"
+                disabled={addInstallmentMutation.isPending}
+                onClick={handleAddInstallment}
+              >
+                {addInstallmentMutation.isPending ? "Saving..." : "Add Installment"}
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="p-5">
               <div className="mb-3 flex items-center gap-2">
@@ -262,6 +473,8 @@ export default function LoanManagement() {
           </Button>
         </div>
       </div>
+        </>
+      ) : null}
     </div>
   );
 }

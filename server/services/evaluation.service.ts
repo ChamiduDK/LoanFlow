@@ -101,6 +101,15 @@ export async function evaluateApplicationRecommendations(
   const products = productData ?? [];
 
   if (products.length === 0) {
+    const clearExisting = await supabaseAdmin
+      .from("application_results")
+      .delete()
+      .eq("application_id", applicationId);
+
+    if (clearExisting.error) {
+      throw internalError("Failed to clear previous application results", clearExisting.error);
+    }
+
     return {
       ranked_results: [],
       ineligible_results: [],
@@ -147,11 +156,33 @@ export async function evaluateApplicationRecommendations(
     const rulePayload = rulesByProduct.get(String(product.id)) ?? {};
     const eligibility = evaluateEligibility(rulePayload, profile, application);
 
+    let eligibilityPassed = eligibility.passed;
+    let eligibilityScore = eligibility.score;
+    const ruleReasons = [...eligibility.reasons];
+
+    const minAmount = Number(product.min_amount);
+    const maxAmount = Number(product.max_amount);
+    if (application.requested_amount < minAmount || application.requested_amount > maxAmount) {
+      eligibilityPassed = false;
+      eligibilityScore = Math.max(0, eligibilityScore - 30);
+      ruleReasons.push(
+        `Requested amount must be between LKR ${minAmount.toLocaleString("en-LK")} and LKR ${maxAmount.toLocaleString("en-LK")}`,
+      );
+    }
+
+    const minTenure = Number(product.tenure_min_months);
+    const maxTenure = Number(product.tenure_max_months);
+    if (application.preferred_tenure_months < minTenure || application.preferred_tenure_months > maxTenure) {
+      eligibilityPassed = false;
+      eligibilityScore = Math.max(0, eligibilityScore - 15);
+      ruleReasons.push(`Preferred tenure must be between ${minTenure} and ${maxTenure} months`);
+    }
+
     const effectiveRate = Number(((Number(product.rate_min) + Number(product.rate_max)) / 2).toFixed(2));
     const selectedTenure = clamp(
       application.preferred_tenure_months,
-      Number(product.tenure_min_months),
-      Number(product.tenure_max_months),
+      minTenure,
+      maxTenure,
     );
 
     const emi = calculateEmi(application.requested_amount, effectiveRate, selectedTenure);
@@ -162,7 +193,7 @@ export async function evaluateApplicationRecommendations(
     const docCompleteness = docsByProduct.get(String(product.id)) ?? 0;
 
     const probability = calculateApprovalProbability({
-      eligibilityScore: eligibility.score,
+      eligibilityScore,
       yearsActive: profile.years_active ?? 0,
       turnoverRatio,
       collateralAvailable: application.collateral_available,
@@ -170,7 +201,7 @@ export async function evaluateApplicationRecommendations(
     });
 
     const whyRecommended = [
-      eligibility.passed ? "Eligibility criteria largely satisfied" : "Eligibility gaps exist",
+      eligibilityPassed ? "Eligibility criteria largely satisfied" : "Eligibility gaps exist",
       `Estimated EMI LKR ${emi.monthlyEmi.toLocaleString("en-LK")}`,
       `Approval probability ${probability.probability.toFixed(1)}%`,
       `Document completeness ${docCompleteness.toFixed(1)}%`,
@@ -183,9 +214,9 @@ export async function evaluateApplicationRecommendations(
         ? (product.banks[0] as { name?: string } | undefined)?.name ?? "Unknown Bank"
         : (product.banks as { name?: string } | null)?.name ?? "Unknown Bank",
       productName: String(product.name),
-      eligibilityPassed: eligibility.passed,
-      eligibilityScore: eligibility.score,
-      reasons: [...eligibility.reasons, ...probability.reasons],
+      eligibilityPassed,
+      eligibilityScore: Number(eligibilityScore.toFixed(2)),
+      reasons: [...ruleReasons, ...probability.reasons],
       emi: emi.monthlyEmi,
       totalInterest: emi.totalInterest,
       totalPayable: emi.totalPayable,
@@ -206,41 +237,45 @@ export async function evaluateApplicationRecommendations(
     ...ineligible.map((entry) => ({ ...entry, rankingScore: 0, rankPosition: null })),
   ];
 
-  await Promise.all(
-    persistedResults.map(async (item) => {
-      const { error: upsertError } = await supabaseAdmin
-        .from("application_results")
-        .upsert(
-          {
-            application_id: applicationId,
-            product_id: item.productId,
-            bank_id: item.bankId,
-            eligibility_passed: item.eligibilityPassed,
-            eligibility_score: item.eligibilityScore,
-            reasons_json: item.reasons,
-            emi: item.emi,
-            total_interest: item.totalInterest,
-            total_payable: item.totalPayable,
-            estimated_rate: item.estimatedRate,
-            approval_probability: item.approvalProbability,
-            document_completeness: item.docCompleteness,
-            ranking_score: item.rankingScore,
-            rank_position: item.rankPosition,
-            result_payload: {
-              whyRecommended: item.whyRecommended,
-              generatedAt: new Date().toISOString(),
-            },
-          },
-          {
-            onConflict: "application_id,product_id",
-          },
-        );
+  const clearExisting = await supabaseAdmin
+    .from("application_results")
+    .delete()
+    .eq("application_id", applicationId);
 
-      if (upsertError) {
-        throw internalError("Failed to persist application result", upsertError);
-      }
-    }),
-  );
+  if (clearExisting.error) {
+    throw internalError("Failed to reset application results", clearExisting.error);
+  }
+
+    const payloadRows = persistedResults.map((item) => ({
+      application_id: applicationId,
+      product_id: item.productId,
+      bank_id: item.bankId,
+    eligibility_passed: item.eligibilityPassed,
+    eligibility_score: item.eligibilityScore,
+    reasons_json: item.reasons,
+    emi: item.emi,
+    total_interest: item.totalInterest,
+      total_payable: item.totalPayable,
+      estimated_rate: item.estimatedRate,
+      approval_probability: item.approvalProbability,
+      initial_probability: item.approvalProbability,
+      final_probability: null,
+      document_completeness: item.docCompleteness,
+      ranking_score: item.rankingScore,
+      rank_position: item.rankPosition,
+    result_payload: {
+      whyRecommended: item.whyRecommended,
+      generatedAt: new Date().toISOString(),
+    },
+  }));
+
+  const { error: persistError } = await supabaseAdmin
+    .from("application_results")
+    .insert(payloadRows);
+
+  if (persistError) {
+    throw internalError("Failed to persist application results", persistError);
+  }
 
   const topPick = ranked[0]?.productId ?? null;
 
@@ -334,7 +369,7 @@ export async function getStoredEvaluationResults(userId: string, applicationId: 
       totalInterest: toNumber(row.total_interest),
       totalPayable: toNumber(row.total_payable),
       estimatedRate: toNumber(row.estimated_rate),
-      approvalProbability: toNumber(row.approval_probability),
+      approvalProbability: toNumber(row.initial_probability ?? row.approval_probability),
       docCompleteness: toNumber(row.document_completeness),
       whyRecommended,
       rankingScore: toNumber(row.ranking_score),

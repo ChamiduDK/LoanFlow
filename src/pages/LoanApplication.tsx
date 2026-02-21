@@ -43,6 +43,7 @@ type FormState = {
   purpose: string;
   preferred_tenure_months: string;
   turnover_band: string;
+  annual_turnover: string;
   monthly_income: string;
   existing_loan_obligations: string;
   collateral_available: boolean;
@@ -59,6 +60,7 @@ const initialForm: FormState = {
   purpose: "",
   preferred_tenure_months: "",
   turnover_band: "",
+  annual_turnover: "",
   monthly_income: "",
   existing_loan_obligations: "",
   collateral_available: false,
@@ -108,6 +110,11 @@ export default function LoanApplication() {
         toast({ title: "Annual turnover band is required", variant: "destructive" });
         return false;
       }
+      const annualTurnover = Number(form.annual_turnover);
+      if (!annualTurnover || annualTurnover <= 0) {
+        toast({ title: "Annual turnover amount is required", variant: "destructive" });
+        return false;
+      }
     }
     return true;
   };
@@ -123,6 +130,7 @@ export default function LoanApplication() {
       amount,
       tenure,
       yearsActive: Number(form.years_active || 0),
+      annualTurnover: Number(form.annual_turnover || 0),
       monthlyIncome: Number(form.monthly_income || 0),
       monthlyObligations: Number(form.existing_loan_obligations || 0),
     };
@@ -153,6 +161,7 @@ export default function LoanApplication() {
           years_active: form.years_active ? Number(form.years_active) : null,
           district: form.district || null,
           turnover_band: form.turnover_band || null,
+          annual_turnover: form.annual_turnover ? Number(form.annual_turnover) : null,
           monthly_income: form.monthly_income ? Number(form.monthly_income) : null,
           existing_loan_obligations: form.existing_loan_obligations ? Number(form.existing_loan_obligations) : null,
         }),
@@ -167,8 +176,22 @@ export default function LoanApplication() {
           collateral_available: form.collateral_available,
           collateral_type: form.collateral_type || null,
           status: "submitted",
+          profile_snapshot: {
+            business_name: form.business_name || null,
+            business_type: form.business_type || null,
+            industry: form.industry || null,
+            district: form.district || null,
+            years_active: form.years_active ? Number(form.years_active) : null,
+            turnover_band: form.turnover_band || null,
+            annual_turnover: form.annual_turnover ? Number(form.annual_turnover) : null,
+            monthly_income: form.monthly_income ? Number(form.monthly_income) : null,
+            existing_loan_obligations: form.existing_loan_obligations
+              ? Number(form.existing_loan_obligations)
+              : null,
+          },
           business_context: {
             turnover_band: form.turnover_band,
+            annual_turnover: form.annual_turnover ? Number(form.annual_turnover) : null,
           },
         }),
       });
@@ -340,6 +363,10 @@ export default function LoanApplication() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
+                    <Label htmlFor="annual-turnover">Annual Turnover Estimate (LKR)</Label>
+                    <Input id="annual-turnover" type="number" value={form.annual_turnover} onChange={(e) => setForm((f) => ({ ...f, annual_turnover: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="monthly-income">Monthly Income Estimate (LKR)</Label>
                     <Input id="monthly-income" type="number" value={form.monthly_income} onChange={(e) => setForm((f) => ({ ...f, monthly_income: e.target.value }))} />
                   </div>
@@ -398,6 +425,7 @@ export default function LoanApplication() {
                     <div className="flex justify-between"><span className="text-muted-foreground">Industry</span><span className="font-medium">{form.industry || "-"}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">District</span><span className="font-medium">{form.district || "-"}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Years Active</span><span className="font-medium">{parsedSummary.yearsActive || 0}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Annual Turnover</span><span className="font-medium">{formatLKR(parsedSummary.annualTurnover)}</span></div>
                   </div>
                 </div>
                 <div className="surface-card-muted p-4">

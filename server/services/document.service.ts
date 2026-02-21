@@ -51,6 +51,11 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
     throw badRequest("Uploaded file is empty");
   }
 
+  const normalizedDocumentType = input.documentType.trim().toLowerCase();
+  if (!normalizedDocumentType) {
+    throw badRequest("Document type is required");
+  }
+
   const safeName = sanitizeFilename(input.file.originalname);
   const path = `${input.userId}/${input.applicationId}/${Date.now()}-${randomUUID()}-${safeName}`;
 
@@ -69,13 +74,17 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
       application_id: input.applicationId,
       user_id: input.userId,
       product_id: input.productId ?? null,
-      document_type: input.documentType,
+      document_type: normalizedDocumentType,
       file_name: input.file.originalname,
       storage_bucket: env.SUPABASE_DOCS_BUCKET,
       storage_path: path,
       mime_type: input.file.mimetype,
       size_bytes: input.file.size,
       status: "uploaded",
+      detected_doc_type: null,
+      ocr_text: null,
+      extracted_json: {},
+      validation_status: "unclear",
       metadata: {
         originalName: input.file.originalname,
       },
@@ -94,7 +103,7 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
     entityId: data.id,
     payloadSummary: {
       applicationId: input.applicationId,
-      documentType: input.documentType,
+      documentType: normalizedDocumentType,
       sizeBytes: input.file.size,
     },
     ipAddress: input.ipAddress ?? null,
@@ -125,8 +134,15 @@ export async function listDocumentsForApplication(userId: string, applicationId:
         .from(row.storage_bucket as string)
         .createSignedUrl(row.storage_path as string, 60 * 15);
 
+      const { ocr_text: _ocrText, ...rowWithoutRawOcr } = row as Record<string, unknown>;
+      const ocrPreview =
+        typeof row.ocr_text === "string" && row.ocr_text.trim().length > 0
+          ? `${row.ocr_text.trim().slice(0, 220)}${row.ocr_text.trim().length > 220 ? "..." : ""}`
+          : null;
+
       return {
-        ...row,
+        ...rowWithoutRawOcr,
+        ocr_preview: ocrPreview,
         signed_url: signedUrlResult.error ? null : signedUrlResult.data?.signedUrl ?? null,
       };
     }),
@@ -192,7 +208,9 @@ export async function checkDocumentCompleteness(
   }
 
   const requiredDocs = requiredResult.data ?? [];
-  const uploadedDocTypes = new Set((uploadedDocsResult.data ?? []).map((row) => String(row.document_type)));
+  const uploadedDocTypes = new Set(
+    (uploadedDocsResult.data ?? []).map((row) => String(row.document_type).trim().toLowerCase()),
+  );
 
   const checks: Array<Record<string, unknown>> = [];
   const upsertRows: Array<Record<string, unknown>> = [];
@@ -203,7 +221,7 @@ export async function checkDocumentCompleteness(
     const perProduct = requiredDocs.filter((doc) => doc.product_id === product.id);
 
     const checklist: ChecklistItem[] = perProduct.map((doc) => {
-      const uploaded = uploadedDocTypes.has(String(doc.document_type));
+      const uploaded = uploadedDocTypes.has(String(doc.document_type).trim().toLowerCase());
       return {
         document_type: String(doc.document_type),
         display_name: String(doc.display_name),

@@ -5,8 +5,10 @@ import { requireAuth } from "../middleware/auth";
 import { unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { createInstallmentSchema, trackerParamsSchema } from "../schemas/outcome";
+import { trackerReEvaluateSchema } from "../schemas/application";
 import { addInstallment, getTrackerSummary, listInstallments } from "../services/tracker.service";
 import { logAudit } from "../services/audit.service";
+import { reEvaluateTrackedApplication } from "../services/tracker-evaluation.service";
 
 export const trackerRouter = Router();
 
@@ -24,6 +26,28 @@ trackerRouter.get(
 
     const summary = await getTrackerSummary(userId, params.id);
     sendSuccess(res, summary);
+  }),
+);
+
+trackerRouter.post(
+  "/applications/:id/tracker/re-evaluate",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(trackerParamsSchema, req.params);
+    const payload = parseWithSchema(trackerReEvaluateSchema, req.body ?? {});
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const result = await reEvaluateTrackedApplication(
+      userId,
+      params.id,
+      payload.product_id,
+      req.ip,
+    );
+
+    sendSuccess(res, result);
   }),
 );
 

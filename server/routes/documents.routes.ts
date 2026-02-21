@@ -8,6 +8,7 @@ import { sendSuccess } from "../lib/response";
 import {
   applicationDocumentParamsSchema,
   documentCheckBodySchema,
+  documentScanBodySchema,
   documentUploadBodySchema,
 } from "../schemas/document";
 import {
@@ -15,6 +16,7 @@ import {
   listDocumentsForApplication,
   uploadDocumentForApplication,
 } from "../services/document.service";
+import { scanApplicationDocuments as scanDocumentsForApplication } from "../services/document-scan.service";
 
 export const documentsRouter = Router();
 
@@ -98,5 +100,26 @@ documentsRouter.post(
     const checklist = await checkDocumentCompleteness(userId, params.id, payload.product_ids);
 
     sendSuccess(res, checklist);
+  }),
+);
+
+documentsRouter.post(
+  "/applications/:id/documents/scan",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
+    const payload = parseWithSchema(documentScanBodySchema, req.body ?? {});
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const scanResult = await scanDocumentsForApplication(userId, params.id, {
+      productId: payload.product_id,
+      forceRescan: payload.force_rescan,
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, scanResult);
   }),
 );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -17,6 +18,12 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
 import { supabaseClient } from "@/lib/supabase/client";
+
+type MePayload = {
+  profile?: {
+    is_admin?: boolean;
+  } | null;
+};
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -38,6 +45,13 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [signingOut, setSigningOut] = useState(false);
+  const meQuery = useQuery({
+    queryKey: ["me-profile"],
+    queryFn: () => apiFetch<MePayload>("/api/me"),
+    retry: false,
+    staleTime: 30_000,
+  });
+  const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
 
   const handleSignOut = async () => {
     if (signingOut) {
@@ -129,14 +143,16 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
           </nav>
 
           <div className="space-y-1 border-t border-sidebar-border/80 p-3">
-            <Link
-              to="/admin"
-              onClick={onClose}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-            >
-              <Settings className="h-4 w-4" />
-              Admin Panel
-            </Link>
+            {isAdmin ? (
+              <Link
+                to="/admin"
+                onClick={onClose}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+              >
+                <Settings className="h-4 w-4" />
+                Admin Panel
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleSignOut()}

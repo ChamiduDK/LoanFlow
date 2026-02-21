@@ -31,3 +31,11 @@ export const evaluatePayloadSchema = z.object({
   selected_product_id: uuidSchema.optional(),
   persist_rank: z.boolean().optional(),
 });
+
+export const trackApplicationSchema = z.object({
+  productId: uuidSchema,
+});
+
+export const trackerReEvaluateSchema = z.object({
+  product_id: uuidSchema.optional(),
+});

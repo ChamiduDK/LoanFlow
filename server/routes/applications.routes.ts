@@ -6,6 +6,7 @@ import {
   createApplicationSchema,
   evaluateApplicationParamsSchema,
   evaluatePayloadSchema,
+  trackApplicationSchema,
   updateApplicationSchema,
 } from "../schemas/application";
 import { requireAuth } from "../middleware/auth";
@@ -13,10 +14,26 @@ import { forbidden, internalError, notFound, unauthorized } from "../lib/errors"
 import { sendSuccess } from "../lib/response";
 import { supabaseAdmin } from "../lib/supabase/client";
 import { evaluateApplicationRecommendations, getStoredEvaluationResults } from "../services/evaluation.service";
+import { logAudit } from "../services/audit.service";
+import { startApplicationTracking } from "../services/tracking.service";
+import { generateProposalBodySchema, proposalParamsSchema } from "../schemas/proposal";
+import { generateLoanProposal, getLatestLoanProposal } from "../services/proposal.service";
+import { getLoanManagementSummary } from "../services/loan-management.service";
 
 export const applicationsRouter = Router();
 
 applicationsRouter.use(requireAuth);
+
+const submittedStatuses = new Set([
+  "submitted",
+  "evaluated",
+  "applied",
+  "under_review",
+  "approved",
+  "rejected",
+  "withdrawn",
+]);
+const restrictedUserStatuses = new Set(["under_review", "approved", "rejected"]);
 
 applicationsRouter.post(
   "/applications",
@@ -28,12 +45,20 @@ applicationsRouter.post(
 
     const payload = parseWithSchema(createApplicationSchema, req.body);
 
+    if (payload.status && restrictedUserStatuses.has(payload.status)) {
+      throw forbidden("Selected status is restricted to admin workflows");
+    }
+
+    const status = payload.status ?? "draft";
+    const submittedAt = submittedStatuses.has(status) ? new Date().toISOString() : null;
+
     const { data, error } = await supabaseAdmin
       .from("loan_applications")
       .insert({
         user_id: userId,
         ...payload,
-        status: payload.status ?? "draft",
+        status,
+        submitted_at: submittedAt,
       })
       .select("*")
       .single();
@@ -41,6 +66,18 @@ applicationsRouter.post(
     if (error || !data) {
       throw internalError("Failed to create application", error);
     }
+
+    await logAudit({
+      actorUserId: userId,
+      action: "application.created",
+      entityType: "loan_applications",
+      entityId: String(data.id),
+      payloadSummary: {
+        requested_amount: data.requested_amount,
+        status: data.status,
+      },
+      ipAddress: req.ip,
+    });
 
     sendSuccess(res, data, undefined, 201);
   }),
@@ -111,9 +148,13 @@ applicationsRouter.put(
       throw unauthorized();
     }
 
+    if (payload.status && restrictedUserStatuses.has(payload.status)) {
+      throw forbidden("Selected status is restricted to admin workflows");
+    }
+
     const existing = await supabaseAdmin
       .from("loan_applications")
-      .select("id, user_id")
+      .select("id, user_id, status, submitted_at")
       .eq("id", params.id)
       .maybeSingle();
 
@@ -129,9 +170,18 @@ applicationsRouter.put(
       throw forbidden("You cannot update this application");
     }
 
+    const updatePayload: Record<string, unknown> = { ...payload };
+    if (
+      payload.status &&
+      submittedStatuses.has(payload.status) &&
+      !existing.data.submitted_at
+    ) {
+      updatePayload.submitted_at = new Date().toISOString();
+    }
+
     const { data, error } = await supabaseAdmin
       .from("loan_applications")
-      .update(payload)
+      .update(updatePayload)
       .eq("id", params.id)
       .eq("user_id", userId)
       .select("*")
@@ -140,6 +190,15 @@ applicationsRouter.put(
     if (error || !data) {
       throw internalError("Failed to update application", error);
     }
+
+    await logAudit({
+      actorUserId: userId,
+      action: "application.updated",
+      entityType: "loan_applications",
+      entityId: params.id,
+      payloadSummary: payload as Record<string, unknown>,
+      ipAddress: req.ip,
+    });
 
     sendSuccess(res, data);
   }),
@@ -176,5 +235,79 @@ applicationsRouter.get(
     const result = await getStoredEvaluationResults(userId, params.id);
 
     sendSuccess(res, result);
+  }),
+);
+
+applicationsRouter.post(
+  "/applications/:id/track",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(applicationIdParamsSchema, req.params);
+    const payload = parseWithSchema(trackApplicationSchema, req.body ?? {});
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const result = await startApplicationTracking(
+      userId,
+      params.id,
+      payload.productId,
+      req.ip,
+    );
+
+    sendSuccess(res, result);
+  }),
+);
+
+applicationsRouter.post(
+  "/applications/:id/proposal/generate",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(proposalParamsSchema, req.params);
+    const payload = parseWithSchema(generateProposalBodySchema, req.body ?? {});
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const proposal = await generateLoanProposal(
+      userId,
+      params.id,
+      payload.product_id,
+      req.ip,
+    );
+
+    sendSuccess(res, proposal, undefined, 201);
+  }),
+);
+
+applicationsRouter.get(
+  "/applications/:id/proposal",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(proposalParamsSchema, req.params);
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const proposal = await getLatestLoanProposal(userId, params.id);
+    sendSuccess(res, proposal);
+  }),
+);
+
+applicationsRouter.get(
+  "/applications/:id/loan-management",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(proposalParamsSchema, req.params);
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const summary = await getLoanManagementSummary(userId, params.id);
+    sendSuccess(res, summary);
   }),
 );

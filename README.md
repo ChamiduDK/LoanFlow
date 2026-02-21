@@ -41,6 +41,8 @@ Apply migrations in order:
 1. `supabase/migrations/20260221120000_initial_schema.sql`
 2. `supabase/migrations/20260221121000_rls_policies.sql`
 3. `supabase/migrations/20260221121500_storage_setup.sql`
+4. `supabase/migrations/20260222013000_profile_metadata_on_signup.sql`
+5. `supabase/migrations/20260222030000_tracking_final_verification.sql`
 
 Then apply baseline seed script:
 
@@ -59,6 +61,12 @@ Then apply baseline seed script:
   - `GET /api/banks/:id/products`
   - `GET /api/loan-products/:id`
 - Admin:
+  - `GET /api/admin/overview`
+  - `GET /api/admin/users`
+  - `PUT /api/admin/users/:id/role`
+  - `GET /api/admin/applications`
+  - `PUT /api/admin/applications/:id/decision`
+  - `GET /api/admin/audit-logs`
   - `POST /api/admin/banks`
   - `PUT /api/admin/banks/:id`
   - `DELETE /api/admin/banks/:id`

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import PageHeader from "@/components/shared/PageHeader";
 import { useToast } from "@/hooks/use-toast";
+import { useAuthSession } from "@/hooks/useAuthSession";
 import { apiFetch } from "@/lib/api/client";
 import type { AdminUser } from "@/types/admin";
 
@@ -21,6 +22,7 @@ function formatDate(value: string): string {
 export default function AdminUsers() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const sessionQuery = useAuthSession();
   const [search, setSearch] = useState("");
 
   const usersQuery = useQuery({
@@ -36,6 +38,7 @@ export default function AdminUsers() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      void queryClient.invalidateQueries({ queryKey: ["me-profile"] });
       toast({ title: "User role updated" });
     },
     onError: (error) => {
@@ -55,6 +58,8 @@ export default function AdminUsers() {
       String(user.email ?? "").toLowerCase().includes(term)
     );
   });
+  const currentUserId = sessionQuery.data?.user.id ?? null;
+  const adminCount = (usersQuery.data ?? []).filter((user) => user.is_admin).length;
 
   return (
     <div className="space-y-6">
@@ -82,38 +87,50 @@ export default function AdminUsers() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.full_name || "Unnamed"}</TableCell>
-                  <TableCell>{user.email || "-"}</TableCell>
-                  <TableCell>{user.is_admin ? "Admin" : "User"}</TableCell>
-                  <TableCell>{user.applications_total}</TableCell>
-                  <TableCell>{user.applications_active}</TableCell>
-                  <TableCell>{formatDate(user.created_at)}</TableCell>
-                  <TableCell>
-                    {user.is_admin ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => roleMutation.mutate({ userId: user.id, is_admin: false })}
-                        disabled={roleMutation.isPending}
-                      >
-                        <User className="h-4 w-4" />
-                        Set User
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => roleMutation.mutate({ userId: user.id, is_admin: true })}
-                        disabled={roleMutation.isPending}
-                      >
-                        <Shield className="h-4 w-4" />
-                        Set Admin
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {rows.map((user) => {
+                const isCurrentUser = currentUserId === user.id;
+                const isLastAdmin = user.is_admin && adminCount <= 1;
+                const disableDemote = roleMutation.isPending || isCurrentUser || isLastAdmin;
+                const disableReason = isCurrentUser
+                  ? "You cannot remove your own admin role"
+                  : isLastAdmin
+                    ? "At least one admin must remain"
+                    : undefined;
+
+                return (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">{user.full_name || "Unnamed"}</TableCell>
+                    <TableCell>{user.email || "-"}</TableCell>
+                    <TableCell>{user.is_admin ? "Admin" : "User"}</TableCell>
+                    <TableCell>{user.applications_total}</TableCell>
+                    <TableCell>{user.applications_active}</TableCell>
+                    <TableCell>{formatDate(user.created_at)}</TableCell>
+                    <TableCell>
+                      {user.is_admin ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          title={disableReason}
+                          onClick={() => roleMutation.mutate({ userId: user.id, is_admin: false })}
+                          disabled={disableDemote}
+                        >
+                          <User className="h-4 w-4" />
+                          {isCurrentUser ? "Current Admin" : "Set User"}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => roleMutation.mutate({ userId: user.id, is_admin: true })}
+                          disabled={roleMutation.isPending}
+                        >
+                          <Shield className="h-4 w-4" />
+                          Set Admin
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           {rows.length === 0 ? <div className="p-4 text-sm text-muted-foreground">No users found.</div> : null}
