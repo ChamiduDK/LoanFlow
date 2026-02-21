@@ -29,9 +29,9 @@ const highlights = [
 
 export default function Index() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground px-2 md:px-6">
       <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
-        <div className="container flex h-16 items-center justify-between gap-2">
+        <div className="container flex h-16 items-center justify-between gap-2 px-2 md:px-0">
           <Link to="/" className="group flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-foreground transition-colors duration-200 group-hover:bg-muted/70">
               <Building2 className="h-4 w-4" />
@@ -61,7 +61,7 @@ export default function Index() {
 
       <main className="pt-16">
         <section className="border-b border-border/70 bg-muted/35">
-          <div className="container py-14 sm:py-20">
+          <div className="container py-10 sm:py-20 px-2 md:px-0">
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-center">
               <div className="max-w-3xl">
                 <p className="inline-flex items-center rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -103,7 +103,7 @@ export default function Index() {
         <ProcessBeamSection />
 
         <section id="features" className="py-16 sm:py-20">
-          <div className="container space-y-10">
+          <div className="container space-y-10 px-2 md:px-0">
             <div className="max-w-3xl">
               <h2 className="text-3xl font-bold text-foreground sm:text-4xl">Everything needed for the SME lending journey</h2>
               <p className="mt-3 max-w-2xl text-base text-muted-foreground sm:text-lg">
@@ -128,7 +128,7 @@ export default function Index() {
         </section>
 
         <section className="py-16">
-          <div className="container">
+          <div className="container px-2 md:px-0">
             <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Trusted by leading banks</p>
               <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -143,7 +143,7 @@ export default function Index() {
         </section>
 
         <section className="pb-16">
-          <div className="container">
+          <div className="container px-2 md:px-0">
             <div className="rounded-2xl border border-border bg-card p-8 text-center sm:p-10">
               <h3 className="text-2xl font-bold text-foreground sm:text-3xl">Ready to find your ideal loan?</h3>
               <p className="mx-auto mt-3 max-w-xl text-base text-muted-foreground">
@@ -163,7 +163,7 @@ export default function Index() {
       </main>
 
       <footer className="border-t border-border/70 bg-muted/20 py-10">
-        <div className="container flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="container flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between px-2 md:px-0">
           <Link to="/" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-muted text-foreground">
               <Building2 className="h-4 w-4" />

@@ -45,7 +45,7 @@ export default function DocumentUpload() {
   const completeness = Math.round((completedRequired / totalRequired) * 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Document Upload & Verification"
         subtitle="Upload supporting documents, monitor verification status, and resolve missing requirements."
@@ -81,7 +81,7 @@ export default function DocumentUpload() {
         </Card>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-2">
           <Card>
             <CardContent className="p-6">

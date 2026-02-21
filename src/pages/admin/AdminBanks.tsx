@@ -48,7 +48,7 @@ export default function AdminBanks() {
   }, [search]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Banks and Loan Schemes"
         subtitle="Manage lender profiles, scheme terms, underwriting visibility, and user access."
@@ -121,7 +121,7 @@ export default function AdminBanks() {
           <CardTitle>Registered Banks</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             {banks.map((bank) => (
               <div key={bank.id} className="flex items-center gap-3 rounded-lg border border-border/70 p-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted/50 text-lg">

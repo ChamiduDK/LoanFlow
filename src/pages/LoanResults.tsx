@@ -34,7 +34,7 @@ export default function LoanResults() {
   const rankedSchemes = [...loanSchemes].sort((a, b) => b.approvalProbability - a.approvalProbability);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Loan Recommendations"
         subtitle="Ranked matches based on your business profile, repayment capacity, and eligibility model."
@@ -118,7 +118,7 @@ export default function LoanResults() {
               description="Try widening your amount, tenure, or collateral filters to discover matching loan schemes."
             />
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
               {rankedSchemes.map((scheme, i) => {
                 const bestEMI = calculateEMI(5000000, scheme.interestRateMin, scheme.tenureMax);
                 const worstEMI = calculateEMI(5000000, scheme.interestRateMax, scheme.tenureMin);

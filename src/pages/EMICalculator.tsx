@@ -16,7 +16,7 @@ export default function EMICalculator() {
   const totalInterest = totalPayable - amount;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="EMI Calculator"
         subtitle="Estimate monthly installments and total repayment before choosing a lender."
@@ -74,7 +74,7 @@ export default function EMICalculator() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <Card className="border-primary/20 bg-primary text-primary-foreground shadow-lg">
           <CardContent className="p-5 text-center">
             <p className="text-sm opacity-80">Monthly EMI</p>

@@ -23,7 +23,7 @@ const timelineSteps = [
 
 export default function ApplicationTracker() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Application Tracker"
         subtitle="Monitor every stage of your application from submission to final bank decision."
@@ -76,7 +76,7 @@ export default function ApplicationTracker() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Selected Bank Details</CardTitle>
@@ -140,7 +140,7 @@ export default function ApplicationTracker() {
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 justify-center md:justify-start">
         <Button variant="outline">
           <Upload className="h-4 w-4" />
           Update Documents

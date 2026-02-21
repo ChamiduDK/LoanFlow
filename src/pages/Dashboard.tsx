@@ -92,7 +92,7 @@ export default function Dashboard() {
   const isLoading = false;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Dashboard"
         subtitle="Welcome back, Kamal. Here is your SME lending snapshot for today."
@@ -134,7 +134,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card className="xl:col-span-2 surface-card">
           <CardHeader>
             <CardTitle className="gradient-text">Quick Actions</CardTitle>

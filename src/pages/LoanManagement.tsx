@@ -28,13 +28,13 @@ export default function LoanManagement() {
   const repaymentProgress = Math.round((paidCount / totalInstallments) * 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Loan Management"
         subtitle="Track repayments, monitor dues, and manage your approved facilities."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-4">
         <Card>
           <CardContent className="p-5">
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-info/10">
@@ -93,7 +93,7 @@ export default function LoanManagement() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-3">
         <Card className="data-table-wrap xl:col-span-2">
           <CardHeader>
             <CardTitle>Installment History</CardTitle>
