@@ -12,6 +12,7 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
   SUPABASE_DOCS_BUCKET: z.string().default("loan-documents"),
   AGENT_WEBHOOK_SECRET: z.string().min(16).optional(),
+  ML_ASSETS_DIR: z.string().default("ml-artifacts"),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -155,7 +155,19 @@ export type TrackerReEvaluationResponse = {
     document_completeness_score: number;
     document_quality_score: number;
     initial_probability: number;
+    rule_based_final_probability?: number;
+    model_probability?: number | null;
     final_probability: number;
+  };
+  prediction?: {
+    source: "ml_model" | "rule_based_fallback";
+    fallback_mode: boolean;
+    model_id: string | null;
+    model_version: string | null;
+    confidence: {
+      score: number;
+      level: "low" | "medium" | "high";
+    };
   };
   reasons: string[];
   evaluated_at: string;

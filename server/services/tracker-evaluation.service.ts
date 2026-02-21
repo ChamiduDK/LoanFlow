@@ -5,6 +5,7 @@ import { calculateEmi } from "./emi.service";
 import { evaluateEligibility } from "./eligibility.service";
 import { checkDocumentCompleteness } from "./document.service";
 import { logAudit } from "./audit.service";
+import { predictApprovalProbability } from "./ml/prediction.service";
 
 type ValidationStatus = "valid" | "invalid" | "unclear";
 
@@ -44,7 +45,19 @@ export type TrackerReEvaluationResult = {
     document_completeness_score: number;
     document_quality_score: number;
     initial_probability: number;
+    rule_based_final_probability: number;
+    model_probability: number | null;
     final_probability: number;
+  };
+  prediction: {
+    source: "ml_model" | "rule_based_fallback";
+    fallback_mode: boolean;
+    model_id: string | null;
+    model_version: string | null;
+    confidence: {
+      score: number;
+      level: "low" | "medium" | "high";
+    };
   };
   reasons: string[];
   evaluated_at: string;
@@ -287,18 +300,109 @@ export async function reEvaluateTrackedApplication(
     existingResult.data?.approval_probability ??
     null;
 
-  let finalProbability = clamp(Number(finalProbabilityRaw.toFixed(2)), 0, 100);
-  if (typeof existingInitialProbability === "number") {
-    finalProbability = Math.min(finalProbability, Number(existingInitialProbability));
-  }
+  const ruleBasedFinalProbability = clamp(Number(finalProbabilityRaw.toFixed(2)), 0, 100);
 
   const initialProbability = Number(
     (
       existingInitialProbability ??
       existingResult.data?.approval_probability ??
-      Math.max(finalProbability, bankMatchScore * 0.8)
+      Math.max(ruleBasedFinalProbability, bankMatchScore * 0.8)
     ).toFixed(2),
   );
+
+  const mlPrediction = await (async () => {
+    try {
+      return await predictApprovalProbability({
+        applicationId,
+        viewerUserId: userId,
+        productId: String(selectedProductId),
+        fallbackProbabilityOverride: ruleBasedFinalProbability,
+        featureOverrides: {
+          eligibility_score: Number(eligibilityScore.toFixed(2)),
+          bank_match_score: bankMatchScore,
+          document_completeness_score: completenessScore,
+          document_quality_score: documentQualityScore,
+          missing_docs_count: missingDocs.length,
+          invalid_docs_count: invalidCount,
+          unclear_docs_count: unclearCount,
+        },
+      });
+    } catch {
+      return {
+        probability: ruleBasedFinalProbability / 100,
+        probability_percent: ruleBasedFinalProbability,
+        fallback_mode: true,
+        source: "rule_based_fallback" as const,
+        model: {
+          id: null,
+          version: null,
+        },
+        explainability: {
+          reasons: [
+            "ML prediction service is unavailable; using rule-based fallback score.",
+          ],
+          contributions: [],
+        },
+        confidence: {
+          score: 0.4,
+          level: "low" as const,
+        },
+        feature_sample: {
+          sample_key: "",
+          application_id: applicationId,
+          product_id: String(selectedProductId),
+          outcome_status: null,
+          label: null,
+          features: {
+            requested_amount: 0,
+            preferred_tenure_months: 0,
+            years_active: 0,
+            annual_turnover: 0,
+            amount_turnover_ratio: 0,
+            eligibility_score: 0,
+            bank_match_score: 0,
+            document_completeness_score: 0,
+            document_quality_score: 0,
+            missing_docs_count: 0,
+            invalid_docs_count: 0,
+            unclear_docs_count: 0,
+            rate_min: 0,
+            rate_max: 0,
+            product_min_amount: 0,
+            product_max_amount: 0,
+            product_tenure_min: 0,
+            product_tenure_max: 0,
+            collateral_available: 0,
+            product_collateral_required: 0,
+            business_type: "unknown",
+            industry: "unknown",
+            turnover_band: "unknown",
+            district: "unknown",
+            purpose: "unknown",
+            collateral_type: "unknown",
+            bank_id: "unknown",
+            product_id: "unknown",
+          },
+          fallback_rule_probability: ruleBasedFinalProbability,
+        },
+      };
+    }
+  })();
+
+  const modelProbability = mlPrediction.fallback_mode ? null : mlPrediction.probability_percent;
+  let finalProbability = mlPrediction.fallback_mode ? ruleBasedFinalProbability : mlPrediction.probability_percent;
+
+  // Keep tracker-stage probability conservative when major verification gaps exist.
+  if (missingDocs.length > 0 || invalidCount > 0) {
+    finalProbability = Math.min(finalProbability, ruleBasedFinalProbability);
+  }
+  if (!eligibilityPassed) {
+    finalProbability = Math.min(finalProbability, 60);
+  }
+  if (typeof existingInitialProbability === "number") {
+    finalProbability = Math.min(finalProbability, Number(existingInitialProbability));
+  }
+  finalProbability = clamp(Number(finalProbability.toFixed(2)), 0, 100);
 
   const selectedTenure = clamp(
     application.preferred_tenure_months,
@@ -325,6 +429,12 @@ export async function reEvaluateTrackedApplication(
   if (unclearCount > 0) {
     reasons.push("Some documents need manual review before final submission.");
   }
+  if (mlPrediction.fallback_mode) {
+    reasons.push("ML model is not active yet; rule-based probability fallback was used.");
+  } else {
+    reasons.push(`ML model ${mlPrediction.model.version ?? "active"} predicted ${mlPrediction.probability_percent.toFixed(1)}%.`);
+    reasons.push(...mlPrediction.explainability.reasons.slice(0, 2));
+  }
   reasons.push(`Final probability adjusted to ${finalProbability.toFixed(1)}% after bank-specific verification.`);
 
   const trackerPayload = {
@@ -332,9 +442,18 @@ export async function reEvaluateTrackedApplication(
       bank_match_score: bankMatchScore,
       document_completeness_score: completenessScore,
       document_quality_score: documentQualityScore,
+      rule_based_final_probability: ruleBasedFinalProbability,
+      model_probability: modelProbability,
       final_probability: finalProbability,
       reasons,
       validation_notes: validationNotes,
+      ml_prediction: {
+        source: mlPrediction.source,
+        fallback_mode: mlPrediction.fallback_mode,
+        model: mlPrediction.model,
+        confidence: mlPrediction.confidence,
+        explainability: mlPrediction.explainability,
+      },
       evaluated_at: new Date().toISOString(),
     },
   };
@@ -421,6 +540,8 @@ export async function reEvaluateTrackedApplication(
     payloadSummary: {
       product_id: selectedProductId,
       final_probability: finalProbability,
+      probability_source: mlPrediction.source,
+      fallback_mode: mlPrediction.fallback_mode,
       missing_docs: missingDocs.length,
       invalid_docs: invalidCount,
     },
@@ -460,7 +581,16 @@ export async function reEvaluateTrackedApplication(
       document_completeness_score: completenessScore,
       document_quality_score: documentQualityScore,
       initial_probability: initialProbability,
+      rule_based_final_probability: ruleBasedFinalProbability,
+      model_probability: modelProbability,
       final_probability: finalProbability,
+    },
+    prediction: {
+      source: mlPrediction.source,
+      fallback_mode: mlPrediction.fallback_mode,
+      model_id: mlPrediction.model.id,
+      model_version: mlPrediction.model.version,
+      confidence: mlPrediction.confidence,
     },
     reasons,
     evaluated_at: new Date().toISOString(),

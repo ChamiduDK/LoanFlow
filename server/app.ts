@@ -16,6 +16,7 @@ import { outcomeRouter } from "./routes/outcome.routes";
 import { trackerRouter } from "./routes/tracker.routes";
 import { calculatorRouter } from "./routes/calculator.routes";
 import { agentRouter } from "./routes/agent.routes";
+import { mlRouter } from "./routes/ml.routes";
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.use("/api", outcomeRouter);
 app.use("/api", trackerRouter);
 app.use("/api", calculatorRouter);
 app.use("/api", agentRouter);
+app.use("/api", mlRouter);
 
 app.use(errorHandler);
 
