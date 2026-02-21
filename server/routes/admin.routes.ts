@@ -3,7 +3,7 @@ import { z } from "zod";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
 import { requireAdmin, requireAuth } from "../middleware/auth";
-import { internalError, notFound } from "../lib/errors";
+import { badRequest, internalError, notFound } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { supabaseAdmin } from "../lib/supabase/client";
 import {
@@ -26,6 +26,47 @@ const userRoleParamsSchema = z.object({ id: z.string().uuid() });
 const userRoleBodySchema = z.object({ is_admin: z.boolean() });
 const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+const adminApplicationsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+const adminApplicationDecisionParamsSchema = z.object({ id: z.string().uuid() });
+const adminApplicationDecisionBodySchema = z.object({
+  status: z.enum(["under_review", "approved", "rejected"]),
+  applied_date: z.string().date().optional(),
+  decision_date: z.string().date().nullable().optional(),
+  approved_amount: z.number().positive().max(1_000_000_000).nullable().optional(),
+  approved_rate: z.number().min(0).max(100).nullable().optional(),
+  approved_tenure_months: z.number().int().min(1).max(360).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.status !== "approved") {
+    return;
+  }
+
+  if (value.approved_amount == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["approved_amount"],
+      message: "approved_amount is required when status is approved",
+    });
+  }
+
+  if (value.approved_rate == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["approved_rate"],
+      message: "approved_rate is required when status is approved",
+    });
+  }
+
+  if (value.approved_tenure_months == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["approved_tenure_months"],
+      message: "approved_tenure_months is required when status is approved",
+    });
+  }
 });
 
 export const adminRouter = Router();
@@ -158,6 +199,45 @@ adminRouter.put(
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(userRoleParamsSchema, req.params);
     const payload = parseWithSchema(userRoleBodySchema, req.body);
+    const actorUserId = req.auth?.user.id;
+
+    const profileResult = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, full_name, is_admin, updated_at")
+      .eq("id", params.id)
+      .maybeSingle();
+
+    if (profileResult.error) {
+      throw internalError("Failed to load user profile", profileResult.error);
+    }
+
+    if (!profileResult.data) {
+      throw notFound("User profile not found");
+    }
+
+    if (profileResult.data.is_admin === payload.is_admin) {
+      sendSuccess(res, profileResult.data);
+      return;
+    }
+
+    if (profileResult.data.is_admin && !payload.is_admin) {
+      if (actorUserId && actorUserId === params.id) {
+        throw badRequest("You cannot remove your own admin role");
+      }
+
+      const adminCountResult = await supabaseAdmin
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("is_admin", true);
+
+      if (adminCountResult.error) {
+        throw internalError("Failed to validate admin role constraints", adminCountResult.error);
+      }
+
+      if ((adminCountResult.count ?? 0) <= 1) {
+        throw badRequest("At least one admin account must remain");
+      }
+    }
 
     const updateResult = await supabaseAdmin
       .from("profiles")
@@ -175,7 +255,7 @@ adminRouter.put(
     }
 
     await logAudit({
-      actorUserId: req.auth?.user.id,
+      actorUserId,
       action: "admin.user_role.update",
       entityType: "profiles",
       entityId: params.id,
@@ -184,6 +264,144 @@ adminRouter.put(
     });
 
     sendSuccess(res, updateResult.data);
+  }),
+);
+
+adminRouter.get(
+  "/admin/applications",
+  asyncHandler(async (req, res) => {
+    const query = parseWithSchema(adminApplicationsQuerySchema, req.query);
+    const limit = query.limit ?? 100;
+
+    const applicationsResult = await supabaseAdmin
+      .from("loan_applications")
+      .select("id, user_id, requested_amount, purpose, preferred_tenure_months, status, selected_product_id, created_at, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+
+    if (applicationsResult.error) {
+      throw internalError("Failed to load admin applications", applicationsResult.error);
+    }
+
+    const applications = applicationsResult.data ?? [];
+    const userIds = Array.from(new Set(applications.map((item) => String(item.user_id))));
+    const appIds = applications.map((item) => String(item.id));
+
+    const [profilesResult, outcomesResult] = await Promise.all([
+      userIds.length > 0
+        ? supabaseAdmin
+            .from("profiles")
+            .select("id, email, full_name")
+            .in("id", userIds)
+        : Promise.resolve({ data: [], error: null }),
+      appIds.length > 0
+        ? supabaseAdmin
+            .from("outcomes")
+            .select("id, application_id, status, approved_amount, approved_rate, approved_tenure_months, decision_date, applied_date")
+            .in("application_id", appIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (profilesResult.error || outcomesResult.error) {
+      throw internalError("Failed to load admin application context", {
+        profiles: profilesResult.error,
+        outcomes: outcomesResult.error,
+      });
+    }
+
+    const profileById = new Map((profilesResult.data ?? []).map((profile) => [String(profile.id), profile]));
+    const outcomeByAppId = new Map((outcomesResult.data ?? []).map((outcome) => [String(outcome.application_id), outcome]));
+
+    const payload = applications.map((application) => ({
+      ...application,
+      user_profile: profileById.get(String(application.user_id)) ?? null,
+      outcome: outcomeByAppId.get(String(application.id)) ?? null,
+    }));
+
+    sendSuccess(res, payload, { limit });
+  }),
+);
+
+adminRouter.put(
+  "/admin/applications/:id/decision",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(adminApplicationDecisionParamsSchema, req.params);
+    const payload = parseWithSchema(adminApplicationDecisionBodySchema, req.body);
+
+    const applicationResult = await supabaseAdmin
+      .from("loan_applications")
+      .select("id, user_id")
+      .eq("id", params.id)
+      .maybeSingle();
+
+    if (applicationResult.error) {
+      throw internalError("Failed to load application for decision", applicationResult.error);
+    }
+
+    if (!applicationResult.data) {
+      throw notFound("Application not found");
+    }
+
+    const applicantUserId = String(applicationResult.data.user_id);
+    const isDecisionStatus = payload.status === "approved" || payload.status === "rejected";
+    const decisionDate = payload.decision_date ?? (isDecisionStatus ? new Date().toISOString().slice(0, 10) : null);
+    const shouldKeepApprovalTerms = payload.status === "approved";
+
+    const outcomeResult = await supabaseAdmin
+      .from("outcomes")
+      .upsert(
+        {
+          application_id: params.id,
+          user_id: applicantUserId,
+          status: payload.status,
+          applied_date: payload.applied_date ?? new Date().toISOString().slice(0, 10),
+          decision_date: decisionDate,
+          approved_amount: shouldKeepApprovalTerms ? payload.approved_amount ?? null : null,
+          approved_rate: shouldKeepApprovalTerms ? payload.approved_rate ?? null : null,
+          approved_tenure_months: shouldKeepApprovalTerms ? payload.approved_tenure_months ?? null : null,
+          notes: payload.notes ?? null,
+        },
+        { onConflict: "application_id" },
+      )
+      .select("*")
+      .single();
+
+    if (outcomeResult.error || !outcomeResult.data) {
+      throw internalError("Failed to upsert application outcome", outcomeResult.error);
+    }
+
+    const updateResult = await supabaseAdmin
+      .from("loan_applications")
+      .update({
+        status: payload.status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", params.id)
+      .select("*")
+      .single();
+
+    if (updateResult.error || !updateResult.data) {
+      throw internalError("Failed to update application decision status", updateResult.error);
+    }
+
+    await logAudit({
+      actorUserId: req.auth?.user.id,
+      action: "admin.application.decision.update",
+      entityType: "loan_applications",
+      entityId: params.id,
+      payloadSummary: {
+        status: payload.status,
+        approved_amount: payload.approved_amount ?? null,
+        approved_rate: payload.approved_rate ?? null,
+        approved_tenure_months: payload.approved_tenure_months ?? null,
+      },
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, {
+      application: updateResult.data,
+      outcome: outcomeResult.data,
+    });
   }),
 );
 

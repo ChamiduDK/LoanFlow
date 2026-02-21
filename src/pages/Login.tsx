@@ -6,7 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, ShieldCheck, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api/client";
+import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase/client";
+
+type MePayload = {
+  profile?: {
+    is_admin?: boolean;
+  } | null;
+};
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,29 +28,42 @@ export default function Login() {
     event.preventDefault();
     setSubmitting(true);
 
-    const { error } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setSubmitting(false);
-
-    if (error) {
-      toast({
-        title: "Sign in failed",
-        description: error.message,
-        variant: "destructive",
+    try {
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email: normalizeEmail(email),
+        password,
       });
-      return;
+
+      if (error) {
+        toast({
+          title: "Sign in failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Signed in",
+        description: "Welcome back.",
+      });
+
+      const state = location.state as { from?: string } | null;
+      let isAdmin = false;
+
+      if (!state?.from) {
+        try {
+          const me = await apiFetch<MePayload>("/api/me");
+          isAdmin = Boolean(me.profile?.is_admin);
+        } catch {
+          isAdmin = false;
+        }
+      }
+
+      navigate(resolvePostAuthPath(state?.from, isAdmin), { replace: true });
+    } finally {
+      setSubmitting(false);
     }
-
-    toast({
-      title: "Signed in",
-      description: "Welcome back.",
-    });
-
-    const state = location.state as { from?: string } | null;
-    navigate(state?.from ?? "/dashboard", { replace: true });
   };
 
   return (

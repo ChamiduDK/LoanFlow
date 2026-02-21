@@ -16,6 +16,7 @@ const SignUp = lazy(() => import("./pages/SignUp"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const LoanApplication = lazy(() => import("./pages/LoanApplication"));
 const LoanResults = lazy(() => import("./pages/LoanResults"));
+const EMICalculator = lazy(() => import("./pages/EMICalculator"));
 const DocumentUpload = lazy(() => import("./pages/DocumentUpload"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker"));
 const LoanManagement = lazy(() => import("./pages/LoanManagement"));
@@ -26,6 +27,7 @@ const AdminRules = lazy(() => import("./pages/admin/AdminRules"));
 const AdminDocuments = lazy(() => import("./pages/admin/AdminDocuments"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminAuditLogs = lazy(() => import("./pages/admin/AdminAuditLogs"));
+const AdminApplications = lazy(() => import("./pages/admin/AdminApplications"));
 const AppLayout = lazy(() => import("./components/layout/AppLayout"));
 const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -61,6 +63,7 @@ function AppRoutes() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/apply" element={<LoanApplication />} />
             <Route path="/results" element={<LoanResults />} />
+            <Route path="/calculator" element={<EMICalculator />} />
             <Route path="/documents" element={<DocumentUpload />} />
             <Route path="/tracker" element={<ApplicationTracker />} />
             <Route path="/management" element={<LoanManagement />} />
@@ -75,6 +78,7 @@ function AppRoutes() {
             <Route path="/admin/rules" element={<AdminRules />} />
             <Route path="/admin/documents" element={<AdminDocuments />} />
             <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/applications" element={<AdminApplications />} />
             <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
           </Route>
         </Route>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { apiFetch } from "@/lib/api/client";
-import type { DocumentChecklistResponse, DocumentRow } from "@/types/backend";
+import type { DocumentChecklistResponse, DocumentRow, LoanApplication } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
 
@@ -45,13 +45,32 @@ function normalizeStatus(value: string): DocStatus {
 }
 
 export default function DocumentUpload() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const applicationId = searchParams.get("applicationId") ?? "";
+  const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
   const [selectedDocumentType, setSelectedDocumentType] = useState<string>("");
+  const applicationsQuery = useQuery({
+    queryKey: ["applications"],
+    queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
+    staleTime: 30_000,
+  });
+  const fallbackApplicationId = applicationsQuery.data?.[0]?.id ?? "";
+  const applicationId = applicationIdFromUrl || fallbackApplicationId;
+
+  useEffect(() => {
+    if (!applicationIdFromUrl && fallbackApplicationId) {
+      const next = new URLSearchParams(searchParams);
+      next.set("applicationId", fallbackApplicationId);
+      setSearchParams(next, { replace: true });
+    }
+  }, [applicationIdFromUrl, fallbackApplicationId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    setSelectedDocumentType("");
+  }, [applicationId]);
 
   const documentsQuery = useQuery({
     queryKey: ["documents", applicationId],
@@ -147,9 +166,9 @@ export default function DocumentUpload() {
           subtitle="Select an application before uploading lender-required documents."
         />
         <EmptyState
-          title="No application selected"
-          description="Open /documents?applicationId=<id> from results or tracker."
-          action={<Button onClick={() => navigate("/dashboard")}>Go to Dashboard</Button>}
+          title="No applications found"
+          description="Create your first application before uploading documents."
+          action={<Button onClick={() => navigate("/apply")}>Create Application</Button>}
         />
       </div>
     );
@@ -161,10 +180,31 @@ export default function DocumentUpload() {
         title="Document Upload & Verification"
         subtitle="Upload supporting documents, monitor verification status, and resolve missing requirements."
         actions={(
-          <Button onClick={() => void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] })}>
-            <Upload className="h-4 w-4" />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={applicationId}
+              onValueChange={(value) => {
+                const next = new URLSearchParams(searchParams);
+                next.set("applicationId", value);
+                setSearchParams(next);
+              }}
+            >
+              <SelectTrigger className="min-w-[220px]">
+                <SelectValue placeholder="Select application" />
+              </SelectTrigger>
+              <SelectContent>
+                {(applicationsQuery.data ?? []).map((application) => (
+                  <SelectItem key={application.id} value={application.id}>
+                    {application.id.slice(0, 8)} - {application.purpose}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={() => void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] })}>
+              <Upload className="h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
         )}
       />
 
@@ -264,7 +304,7 @@ export default function DocumentUpload() {
                         <p className="text-sm font-semibold text-foreground">{doc.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {doc.required ? "Required document" : "Optional document"}
-                          {doc.fileName ? ` · ${doc.fileName}` : ""}
+                          {doc.fileName ? ` - ${doc.fileName}` : ""}
                         </p>
                       </div>
                     </div>

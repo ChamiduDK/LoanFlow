@@ -71,3 +71,30 @@ export type AdminAuditLog = {
     email: string | null;
   } | null;
 };
+
+export type AdminApplicationRow = {
+  id: string;
+  user_id: string;
+  requested_amount: number;
+  purpose: string;
+  preferred_tenure_months: number;
+  status: "draft" | "submitted" | "evaluated" | "applied" | "under_review" | "approved" | "rejected" | "withdrawn";
+  selected_product_id: string | null;
+  created_at: string;
+  updated_at: string;
+  user_profile: {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+  } | null;
+  outcome: {
+    id: string;
+    application_id: string;
+    status: "applied" | "under_review" | "approved" | "rejected";
+    approved_amount: number | null;
+    approved_rate: number | null;
+    approved_tenure_months: number | null;
+    decision_date: string | null;
+    applied_date: string | null;
+  } | null;
+};

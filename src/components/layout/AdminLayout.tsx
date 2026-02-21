@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   Database,
   FileCheck,
+  FolderCheck,
   Menu,
   Shield,
   Users,
@@ -20,6 +21,7 @@ const adminNav = [
   { label: "Loan Schemes", icon: Database, path: "/admin/schemes" },
   { label: "Eligibility Rules", icon: Shield, path: "/admin/rules" },
   { label: "Documents", icon: FileCheck, path: "/admin/documents" },
+  { label: "Applications", icon: FolderCheck, path: "/admin/applications" },
   { label: "Users", icon: Users, path: "/admin/users" },
   { label: "Audit Logs", icon: ScrollText, path: "/admin/audit-logs" },
 ];

@@ -8,6 +8,7 @@ import { Building2, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabaseClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api/client";
+import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
 
 export default function SignUp() {
   const navigate = useNavigate();
@@ -25,9 +26,20 @@ export default function SignUp() {
     event.preventDefault();
     setSubmitting(true);
 
+    const firstName = first.trim();
+    const lastName = last.trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+    const normalizedPhone = phone.trim();
+
     const { data, error } = await supabaseClient.auth.signUp({
-      email,
+      email: normalizeEmail(email),
       password,
+      options: {
+        data: {
+          full_name: fullName || null,
+          phone: normalizedPhone || null,
+        },
+      },
     });
 
     if (error) {
@@ -40,15 +52,13 @@ export default function SignUp() {
       return;
     }
 
-    const fullName = `${first} ${last}`.trim();
-
     try {
       if (data.session?.access_token) {
         await apiFetch("/api/profile", {
           method: "PUT",
           body: JSON.stringify({
             full_name: fullName || null,
-            phone: phone || null,
+            phone: normalizedPhone || null,
           }),
         });
       }
@@ -73,7 +83,7 @@ export default function SignUp() {
     });
 
     const state = location.state as { from?: string } | null;
-    navigate(state?.from ?? "/dashboard", { replace: true });
+    navigate(resolvePostAuthPath(state?.from, false), { replace: true });
   };
 
   return (

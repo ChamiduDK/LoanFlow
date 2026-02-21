@@ -22,24 +22,27 @@ export async function getBestLoanOptionForUser(userId: string): Promise<Record<s
     throw notFound("No loan applications found for user");
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("application_results")
-    .select("*, loan_products(name), banks(name)")
-    .in("application_id", applicationIds)
-    .order("created_at", { ascending: false })
-    .order("rank_position", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  for (const applicationId of applicationIds) {
+    const result = await supabaseAdmin
+      .from("application_results")
+      .select("*, loan_products(name), banks(name)")
+      .eq("application_id", applicationId)
+      .eq("eligibility_passed", true)
+      .order("rank_position", { ascending: true, nullsFirst: false })
+      .order("ranking_score", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  if (error) {
-    throw internalError("Failed to fetch best loan option", error);
+    if (result.error) {
+      throw internalError("Failed to fetch best loan option", result.error);
+    }
+
+    if (result.data) {
+      return result.data;
+    }
   }
 
-  if (!data) {
-    throw notFound("No ranked application results found for user");
-  }
-
-  return data;
+  throw notFound("No ranked application results found for user");
 }
 
 export async function getMissingDocumentsForApplication(

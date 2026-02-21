@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,16 +32,31 @@ import EmptyState from "@/components/shared/EmptyState";
 import { Progress } from "@/components/ui/progress";
 import { apiFetch } from "@/lib/api/client";
 import { formatLKR } from "@/lib/currency";
-import type { Bank, EvaluationResult } from "@/types/backend";
+import type { Bank, EvaluationResult, LoanApplication, TrackApplicationResponse } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
 
 export default function LoanResults() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const applicationId = searchParams.get("applicationId") ?? "";
+  const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
+  const applicationsQuery = useQuery({
+    queryKey: ["applications"],
+    queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
+    staleTime: 30_000,
+  });
+  const fallbackApplicationId = applicationsQuery.data?.[0]?.id ?? "";
+  const applicationId = applicationIdFromUrl || fallbackApplicationId;
+
+  useEffect(() => {
+    if (!applicationIdFromUrl && fallbackApplicationId) {
+      const next = new URLSearchParams(searchParams);
+      next.set("applicationId", fallbackApplicationId);
+      setSearchParams(next, { replace: true });
+    }
+  }, [applicationIdFromUrl, fallbackApplicationId, searchParams, setSearchParams]);
 
   const [view, setView] = useState<"grid" | "table">("grid");
   const [bankFilter, setBankFilter] = useState<string>("all");
@@ -85,6 +100,28 @@ export default function LoanResults() {
     },
   });
 
+  const trackMutation = useMutation({
+    mutationFn: (productId: string) =>
+      apiFetch<TrackApplicationResponse>(`/api/applications/${applicationId}/track`, {
+        method: "POST",
+        body: JSON.stringify({ productId }),
+      }),
+    onSuccess: (payload) => {
+      toast({
+        title: "Tracking started",
+        description: `${payload.product.bank_name} - ${payload.product.name} is now tracked.`,
+      });
+      navigate(payload.redirect_to);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to start tracking",
+        description: error instanceof Error ? error.message : "Could not start tracker flow",
+        variant: "destructive",
+      });
+    },
+  });
+
   const rankedSchemes = useMemo(() => {
     const items = [...(evaluationQuery.data?.ranked_results ?? [])];
 
@@ -121,8 +158,8 @@ export default function LoanResults() {
           subtitle="Run an application evaluation first to see ranked recommendations."
         />
         <EmptyState
-          title="No evaluated application selected"
-          description="Open this page using /results?applicationId=<id> after submitting an application."
+          title="No applications found"
+          description="Create an application first to generate recommendations."
           action={<Button onClick={() => navigate("/apply")}>Create Application</Button>}
         />
       </div>
@@ -156,6 +193,25 @@ export default function LoanResults() {
         subtitle="Ranked matches based on your application profile and lender criteria."
         actions={(
           <div className="flex flex-wrap gap-2">
+            <Select
+              value={applicationId}
+              onValueChange={(value) => {
+                const next = new URLSearchParams(searchParams);
+                next.set("applicationId", value);
+                setSearchParams(next);
+              }}
+            >
+              <SelectTrigger className="min-w-[220px]">
+                <SelectValue placeholder="Select application" />
+              </SelectTrigger>
+              <SelectContent>
+                {(applicationsQuery.data ?? []).map((application) => (
+                  <SelectItem key={application.id} value={application.id}>
+                    {application.id.slice(0, 8)} - {application.purpose}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               disabled={evaluateMutation.isPending}
@@ -164,7 +220,14 @@ export default function LoanResults() {
               <RefreshCcw className="h-4 w-4" />
               {evaluateMutation.isPending ? "Evaluating..." : "Re-run Evaluation"}
             </Button>
-            <Button disabled={rankedSchemes.length === 0} onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>
+            <Button
+              disabled={rankedSchemes.length === 0 || trackMutation.isPending}
+              onClick={() => {
+                const topProductId = rankedSchemes[0]?.productId;
+                if (!topProductId) return;
+                trackMutation.mutate(topProductId);
+              }}
+            >
               Track Top Match
               <ArrowRight className="h-4 w-4" />
             </Button>
@@ -317,7 +380,14 @@ export default function LoanResults() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button size="sm" className="flex-1" onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>Track This</Button>
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        disabled={trackMutation.isPending}
+                        onClick={() => trackMutation.mutate(scheme.productId)}
+                      >
+                        {trackMutation.isPending ? "Starting..." : "Track This"}
+                      </Button>
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Upload Docs</Button>
                     </div>
                   </CardContent>
