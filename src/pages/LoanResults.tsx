@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { loanSchemes, formatLKR, calculateEMI, banks } from "@/data/mockData";
 import {
   ArrowRight,
   Filter,
@@ -28,19 +28,100 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import EmptyState from "@/components/shared/EmptyState";
+import { Progress } from "@/components/ui/progress";
+import { apiFetch } from "@/lib/api/client";
+import { formatLKR } from "@/lib/currency";
+import type { Bank, EvaluationResult } from "@/types/backend";
 
 export default function LoanResults() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const applicationId = searchParams.get("applicationId") ?? "";
+
   const [view, setView] = useState<"grid" | "table">("grid");
-  const rankedSchemes = [...loanSchemes].sort((a, b) => b.approvalProbability - a.approvalProbability);
+  const [bankFilter, setBankFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"score" | "probability" | "emi">("score");
+  const [minAmountFilter, setMinAmountFilter] = useState(0);
+  const [tenureFilter, setTenureFilter] = useState(0);
+  const [collateralFilter, setCollateralFilter] = useState<"any" | "yes" | "no">("any");
+
+  const banksQuery = useQuery({
+    queryKey: ["banks"],
+    queryFn: () => apiFetch<Bank[]>("/api/banks"),
+    staleTime: 60_000,
+  });
+
+  const evaluationQuery = useQuery({
+    queryKey: ["application-evaluation", applicationId],
+    queryFn: () =>
+      apiFetch<EvaluationResult>(`/api/applications/${applicationId}/evaluate`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    enabled: Boolean(applicationId),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const rankedSchemes = useMemo(() => {
+    const items = [...(evaluationQuery.data?.ranked_results ?? [])];
+
+    const filtered = items.filter((item) => {
+      if (bankFilter !== "all" && item.bankId !== bankFilter) {
+        return false;
+      }
+      if (minAmountFilter > 0 && item.totalPayable < minAmountFilter) {
+        return false;
+      }
+      if (tenureFilter > 0 && item.emi <= 0) {
+        return false;
+      }
+      if (collateralFilter === "yes" && !item.whyRecommended.some((why) => why.toLowerCase().includes("collateral"))) {
+        return false;
+      }
+      if (collateralFilter === "no" && item.whyRecommended.some((why) => why.toLowerCase().includes("collateral support"))) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (sortBy === "probability") {
+      filtered.sort((a, b) => b.approvalProbability - a.approvalProbability);
+    } else if (sortBy === "emi") {
+      filtered.sort((a, b) => a.emi - b.emi);
+    } else {
+      filtered.sort((a, b) => b.rankingScore - a.rankingScore);
+    }
+
+    return filtered;
+  }, [bankFilter, collateralFilter, evaluationQuery.data?.ranked_results, minAmountFilter, sortBy, tenureFilter]);
+
+  if (!applicationId) {
+    return (
+      <div className="space-y-6 px-2 md:px-6">
+        <PageHeader
+          title="Loan Recommendations"
+          subtitle="Run an application evaluation first to see ranked recommendations."
+        />
+        <EmptyState
+          title="No evaluated application selected"
+          description="Open this page using /results?applicationId=<id> after submitting an application."
+          action={<Button onClick={() => navigate("/apply")}>Create Application</Button>}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Loan Recommendations"
-        subtitle="Ranked matches based on your business profile, repayment capacity, and eligibility model."
+        subtitle="Ranked matches based on your application profile and lender criteria."
         actions={(
-          <Button>
-            Apply for Top Match
+          <Button disabled={rankedSchemes.length === 0} onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>
+            Track Top Match
             <ArrowRight className="h-4 w-4" />
           </Button>
         )}
@@ -69,15 +150,15 @@ export default function LoanResults() {
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <div className="space-y-1.5">
                 <Label className="text-xs">Loan Amount</Label>
-                <Input placeholder="e.g., 5,000,000" type="number" />
+                <Input value={minAmountFilter || ""} onChange={(e) => setMinAmountFilter(Number(e.target.value || 0))} type="number" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Tenure (months)</Label>
-                <Input placeholder="e.g., 36" type="number" />
+                <Input value={tenureFilter || ""} onChange={(e) => setTenureFilter(Number(e.target.value || 0))} type="number" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Collateral</Label>
-                <Select>
+                <Select value={collateralFilter} onValueChange={(value) => setCollateralFilter(value as "any" | "yes" | "no")}>
                   <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="any">Any</SelectItem>
@@ -88,17 +169,17 @@ export default function LoanResults() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Bank</Label>
-                <Select>
+                <Select value={bankFilter} onValueChange={setBankFilter}>
                   <SelectTrigger><SelectValue placeholder="All banks" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Banks</SelectItem>
-                    {banks.map((bank) => <SelectItem key={bank.id} value={String(bank.id)}>{bank.name}</SelectItem>)}
+                    {(banksQuery.data ?? []).map((bank) => <SelectItem key={bank.id} value={bank.id}>{bank.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Sort by</Label>
-                <Select>
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as "score" | "probability" | "emi")}>
                   <SelectTrigger><SelectValue placeholder="Best match score" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="score">Best match score</SelectItem>
@@ -112,93 +193,91 @@ export default function LoanResults() {
         </Card>
 
         <TabsContent value="grid">
-          {rankedSchemes.length === 0 ? (
+          {evaluationQuery.isLoading ? (
+            <Card><CardContent className="p-6 text-sm text-muted-foreground">Evaluating lender matches...</CardContent></Card>
+          ) : rankedSchemes.length === 0 ? (
             <EmptyState
               title="No recommendations found"
-              description="Try widening your amount, tenure, or collateral filters to discover matching loan schemes."
+              description="Re-run evaluation after updating your application profile or adjusting filters."
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
-              {rankedSchemes.map((scheme, i) => {
-                const bestEMI = calculateEMI(5000000, scheme.interestRateMin, scheme.tenureMax);
-                const worstEMI = calculateEMI(5000000, scheme.interestRateMax, scheme.tenureMin);
-                return (
-                  <Card
-                    key={scheme.id}
-                    className={i === 0 ? "border-primary/25 shadow-lg" : undefined}
-                  >
-                    <CardHeader className="space-y-4 pb-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-xl">
-                            {banks.find((bank) => bank.id === scheme.bankId)?.logo}
-                          </div>
-                          <div>
-                            <CardTitle>{scheme.bankName}</CardTitle>
-                            <p className="text-xs text-muted-foreground">{scheme.schemeName}</p>
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                          #{i + 1}
-                        </div>
-                      </div>
-                      {i === 0 ? (
-                        <div className="inline-flex w-fit items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
-                          <Medal className="h-3.5 w-3.5" />
-                          Top Recommendation
-                        </div>
-                      ) : null}
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                          <p className="label-xs">EMI (best case)</p>
-                          <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(bestEMI)}</p>
-                        </div>
-                        <div className="rounded-lg border border-border/70 bg-primary/5 p-3">
-                          <p className="label-xs">Approval probability</p>
-                          <p className="mt-1 text-xl font-semibold text-primary">{scheme.approvalProbability}%</p>
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Match confidence</span>
-                          <span className="font-semibold text-foreground">{scheme.approvalProbability}%</span>
-                        </div>
-                        <Progress value={scheme.approvalProbability} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <p className="label-xs">Interest range</p>
-                          <p className="mt-1 font-semibold">{scheme.interestRateMin}% - {scheme.interestRateMax}%</p>
+              {rankedSchemes.map((scheme, i) => (
+                <Card
+                  key={scheme.productId}
+                  className={i === 0 ? "border-primary/25 shadow-lg" : undefined}
+                >
+                  <CardHeader className="space-y-4 pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                          {scheme.bankName.split(" ").map((p) => p[0]).join("").slice(0, 3)}
                         </div>
                         <div>
-                          <p className="label-xs">Tenure</p>
-                          <p className="mt-1 font-semibold">{scheme.tenureMin} - {scheme.tenureMax} months</p>
-                        </div>
-                        <div>
-                          <p className="label-xs">EMI (worst case)</p>
-                          <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(worstEMI)}</p>
-                        </div>
-                        <div>
-                          <p className="label-xs">Timeline</p>
-                          <p className="mt-1 font-semibold">{scheme.approvalTimeline}</p>
+                          <CardTitle>{scheme.bankName}</CardTitle>
+                          <p className="text-xs text-muted-foreground">{scheme.productName}</p>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <StatusBadge status={scheme.collateralRequired ? "needs_review" : "valid"} />
-                        <p className="text-xs text-muted-foreground">
-                          {scheme.collateralRequired ? "Collateral required" : "No collateral required"}
-                        </p>
+                      <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                        #{i + 1}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" className="flex-1">View Details</Button>
-                        <Button size="sm" variant="outline" className="flex-1">Track This</Button>
+                    </div>
+                    {i === 0 ? (
+                      <div className="inline-flex w-fit items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+                        <Medal className="h-3.5 w-3.5" />
+                        Top Recommendation
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    ) : null}
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                        <p className="label-xs">Monthly EMI</p>
+                        <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(scheme.emi)}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-primary/5 p-3">
+                        <p className="label-xs">Approval probability</p>
+                        <p className="mt-1 text-xl font-semibold text-primary">{scheme.approvalProbability.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Ranking score</span>
+                        <span className="font-semibold text-foreground">{scheme.rankingScore.toFixed(2)}</span>
+                      </div>
+                      <Progress value={scheme.approvalProbability} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="label-xs">Estimated rate</p>
+                        <p className="mt-1 font-semibold">{scheme.estimatedRate}%</p>
+                      </div>
+                      <div>
+                        <p className="label-xs">Eligibility</p>
+                        <p className="mt-1 font-semibold">{scheme.eligibilityScore.toFixed(1)} / 100</p>
+                      </div>
+                      <div>
+                        <p className="label-xs">Total interest</p>
+                        <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(scheme.totalInterest)}</p>
+                      </div>
+                      <div>
+                        <p className="label-xs">Total payable</p>
+                        <p className="mt-1 font-semibold">{formatLKR(scheme.totalPayable)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <StatusBadge status={scheme.eligibilityPassed ? "valid" : "needs_review"} />
+                      <p className="text-xs text-muted-foreground">
+                        Document completeness {scheme.docCompleteness.toFixed(1)}%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" className="flex-1" onClick={() => navigate(`/tracker?applicationId=${applicationId}`)}>Track This</Button>
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Upload Docs</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </TabsContent>
@@ -222,26 +301,26 @@ export default function LoanResults() {
                     <TableHead>Rank</TableHead>
                     <TableHead>Bank</TableHead>
                     <TableHead>Scheme</TableHead>
-                    <TableHead>Interest</TableHead>
-                    <TableHead>Tenure</TableHead>
+                    <TableHead>Rate</TableHead>
+                    <TableHead>EMI</TableHead>
                     <TableHead>Approval</TableHead>
-                    <TableHead>Collateral</TableHead>
-                    <TableHead>Timeline</TableHead>
+                    <TableHead>Eligibility</TableHead>
+                    <TableHead>Total Payable</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rankedSchemes.map((scheme, i) => (
-                    <TableRow key={scheme.id}>
+                    <TableRow key={scheme.productId}>
                       <TableCell className="font-semibold text-muted-foreground">#{i + 1}</TableCell>
                       <TableCell className="font-medium">{scheme.bankName}</TableCell>
-                      <TableCell>{scheme.schemeName}</TableCell>
-                      <TableCell>{scheme.interestRateMin}% - {scheme.interestRateMax}%</TableCell>
-                      <TableCell>{scheme.tenureMin} - {scheme.tenureMax} mo</TableCell>
+                      <TableCell>{scheme.productName}</TableCell>
+                      <TableCell>{scheme.estimatedRate}%</TableCell>
+                      <TableCell>{formatLKR(scheme.emi)}</TableCell>
                       <TableCell>
                         <StatusBadge status={scheme.approvalProbability >= 80 ? "approved" : "under review"} />
                       </TableCell>
-                      <TableCell>{scheme.collateralRequired ? "Yes" : "No"}</TableCell>
-                      <TableCell className="text-muted-foreground">{scheme.approvalTimeline}</TableCell>
+                      <TableCell>{scheme.eligibilityScore.toFixed(1)}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatLKR(scheme.totalPayable)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -258,44 +337,32 @@ export default function LoanResults() {
             Why these were recommended
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Expand each lender to view the ranking factors and eligibility drivers.
+            Expand each lender to view ranking factors and eligibility drivers.
           </p>
         </CardHeader>
         <CardContent className="pt-0">
           <Accordion type="single" collapsible className="rounded-xl border border-border/70">
             {rankedSchemes.map((scheme, i) => (
-              <AccordionItem key={scheme.id} value={`scheme-${scheme.id}`} className="px-4">
+              <AccordionItem key={scheme.productId} value={`scheme-${scheme.productId}`} className="px-4">
                 <AccordionTrigger className="py-3">
                   <div className="flex items-center gap-3 text-left">
                     <div className="rounded-md bg-muted/70 px-2 py-1 text-xs font-semibold text-muted-foreground">
                       #{i + 1}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-foreground">{scheme.bankName} - {scheme.schemeName}</p>
-                      <p className="text-xs text-muted-foreground">Eligibility score {scheme.eligibilityScore} / 100</p>
+                      <p className="text-sm font-semibold text-foreground">{scheme.bankName} - {scheme.productName}</p>
+                      <p className="text-xs text-muted-foreground">Eligibility score {scheme.eligibilityScore.toFixed(1)} / 100</p>
                     </div>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pb-4">
                   <div className="grid gap-4 md:grid-cols-3">
-                    <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                      <p className="label-xs">Financial fit</p>
-                      <p className="mt-1 text-sm text-foreground">
-                        EMI bands align with your stated monthly capacity and requested tenure.
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                      <p className="label-xs">Eligibility match</p>
-                      <p className="mt-1 text-sm text-foreground">
-                        Industry and business maturity are favorable for this lender profile.
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                      <p className="label-xs">Approval outlook</p>
-                      <p className="mt-1 text-sm text-foreground">
-                        Higher score driven by documentation readiness and collateral alignment.
-                      </p>
-                    </div>
+                    {(scheme.whyRecommended.length ? scheme.whyRecommended : scheme.reasons.slice(0, 3)).map((reason, idx) => (
+                      <div key={`${scheme.productId}-${idx}`} className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                        <p className="label-xs">Reason {idx + 1}</p>
+                        <p className="mt-1 text-sm text-foreground">{reason}</p>
+                      </div>
+                    ))}
                   </div>
                 </AccordionContent>
               </AccordionItem>

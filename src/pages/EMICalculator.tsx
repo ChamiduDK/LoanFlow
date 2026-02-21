@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { calculateEMI, formatLKR } from "@/data/mockData";
+import { calculateEmi } from "@/lib/loan";
+import { formatLKR } from "@/lib/currency";
 import PageHeader from "@/components/shared/PageHeader";
 
 export default function EMICalculator() {
@@ -11,9 +12,21 @@ export default function EMICalculator() {
   const [rate, setRate] = useState(14);
   const [tenure, setTenure] = useState(36);
 
-  const emi = calculateEMI(amount, rate, tenure);
-  const totalPayable = emi * tenure;
-  const totalInterest = totalPayable - amount;
+  const { emi, totalPayable, totalInterest, principalPct, interestPct } = useMemo(() => {
+    const monthlyEmi = calculateEmi(amount, rate, tenure);
+    const payable = monthlyEmi * tenure;
+    const interest = Math.max(0, payable - amount);
+    const principalRatio = payable > 0 ? (amount / payable) * 100 : 0;
+    const interestRatio = payable > 0 ? (interest / payable) * 100 : 0;
+
+    return {
+      emi: monthlyEmi,
+      totalPayable: payable,
+      totalInterest: interest,
+      principalPct: principalRatio,
+      interestPct: interestRatio,
+    };
+  }, [amount, rate, tenure]);
 
   return (
     <div className="space-y-6 px-2 md:px-6">
@@ -32,11 +45,14 @@ export default function EMICalculator() {
             <Slider
               value={[amount]}
               onValueChange={([v]) => setAmount(v)}
-              min={100000} max={50000000} step={100000}
+              min={100000}
+              max={50000000}
+              step={100000}
             />
             <Input
-              type="number" value={amount}
-              onChange={e => setAmount(Number(e.target.value))}
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value || 0))}
             />
           </div>
 
@@ -48,11 +64,15 @@ export default function EMICalculator() {
             <Slider
               value={[rate]}
               onValueChange={([v]) => setRate(v)}
-              min={5} max={30} step={0.5}
+              min={5}
+              max={30}
+              step={0.5}
             />
             <Input
-              type="number" value={rate} step="0.5"
-              onChange={e => setRate(Number(e.target.value))}
+              type="number"
+              value={rate}
+              step="0.5"
+              onChange={(e) => setRate(Number(e.target.value || 0))}
             />
           </div>
 
@@ -64,11 +84,14 @@ export default function EMICalculator() {
             <Slider
               value={[tenure]}
               onValueChange={([v]) => setTenure(v)}
-              min={6} max={120} step={6}
+              min={6}
+              max={120}
+              step={6}
             />
             <Input
-              type="number" value={tenure}
-              onChange={e => setTenure(Number(e.target.value))}
+              type="number"
+              value={tenure}
+              onChange={(e) => setTenure(Number(e.target.value || 0))}
             />
           </div>
         </CardContent>
@@ -108,16 +131,16 @@ export default function EMICalculator() {
             <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted/40">
               <div
                 className="h-full rounded-l-full bg-primary"
-                style={{ width: `${(amount / totalPayable) * 100}%` }}
+                style={{ width: `${principalPct}%` }}
               />
               <div
                 className="h-full rounded-r-full bg-destructive/70"
-                style={{ width: `${(totalInterest / totalPayable) * 100}%` }}
+                style={{ width: `${interestPct}%` }}
               />
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Principal ({((amount / totalPayable) * 100).toFixed(1)}%)</span>
-              <span>Interest ({((totalInterest / totalPayable) * 100).toFixed(1)}%)</span>
+              <span>Principal ({principalPct.toFixed(1)}%)</span>
+              <span>Interest ({interestPct.toFixed(1)}%)</span>
             </div>
           </div>
         </CardContent>

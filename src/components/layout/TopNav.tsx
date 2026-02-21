@@ -2,12 +2,23 @@ import { Bell, Menu, Plus, Search, User, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api/client";
 
 interface TopNavProps {
   onMenuClick: () => void;
 }
 
 export default function TopNav({ onMenuClick }: TopNavProps) {
+  const meQuery = useQuery({
+    queryKey: ["me-profile"],
+    queryFn: () => apiFetch<{ profile?: { full_name?: string | null; email?: string | null } }>("/api/me"),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const userLabel = meQuery.data?.profile?.full_name?.trim() || meQuery.data?.profile?.email || "Account";
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div className="flex h-16 items-center gap-2 px-3 sm:px-6 lg:px-8">
@@ -53,7 +64,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
             <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted">
               <User className="h-4 w-4 text-muted-foreground" />
             </div>
-            <span className="hidden text-sm font-medium text-foreground xl:inline">Kamal Perera</span>
+            <span className="hidden text-sm font-medium text-foreground xl:inline">{userLabel}</span>
           </Button>
         </div>
       </div>

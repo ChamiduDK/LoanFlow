@@ -1,13 +1,50 @@
-import { Link } from "react-router-dom";
+import { useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, ShieldCheck, Sparkles } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabaseClient } from "@/lib/supabase/client";
 
 export default function Login() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    setSubmitting(false);
+
+    if (error) {
+      toast({
+        title: "Sign in failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "Signed in",
+      description: "Welcome back.",
+    });
+
+    navigate("/dashboard");
+  };
+
   return (
-    <div className="min-h-screen bg-background px-2 md:px-4 py-8">
+    <div className="min-h-screen bg-background px-2 py-8 md:px-4">
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md lg:grid-cols-2">
         <div className="hidden border-r border-border bg-muted/35 p-10 lg:flex lg:flex-col lg:justify-between">
           <div className="flex items-center gap-2">
@@ -42,17 +79,19 @@ export default function Login() {
               <CardDescription>Access your dashboard and continue your loan journey.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 px-0">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@example.com" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="Enter your password" />
-              </div>
-              <Button className="w-full" asChild>
-                <Link to="/dashboard">Sign In</Link>
-              </Button>
+              <form className="space-y-4" onSubmit={onSubmit}>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                </div>
+                <Button className="w-full" type="submit" disabled={submitting}>
+                  {submitting ? "Signing in..." : "Sign In"}
+                </Button>
+              </form>
               <p className="text-center text-sm text-muted-foreground">
                 Do not have an account? <Link to="/signup" className="font-medium text-primary hover:underline">Create one</Link>
               </p>
