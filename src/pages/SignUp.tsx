@@ -42,8 +42,8 @@ export default function SignUp() {
 
     const fullName = `${first} ${last}`.trim();
 
-    if (data.session?.access_token) {
-      try {
+    try {
+      if (data.session?.access_token) {
         await apiFetch("/api/profile", {
           method: "PUT",
           body: JSON.stringify({
@@ -51,12 +51,12 @@ export default function SignUp() {
             phone: phone || null,
           }),
         });
-      } catch {
-        // profile update can be completed later in settings
       }
+    } catch {
+      // profile update can be completed later in settings
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
 
     if (!data.session) {
       toast({
@@ -117,24 +117,24 @@ export default function SignUp() {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="first">First Name</Label>
-                    <Input id="first" value={first} onChange={(e) => setFirst(e.target.value)} required />
+                    <Input id="first" value={first} onChange={(e) => setFirst(e.target.value)} required autoComplete="given-name" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="last">Last Name</Label>
-                    <Input id="last" value={last} onChange={(e) => setLast(e.target.value)} required />
+                    <Input id="last" value={last} onChange={(e) => setLast(e.target.value)} required autoComplete="family-name" />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" />
                 </div>
                 <Button className="w-full" type="submit" disabled={submitting}>
                   {submitting ? "Creating account..." : "Create Account"}

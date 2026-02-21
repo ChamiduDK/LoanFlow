@@ -73,6 +73,22 @@ export default function LoanManagement() {
     );
   }
 
+  if (trackerQuery.isError) {
+    return (
+      <div className="space-y-6 px-2 md:px-6">
+        <PageHeader
+          title="Loan Management"
+          subtitle="Track repayments, monitor dues, and manage your approved facilities."
+        />
+        <EmptyState
+          title="Failed to load repayment data"
+          description="There was an error loading tracker data for this application. Please try again."
+          action={<Button onClick={() => void trackerQuery.refetch()}>Retry</Button>}
+        />
+      </div>
+    );
+  }
+
   const tracker = trackerQuery.data;
 
   if (!tracker) {

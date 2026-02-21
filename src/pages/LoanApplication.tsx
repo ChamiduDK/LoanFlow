@@ -72,6 +72,46 @@ export default function LoanApplication() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const validateCurrentStep = (): boolean => {
+    if (step === 0) {
+      if (!form.business_name.trim()) {
+        toast({ title: "Business name is required", variant: "destructive" });
+        return false;
+      }
+      if (!form.business_type) {
+        toast({ title: "Business type is required", variant: "destructive" });
+        return false;
+      }
+      if (!form.industry) {
+        toast({ title: "Industry / sector is required", variant: "destructive" });
+        return false;
+      }
+    }
+    if (step === 1) {
+      const amount = Number(form.requested_amount);
+      if (!amount || amount <= 0) {
+        toast({ title: "A valid loan amount is required", variant: "destructive" });
+        return false;
+      }
+      if (!form.purpose) {
+        toast({ title: "Loan purpose is required", variant: "destructive" });
+        return false;
+      }
+      const tenure = Number(form.preferred_tenure_months);
+      if (!tenure || tenure <= 0) {
+        toast({ title: "A valid preferred tenure is required", variant: "destructive" });
+        return false;
+      }
+    }
+    if (step === 2) {
+      if (!form.turnover_band) {
+        toast({ title: "Annual turnover band is required", variant: "destructive" });
+        return false;
+      }
+    }
+    return true;
+  };
+
   const progress = ((step + 1) / stepLabels.length) * 100;
   const StepIcon = stepLabels[step].icon;
 
@@ -392,7 +432,7 @@ export default function LoanApplication() {
           Back
         </Button>
         {step < stepLabels.length - 1 ? (
-          <Button disabled={submitting} onClick={() => setStep((s) => s + 1)}>
+          <Button disabled={submitting} onClick={() => { if (validateCurrentStep()) setStep((s) => s + 1); }}>
             Next Step
             <ArrowRight className="h-4 w-4" />
           </Button>

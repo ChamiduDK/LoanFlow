@@ -40,3 +40,9 @@
 .read-the-docs {
   color: #888;
 }
+
+@media (min-width: 640px) {
+    .sm\:pt-0 {
+        padding-top: 1.5rem;
+    }
+}

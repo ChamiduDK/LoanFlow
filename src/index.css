@@ -183,9 +183,7 @@
     @apply mt-2 text-sm text-muted-foreground sm:text-[15px];
   }
 
-  .surface-card {
-    @apply rounded-xl border border-border/80 bg-card shadow-sm transition-all duration-300 hover:border-border hover:shadow-md;
-  }
+
 
   .surface-card-muted {
     @apply rounded-xl border border-border/70 bg-muted/35 shadow-xs transition-all duration-300 hover:shadow-sm;
@@ -195,13 +193,20 @@
   .shine-border {
     @apply relative border border-border/50 rounded-xl overflow-hidden;
     background: linear-gradient(var(--background), var(--background)) padding-box,
-                linear-gradient(90deg, hsl(var(--primary)) 0%, transparent 50%, hsl(var(--primary)) 100%) border-box;
+      linear-gradient(90deg, hsl(var(--primary)) 0%, transparent 50%, hsl(var(--primary)) 100%) border-box;
     animation: shine 3s infinite;
   }
 
   @keyframes shine {
-    0%, 100% { background-position: 0% center; }
-    50% { background-position: 200% center; }
+
+    0%,
+    100% {
+      background-position: 0% center;
+    }
+
+    50% {
+      background-position: 200% center;
+    }
   }
 
   .gradient-text {
@@ -217,6 +222,7 @@
       opacity: 0;
       filter: blur(10px);
     }
+
     to {
       opacity: 1;
       filter: blur(0);
@@ -248,4 +254,10 @@
   .data-table-wrap {
     @apply overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm;
   }
+}
+
+.space-y-6> :not([hidden])~ :not([hidden]) {
+  --tw-space-y-reverse: 0;
+  margin-top: calc(3.5rem * calc(1 - var(--tw-space-y-reverse)));
+  margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
 }
