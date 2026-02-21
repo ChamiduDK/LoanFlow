@@ -32,18 +32,18 @@ export default function AdminLayout() {
         <button
           type="button"
           aria-label="Close admin navigation"
-          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[1px] lg:hidden"
           onClick={() => setOpen(false)}
         />
       )}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-[272px] -translate-x-full transition-transform duration-300 ease-out lg:static lg:translate-x-0",
+        "fixed inset-y-0 left-0 z-50 w-[272px] -translate-x-full transition-transform duration-300 ease-out lg:static lg:shrink-0 lg:translate-x-0",
         open ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl">
+        <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg">
           <div className="border-b border-sidebar-border/80 p-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-md">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border bg-sidebar-accent text-sidebar-foreground">
                 <Building2 className="h-5 w-5" />
               </div>
               <div>

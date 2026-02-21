@@ -38,29 +38,29 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
         <button
           type="button"
           aria-label="Close sidebar"
-          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/35 backdrop-blur-[1px] lg:hidden"
           onClick={onClose}
         />
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[272px] -translate-x-full transition-transform duration-300 ease-out lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-[272px] -translate-x-full transition-transform duration-300 ease-out lg:static lg:shrink-0 lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl">
+        <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg">
           <div className="border-b border-sidebar-border/80 p-5">
-            <Link to="/" className="flex items-center gap-3 transition-transform duration-300 hover:scale-105" onClick={onClose}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-sidebar-primary to-blue-500 shadow-lg">
-                <Building2 className="h-5 w-5 text-white" />
+            <Link to="/" className="flex items-center gap-3" onClick={onClose}>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-sidebar-border bg-sidebar-accent text-sidebar-foreground">
+                <Building2 className="h-5 w-5" />
               </div>
               <div>
-                <span className="block text-base font-bold bg-gradient-to-r from-sidebar-foreground to-sidebar-foreground/80 bg-clip-text text-transparent">SME Loan Hub</span>
-                <span className="text-xs text-sidebar-foreground/60 font-medium">Intelligent Lending</span>
+                <span className="block text-base font-semibold text-sidebar-foreground">SME Loan Hub</span>
+                <span className="text-xs font-medium text-sidebar-foreground/60">Intelligent Lending</span>
               </div>
             </Link>
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-sidebar-border/50 bg-sidebar-accent/50 px-3 py-2 text-xs text-sidebar-foreground/80 transition-all hover:bg-sidebar-accent/70">
-              <Sparkles className="h-3.5 w-3.5 text-sidebar-primary animate-pulse" />
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/70 px-3 py-2 text-xs text-sidebar-foreground/80">
+              <Sparkles className="h-3.5 w-3.5 text-sidebar-foreground/70" />
               AI-powered matching
             </div>
           </div>
@@ -81,7 +81,7 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
                       className={cn(
                         "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                         isActive
-                          ? "bg-gradient-to-r from-sidebar-primary to-blue-600 text-sidebar-primary-foreground shadow-md"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                       )}
                     >
