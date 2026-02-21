@@ -22,10 +22,214 @@ import { toSlug } from "../lib/format";
 import { logAudit } from "../services/audit.service";
 
 const idParamsSchema = z.object({ id: z.string().uuid() });
+const userRoleParamsSchema = z.object({ id: z.string().uuid() });
+const userRoleBodySchema = z.object({ is_admin: z.boolean() });
+const auditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
 
 export const adminRouter = Router();
 
 adminRouter.use(requireAuth, requireAdmin);
+
+adminRouter.get(
+  "/admin/overview",
+  asyncHandler(async (_req, res) => {
+    const [banksCount, productsCount, applicationsCount, underReviewCount, outcomesCount, auditLogsResult] = await Promise.all([
+      supabaseAdmin.from("banks").select("*", { count: "exact", head: true }),
+      supabaseAdmin.from("loan_products").select("*", { count: "exact", head: true }),
+      supabaseAdmin.from("loan_applications").select("*", { count: "exact", head: true }),
+      supabaseAdmin
+        .from("loan_applications")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "under_review"),
+      supabaseAdmin.from("outcomes").select("*", { count: "exact", head: true }).eq("status", "approved"),
+      supabaseAdmin
+        .from("audit_logs")
+        .select("id, actor_user_id, action, entity_type, entity_id, payload_summary, created_at")
+        .order("created_at", { ascending: false })
+        .limit(8),
+    ]);
+
+    if (
+      banksCount.error ||
+      productsCount.error ||
+      applicationsCount.error ||
+      underReviewCount.error ||
+      outcomesCount.error ||
+      auditLogsResult.error
+    ) {
+      throw internalError("Failed to load admin overview", {
+        banksCount: banksCount.error,
+        productsCount: productsCount.error,
+        applicationsCount: applicationsCount.error,
+        underReviewCount: underReviewCount.error,
+        outcomesCount: outcomesCount.error,
+        auditLogs: auditLogsResult.error,
+      });
+    }
+
+    sendSuccess(res, {
+      metrics: {
+        total_banks: banksCount.count ?? 0,
+        total_products: productsCount.count ?? 0,
+        total_applications: applicationsCount.count ?? 0,
+        under_review_applications: underReviewCount.count ?? 0,
+        approved_outcomes: outcomesCount.count ?? 0,
+      },
+      recent_activity: auditLogsResult.data ?? [],
+    });
+  }),
+);
+
+adminRouter.get(
+  "/admin/banks",
+  asyncHandler(async (_req, res) => {
+    const banksResult = await supabaseAdmin.from("banks").select("*").order("name", { ascending: true });
+
+    if (banksResult.error) {
+      throw internalError("Failed to load banks", banksResult.error);
+    }
+
+    sendSuccess(res, banksResult.data ?? []);
+  }),
+);
+
+adminRouter.get(
+  "/admin/loan-products",
+  asyncHandler(async (_req, res) => {
+    const productsResult = await supabaseAdmin
+      .from("loan_products")
+      .select("*, banks(name, code)")
+      .order("created_at", { ascending: false });
+
+    if (productsResult.error) {
+      throw internalError("Failed to load loan products", productsResult.error);
+    }
+
+    sendSuccess(res, productsResult.data ?? []);
+  }),
+);
+
+adminRouter.get(
+  "/admin/users",
+  asyncHandler(async (_req, res) => {
+    const [profilesResult, applicationsResult] = await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("id, email, full_name, phone, is_admin, created_at, updated_at")
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("loan_applications")
+        .select("id, user_id, status"),
+    ]);
+
+    if (profilesResult.error || applicationsResult.error) {
+      throw internalError("Failed to load users", {
+        profiles: profilesResult.error,
+        applications: applicationsResult.error,
+      });
+    }
+
+    const applicationRows = applicationsResult.data ?? [];
+    const countsByUser = new Map<string, { total: number; active: number }>();
+    for (const row of applicationRows) {
+      const key = String(row.user_id);
+      const current = countsByUser.get(key) ?? { total: 0, active: 0 };
+      current.total += 1;
+      if (!["approved", "rejected", "withdrawn"].includes(String(row.status))) {
+        current.active += 1;
+      }
+      countsByUser.set(key, current);
+    }
+
+    const users = (profilesResult.data ?? []).map((profile) => ({
+      ...profile,
+      applications_total: countsByUser.get(String(profile.id))?.total ?? 0,
+      applications_active: countsByUser.get(String(profile.id))?.active ?? 0,
+    }));
+
+    sendSuccess(res, users);
+  }),
+);
+
+adminRouter.put(
+  "/admin/users/:id/role",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(userRoleParamsSchema, req.params);
+    const payload = parseWithSchema(userRoleBodySchema, req.body);
+
+    const updateResult = await supabaseAdmin
+      .from("profiles")
+      .update({ is_admin: payload.is_admin })
+      .eq("id", params.id)
+      .select("id, email, full_name, is_admin, updated_at")
+      .maybeSingle();
+
+    if (updateResult.error) {
+      throw internalError("Failed to update user role", updateResult.error);
+    }
+
+    if (!updateResult.data) {
+      throw notFound("User profile not found");
+    }
+
+    await logAudit({
+      actorUserId: req.auth?.user.id,
+      action: "admin.user_role.update",
+      entityType: "profiles",
+      entityId: params.id,
+      payloadSummary: { is_admin: payload.is_admin },
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, updateResult.data);
+  }),
+);
+
+adminRouter.get(
+  "/admin/audit-logs",
+  asyncHandler(async (req, res) => {
+    const query = parseWithSchema(auditQuerySchema, req.query);
+    const limit = query.limit ?? 50;
+
+    const logsResult = await supabaseAdmin
+      .from("audit_logs")
+      .select("id, actor_user_id, action, entity_type, entity_id, payload_summary, ip_address, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (logsResult.error) {
+      throw internalError("Failed to load audit logs", logsResult.error);
+    }
+
+    const actorIds = Array.from(
+      new Set((logsResult.data ?? []).map((log) => log.actor_user_id).filter((value): value is string => Boolean(value))),
+    );
+
+    let actorProfiles: Array<{ id: string; full_name: string | null; email: string | null }> = [];
+    if (actorIds.length > 0) {
+      const profilesResult = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", actorIds);
+
+      if (profilesResult.error) {
+        throw internalError("Failed to load audit actor profiles", profilesResult.error);
+      }
+
+      actorProfiles = profilesResult.data ?? [];
+    }
+
+    const profileById = new Map(actorProfiles.map((profile) => [profile.id, profile]));
+    const logs = (logsResult.data ?? []).map((log) => ({
+      ...log,
+      actor_profile: log.actor_user_id ? profileById.get(log.actor_user_id) ?? null : null,
+    }));
+
+    sendSuccess(res, logs, { limit });
+  }),
+);
 
 adminRouter.post(
   "/admin/banks",
