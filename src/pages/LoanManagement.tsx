@@ -26,7 +26,7 @@ import {
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { formatLKR } from "@/lib/currency";
-import { apiFetch } from "@/lib/api/client";
+import { ApiRequestError, apiFetch } from "@/lib/api/client";
 import type { LoanApplication, LoanManagementAccessResponse, TrackerSummary } from "@/types/backend";
 import EmptyState from "@/components/shared/EmptyState";
 import { useToast } from "@/hooks/use-toast";
@@ -160,7 +160,8 @@ export default function LoanManagement() {
   }
 
   if (loanManagementQuery.isError) {
-    const isAccessLocked = loanManagementQuery.error instanceof Error &&
+    const isAccessLocked = loanManagementQuery.error instanceof ApiRequestError &&
+      loanManagementQuery.error.status === 403 &&
       loanManagementQuery.error.message.toLowerCase().includes("only after approval");
 
     if (isAccessLocked) {
