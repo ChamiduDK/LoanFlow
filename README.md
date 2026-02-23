@@ -26,6 +26,16 @@ Copy `.env.example` to `.env` and configure:
 - `NODE_ENV`
 - `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
 - `ML_ASSETS_DIR` (filesystem path for trained ML model artifacts)
+- `OCR_PROVIDER` (`placeholder` or `azure_document_intelligence`)
+- Azure OCR settings (required when `OCR_PROVIDER=azure_document_intelligence`):
+  - `OCR_AZURE_ENDPOINT`
+  - `OCR_AZURE_API_KEY`
+  - `OCR_AZURE_API_VERSION` (default `2024-11-30`)
+  - `OCR_AZURE_MODEL_ID` (default `prebuilt-read`)
+  - `OCR_AZURE_LOCALE` (optional)
+  - `OCR_AZURE_POLL_INTERVAL_MS`
+  - `OCR_AZURE_POLL_TIMEOUT_MS`
+  - `OCR_AZURE_REQUEST_TIMEOUT_MS`
 
 ## Backend Commands
 
