@@ -9,6 +9,20 @@ type ApiEnvelope<T> = {
   };
 };
 
+export class ApiRequestError extends Error {
+  status: number;
+  code?: string;
+  details?: unknown;
+
+  constructor(message: string, options: { status: number; code?: string; details?: unknown }) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = options.status;
+    this.code = options.code;
+    this.details = options.details;
+  }
+}
+
 function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -27,8 +41,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const token = data.session?.access_token;
 
   const headers = new Headers(init.headers);
+  const hasBody = init.body != null;
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
-  if (!isFormData) {
+  if (hasBody && !isFormData) {
     headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
   }
 
@@ -57,20 +72,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (!response.ok) {
-    const messageFromEnvelope =
+    const errorFromEnvelope =
       payload && typeof payload === "object" && "error" in payload
-        ? (payload as ApiEnvelope<T>).error?.message
+        ? (payload as ApiEnvelope<T>).error
         : undefined;
     const message =
-      messageFromEnvelope ??
+      errorFromEnvelope?.message ??
       (rawText.length === 0 ? `Request failed with status ${response.status}` : `Request failed (${response.status})`);
-    throw new Error(message);
+    throw new ApiRequestError(message, {
+      status: response.status,
+      code: errorFromEnvelope?.code,
+    });
   }
 
   if (payload && typeof payload === "object" && "success" in payload) {
     const envelope = payload as ApiEnvelope<T>;
     if (!envelope.success) {
-      throw new Error(envelope.error?.message ?? `Request failed with status ${response.status}`);
+      throw new ApiRequestError(envelope.error?.message ?? `Request failed with status ${response.status}`, {
+        status: response.status,
+        code: envelope.error?.code,
+      });
     }
     return envelope.data as T;
   }
