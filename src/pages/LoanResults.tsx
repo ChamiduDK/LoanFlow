@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   ArrowRight,
   Filter,
@@ -34,6 +35,48 @@ import { apiFetch } from "@/lib/api/client";
 import { formatLKR } from "@/lib/currency";
 import type { Bank, EvaluationResult, LoanApplication, TrackApplicationResponse } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
+
+type RankedScheme = EvaluationResult["ranked_results"][number];
+type IneligibleScheme = EvaluationResult["ineligible_results"][number];
+type FilterableScheme = Pick<RankedScheme, "bankId" | "emi" | "approvalProbability" | "eligibilityScore"> & {
+  rankingScore?: number;
+};
+
+function filterAndSortSchemes<T extends FilterableScheme>(
+  items: T[],
+  options: {
+    bankFilter: string;
+    maxEmiFilter: number;
+    minProbabilityFilter: number;
+    sortBy: "score" | "probability" | "emi";
+  },
+): T[] {
+  const filtered = items.filter((item) => {
+    if (options.bankFilter !== "all" && item.bankId !== options.bankFilter) {
+      return false;
+    }
+    if (options.maxEmiFilter > 0 && item.emi > options.maxEmiFilter) {
+      return false;
+    }
+    if (options.minProbabilityFilter > 0 && item.approvalProbability < options.minProbabilityFilter) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (options.sortBy === "probability") {
+    filtered.sort((a, b) => b.approvalProbability - a.approvalProbability);
+  } else if (options.sortBy === "emi") {
+    filtered.sort((a, b) => a.emi - b.emi);
+  } else {
+    filtered.sort(
+      (a, b) => (b.rankingScore ?? b.eligibilityScore) - (a.rankingScore ?? a.eligibilityScore),
+    );
+  }
+
+  return filtered;
+}
 
 export default function LoanResults() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -123,32 +166,36 @@ export default function LoanResults() {
   });
 
   const rankedSchemes = useMemo(() => {
-    const items = [...(evaluationQuery.data?.ranked_results ?? [])];
-
-    const filtered = items.filter((item) => {
-      if (bankFilter !== "all" && item.bankId !== bankFilter) {
-        return false;
-      }
-      if (maxEmiFilter > 0 && item.emi > maxEmiFilter) {
-        return false;
-      }
-      if (minProbabilityFilter > 0 && item.approvalProbability < minProbabilityFilter) {
-        return false;
-      }
-
-      return true;
+    return filterAndSortSchemes([...(evaluationQuery.data?.ranked_results ?? [])], {
+      bankFilter,
+      maxEmiFilter,
+      minProbabilityFilter,
+      sortBy,
     });
-
-    if (sortBy === "probability") {
-      filtered.sort((a, b) => b.approvalProbability - a.approvalProbability);
-    } else if (sortBy === "emi") {
-      filtered.sort((a, b) => a.emi - b.emi);
-    } else {
-      filtered.sort((a, b) => b.rankingScore - a.rankingScore);
-    }
-
-    return filtered;
   }, [bankFilter, evaluationQuery.data?.ranked_results, maxEmiFilter, minProbabilityFilter, sortBy]);
+
+  const ineligibleSchemes = useMemo(() => {
+    return filterAndSortSchemes([...(evaluationQuery.data?.ineligible_results ?? [])], {
+      bankFilter,
+      maxEmiFilter,
+      minProbabilityFilter,
+      sortBy,
+    });
+  }, [bankFilter, evaluationQuery.data?.ineligible_results, maxEmiFilter, minProbabilityFilter, sortBy]);
+
+  const hasStoredEvaluation = (evaluationQuery.data?.summary.total_products ?? 0) > 0;
+  const hasEligibleResults = (evaluationQuery.data?.ranked_results.length ?? 0) > 0;
+  const hasIneligibleResults = (evaluationQuery.data?.ineligible_results.length ?? 0) > 0;
+  const hasActiveFilters = bankFilter !== "all" || maxEmiFilter > 0 || minProbabilityFilter > 0;
+  const filtersHidEligibleResults = hasActiveFilters && hasEligibleResults && rankedSchemes.length === 0;
+  const noEligibleRecommendations = hasStoredEvaluation && !hasEligibleResults && hasIneligibleResults;
+
+  const resetFilters = () => {
+    setBankFilter("all");
+    setMaxEmiFilter(0);
+    setMinProbabilityFilter(0);
+    setSortBy("score");
+  };
 
   if (!applicationId) {
     return (
@@ -298,6 +345,129 @@ export default function LoanResults() {
         <TabsContent value="grid">
           {evaluationQuery.isLoading ? (
             <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading lender recommendations...</CardContent></Card>
+          ) : !hasStoredEvaluation ? (
+            <EmptyState
+              title="No evaluation results yet"
+              description="Run evaluation for this application to generate lender recommendations."
+              action={(
+                <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
+                  {evaluateMutation.isPending ? "Evaluating..." : "Run Evaluation"}
+                </Button>
+              )}
+            />
+          ) : filtersHidEligibleResults ? (
+            <EmptyState
+              title="No matches for current filters"
+              description="Eligible recommendations exist, but your current filters hide them."
+              action={(
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" onClick={resetFilters}>Reset Filters</Button>
+                  <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
+                    {evaluateMutation.isPending ? "Evaluating..." : "Re-run Evaluation"}
+                  </Button>
+                </div>
+              )}
+            />
+          ) : noEligibleRecommendations ? (
+            <div className="space-y-4">
+              <Alert variant="warning">
+                <Info className="h-4 w-4" />
+                <AlertTitle>No lenders are currently eligible</AlertTitle>
+                <AlertDescription>
+                  We evaluated available schemes, but this application did not meet current eligibility criteria.
+                  Review the reasons below, update your profile/application details, or upload documents and re-run evaluation.
+                </AlertDescription>
+              </Alert>
+
+              {ineligibleSchemes.length === 0 ? (
+                <EmptyState
+                  title="No visible lenders after filters"
+                  description="Evaluation found only ineligible lenders, but your current filters hide them."
+                  action={<Button variant="outline" onClick={resetFilters}>Reset Filters</Button>}
+                />
+              ) : (
+                <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
+                  {ineligibleSchemes.map((scheme, i) => (
+                    <Card key={scheme.productId} className="border-warning/25">
+                      <CardHeader className="space-y-4 pb-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warning/10 text-sm font-semibold text-warning-foreground">
+                              {scheme.bankName.split(" ").map((p) => p[0]).join("").slice(0, 3)}
+                            </div>
+                            <div>
+                              <CardTitle>{scheme.bankName}</CardTitle>
+                              <p className="text-xs text-muted-foreground">{scheme.productName}</p>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-warning/20 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning-foreground">
+                            Ineligible
+                          </div>
+                        </div>
+                        <div className="inline-flex w-fit items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning-foreground">
+                          Review Required #{i + 1}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                            <p className="label-xs">Monthly EMI</p>
+                            <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(scheme.emi)}</p>
+                          </div>
+                          <div className="rounded-lg border border-border/70 bg-warning/5 p-3">
+                            <p className="label-xs">Approval probability</p>
+                            <p className="mt-1 text-xl font-semibold text-warning-foreground">{scheme.approvalProbability.toFixed(1)}%</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="label-xs">Estimated rate</p>
+                            <p className="mt-1 font-semibold">{scheme.estimatedRate}%</p>
+                          </div>
+                          <div>
+                            <p className="label-xs">Eligibility</p>
+                            <p className="mt-1 font-semibold">{scheme.eligibilityScore.toFixed(1)} / 100</p>
+                          </div>
+                          <div>
+                            <p className="label-xs">Total interest</p>
+                            <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(scheme.totalInterest)}</p>
+                          </div>
+                          <div>
+                            <p className="label-xs">Total payable</p>
+                            <p className="mt-1 font-semibold">{formatLKR(scheme.totalPayable)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <StatusBadge status="needs_review" />
+                          <p className="text-xs text-muted-foreground">
+                            Document completeness {scheme.docCompleteness.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          {(scheme.reasons.length ? scheme.reasons : scheme.whyRecommended).slice(0, 3).map((reason, idx) => (
+                            <p key={`${scheme.productId}-${idx}`} className="text-xs text-muted-foreground">
+                              {idx + 1}. {reason}
+                            </p>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            variant="outline"
+                            disabled={trackMutation.isPending}
+                            onClick={() => trackMutation.mutate(scheme.productId)}
+                          >
+                            {trackMutation.isPending ? "Starting..." : "Track Anyway"}
+                          </Button>
+                          <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Upload Docs</Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : rankedSchemes.length === 0 ? (
             <EmptyState
               title="No recommendations found"
@@ -442,46 +612,53 @@ export default function LoanResults() {
         </TabsContent>
       </Tabs>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="h-4 w-4 text-primary" />
-            Why these were recommended
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Expand each lender to view ranking factors and eligibility drivers.
-          </p>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <Accordion type="single" collapsible className="rounded-xl border border-border/70">
-            {rankedSchemes.map((scheme, i) => (
-              <AccordionItem key={scheme.productId} value={`scheme-${scheme.productId}`} className="px-4">
-                <AccordionTrigger className="py-3">
-                  <div className="flex items-center gap-3 text-left">
-                    <div className="rounded-md bg-muted/70 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                      #{i + 1}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{scheme.bankName} - {scheme.productName}</p>
-                      <p className="text-xs text-muted-foreground">Eligibility score {scheme.eligibilityScore.toFixed(1)} / 100</p>
-                    </div>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {(scheme.whyRecommended.length ? scheme.whyRecommended : scheme.reasons.slice(0, 3)).map((reason, idx) => (
-                      <div key={`${scheme.productId}-${idx}`} className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                        <p className="label-xs">Reason {idx + 1}</p>
-                        <p className="mt-1 text-sm text-foreground">{reason}</p>
+      {(rankedSchemes.length > 0 || (noEligibleRecommendations && ineligibleSchemes.length > 0)) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-primary" />
+              {rankedSchemes.length > 0 ? "Why these were recommended" : "Why lenders were not eligible"}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {rankedSchemes.length > 0
+                ? "Expand each lender to view ranking factors and eligibility drivers."
+                : "Expand each lender to review the main eligibility gaps and underwriting blockers."}
+            </p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Accordion type="single" collapsible className="rounded-xl border border-border/70">
+              {(rankedSchemes.length > 0 ? rankedSchemes : ineligibleSchemes).map((scheme, i) => (
+                <AccordionItem key={scheme.productId} value={`scheme-${scheme.productId}`} className="px-4">
+                  <AccordionTrigger className="py-3">
+                    <div className="flex items-center gap-3 text-left">
+                      <div className="rounded-md bg-muted/70 px-2 py-1 text-xs font-semibold text-muted-foreground">
+                        #{i + 1}
                       </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{scheme.bankName} - {scheme.productName}</p>
+                        <p className="text-xs text-muted-foreground">Eligibility score {scheme.eligibilityScore.toFixed(1)} / 100</p>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {(rankedSchemes.length > 0
+                        ? (scheme.whyRecommended.length ? scheme.whyRecommended : scheme.reasons.slice(0, 3))
+                        : (scheme.reasons.length ? scheme.reasons : scheme.whyRecommended.slice(0, 3))
+                      ).map((reason, idx) => (
+                        <div key={`${scheme.productId}-${idx}`} className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                          <p className="label-xs">Reason {idx + 1}</p>
+                          <p className="mt-1 text-sm text-foreground">{reason}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }
