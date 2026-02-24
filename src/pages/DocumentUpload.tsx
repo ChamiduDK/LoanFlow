@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
 
 type DocStatus = "uploaded" | "missing" | "needs_review" | "verified" | "processing" | "rejected";
+type ValidationStatus = "valid" | "invalid" | "unclear";
 
 const statusConfig: Record<DocStatus, { icon: typeof CheckCircle2 }> = {
   verified: { icon: CheckCircle2 },
@@ -44,6 +45,22 @@ function normalizeStatus(value: string): DocStatus {
   return "missing";
 }
 
+function normalizeValidationStatus(value: string | null | undefined): ValidationStatus {
+  const lowered = String(value ?? "").trim().toLowerCase();
+  if (lowered === "valid" || lowered === "invalid") {
+    return lowered;
+  }
+
+  return "unclear";
+}
+
+function deriveDocStatus(workflowStatus: string | null | undefined, validationStatus: string | null | undefined): DocStatus {
+  const normalizedValidation = normalizeValidationStatus(validationStatus);
+  if (normalizedValidation === "valid") return "verified";
+  if (normalizedValidation === "invalid") return "rejected";
+  return normalizeStatus(workflowStatus ?? "");
+}
+
 export default function DocumentUpload() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -59,6 +76,10 @@ export default function DocumentUpload() {
   });
   const fallbackApplicationId = applicationsQuery.data?.[0]?.id ?? "";
   const applicationId = applicationIdFromUrl || fallbackApplicationId;
+  const selectedApplication = useMemo(
+    () => (applicationsQuery.data ?? []).find((application) => application.id === applicationId) ?? null,
+    [applicationId, applicationsQuery.data],
+  );
 
   useEffect(() => {
     if (!applicationIdFromUrl && fallbackApplicationId) {
@@ -92,6 +113,9 @@ export default function DocumentUpload() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("document_type", documentType);
+      if (selectedApplication?.selected_product_id) {
+        formData.append("product_id", selectedApplication.selected_product_id);
+      }
 
       return apiFetch(`/api/applications/${applicationId}/documents/upload`, {
         method: "POST",
@@ -116,47 +140,114 @@ export default function DocumentUpload() {
   });
 
   const checklistRows = useMemo(() => {
-    const uploadedByType = new Map((documentsQuery.data ?? []).map((doc) => [doc.document_type, doc]));
-    const allChecklistItems = (checklistQuery.data?.by_scheme ?? []).flatMap((scheme) => scheme.checklist);
+    const latestUploadedByType = new Map<string, DocumentRow>();
+    for (const row of documentsQuery.data ?? []) {
+      const key = row.document_type.trim().toLowerCase();
+      if (!latestUploadedByType.has(key)) {
+        latestUploadedByType.set(key, row);
+      }
+    }
 
-    const unique = new Map<string, { name: string; required: boolean; uploaded: boolean; status: DocStatus; fileName: string | null; signedUrl: string | null }>();
+    const aggregated = new Map<string, {
+      document_type: string;
+      name: string;
+      required: boolean;
+      requiredCount: number;
+      satisfiedRequiredCount: number;
+      hasUploadedRecord: boolean;
+      hasRejectedSignal: boolean;
+      latestStatus: string | null;
+      latestValidationStatus: string | null;
+    }>();
 
-    for (const item of allChecklistItems) {
-      const uploadedDoc = uploadedByType.get(item.document_type);
-      const status = uploadedDoc ? normalizeStatus(uploadedDoc.status) : "missing";
+    for (const scheme of checklistQuery.data?.by_scheme ?? []) {
+      for (const item of scheme.checklist) {
+        const key = item.document_type.trim().toLowerCase();
+        const existing = aggregated.get(key) ?? {
+          document_type: item.document_type,
+          name: item.display_name,
+          required: false,
+          requiredCount: 0,
+          satisfiedRequiredCount: 0,
+          hasUploadedRecord: false,
+          hasRejectedSignal: false,
+          latestStatus: null,
+          latestValidationStatus: null,
+        };
 
-      unique.set(item.document_type, {
-        name: item.display_name,
-        required: item.required,
-        uploaded: item.uploaded,
-        status,
-        fileName: uploadedDoc?.file_name ?? null,
-        signedUrl: uploadedDoc?.signed_url ?? null,
-      });
+        existing.name = existing.name || item.display_name;
+        existing.required = existing.required || item.required;
+        if (item.required) {
+          existing.requiredCount += 1;
+          if (item.uploaded) {
+            existing.satisfiedRequiredCount += 1;
+          }
+        }
+        existing.hasUploadedRecord = existing.hasUploadedRecord || Boolean(item.has_uploaded_record);
+        existing.hasRejectedSignal =
+          existing.hasRejectedSignal ||
+          item.latest_status === "rejected" ||
+          item.latest_validation_status === "invalid";
+        existing.latestStatus = existing.latestStatus ?? item.latest_status ?? null;
+        existing.latestValidationStatus = existing.latestValidationStatus ?? item.latest_validation_status ?? null;
+
+        aggregated.set(key, existing);
+      }
     }
 
     for (const row of documentsQuery.data ?? []) {
-      if (!unique.has(row.document_type)) {
-        unique.set(row.document_type, {
+      const key = row.document_type.trim().toLowerCase();
+      if (!aggregated.has(key)) {
+        aggregated.set(key, {
+          document_type: row.document_type,
           name: row.document_type,
           required: false,
-          uploaded: true,
-          status: normalizeStatus(row.status),
-          fileName: row.file_name,
-          signedUrl: row.signed_url,
+          requiredCount: 0,
+          satisfiedRequiredCount: 0,
+          hasUploadedRecord: true,
+          hasRejectedSignal: row.validation_status === "invalid" || normalizeStatus(row.status) === "rejected",
+          latestStatus: row.status,
+          latestValidationStatus: row.validation_status ?? null,
         });
       }
     }
 
-    return Array.from(unique.entries()).map(([document_type, item]) => ({ document_type, ...item }));
+    return Array.from(aggregated.entries()).map(([key, item]) => {
+      const latestDoc = latestUploadedByType.get(key);
+      const effectiveWorkflowStatus = latestDoc?.status ?? item.latestStatus;
+      const effectiveValidationStatus = latestDoc?.validation_status ?? item.latestValidationStatus;
+      const requiredMissingCount = Math.max(item.requiredCount - item.satisfiedRequiredCount, 0);
+      const hasUploadedRecord = item.hasUploadedRecord || Boolean(latestDoc);
+      const hasRejectedSignal =
+        item.hasRejectedSignal ||
+        normalizeValidationStatus(effectiveValidationStatus) === "invalid" ||
+        normalizeStatus(effectiveWorkflowStatus ?? "") === "rejected";
+
+      const status = requiredMissingCount > 0
+        ? (hasRejectedSignal || hasUploadedRecord ? "rejected" : "missing")
+        : deriveDocStatus(effectiveWorkflowStatus, effectiveValidationStatus);
+
+      return {
+        document_type: item.document_type,
+        name: item.name,
+        required: item.required,
+        uploaded: requiredMissingCount === 0 && (item.requiredCount > 0 ? true : hasUploadedRecord),
+        status,
+        fileName: latestDoc?.file_name ?? null,
+        signedUrl: latestDoc?.signed_url ?? null,
+      };
+    });
   }, [checklistQuery.data?.by_scheme, documentsQuery.data]);
 
-  const totalRequired = checklistRows.filter((d) => d.required).length;
-  const completedRequired = checklistRows.filter((d) => d.required && d.status !== "missing" && d.status !== "rejected").length;
-  const missingRequired = Math.max(totalRequired - completedRequired, 0);
-  const completeness = totalRequired > 0
-    ? Math.round((completedRequired / totalRequired) * 100)
-    : Math.round(checklistQuery.data?.summary.overall_completeness ?? 0);
+  const fallbackRequired = checklistRows.filter((d) => d.required).length;
+  const fallbackMissing = checklistRows.filter((d) => d.required && (d.status === "missing" || d.status === "rejected")).length;
+  const totalRequired = checklistQuery.data?.summary.total_required ?? fallbackRequired;
+  const missingRequired = checklistQuery.data?.summary.total_missing ?? fallbackMissing;
+  const completedRequired = Math.max(totalRequired - missingRequired, 0);
+  const completeness = Math.round(
+    checklistQuery.data?.summary.overall_completeness ??
+    (totalRequired > 0 ? (completedRequired / totalRequired) * 100 : 0),
+  );
 
   if (!applicationId) {
     return (
@@ -200,7 +291,10 @@ export default function DocumentUpload() {
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={() => void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] })}>
+            <Button onClick={() => {
+              void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
+              void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
+            }}>
               <Upload className="h-4 w-4" />
               Refresh
             </Button>
@@ -257,7 +351,16 @@ export default function DocumentUpload() {
                     accept=".pdf,.png,.jpg,.jpeg"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
-                      if (!file || !selectedDocumentType) {
+                      if (!file) {
+                        return;
+                      }
+                      if (!selectedDocumentType) {
+                        toast({
+                          title: "Select a document type first",
+                          description: "Choose the matching requirement before uploading the file.",
+                          variant: "destructive",
+                        });
+                        event.currentTarget.value = "";
                         return;
                       }
                       uploadMutation.mutate({ file, documentType: selectedDocumentType });

@@ -147,7 +147,7 @@ export async function reEvaluateTrackedApplication(
       .eq("product_id", selectedProductId),
     supabaseAdmin
       .from("documents")
-      .select("id, document_type, validation_status, created_at")
+      .select("id, document_type, product_id, validation_status, created_at")
       .eq("application_id", applicationId)
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
@@ -218,6 +218,11 @@ export async function reEvaluateTrackedApplication(
 
   const latestDocByType = new Map<string, { validation_status: ValidationStatus }>();
   for (const row of uploadedDocs) {
+    const rowProductId = row.product_id ? String(row.product_id) : null;
+    if (rowProductId && rowProductId !== selectedProductId) {
+      continue;
+    }
+
     const key = String(row.document_type).trim().toLowerCase();
     if (!latestDocByType.has(key)) {
       const status = String(row.validation_status ?? "unclear").toLowerCase();

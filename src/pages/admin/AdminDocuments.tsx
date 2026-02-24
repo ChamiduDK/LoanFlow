@@ -1,50 +1,93 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PageHeader from "@/components/shared/PageHeader";
 import { apiFetch } from "@/lib/api/client";
 import type { AdminLoanProduct } from "@/types/admin";
 import { useToast } from "@/hooks/use-toast";
 
-const defaultRequiredDocuments = [
-  {
-    document_type: "nic",
-    display_name: "National Identity Card",
+type RequiredDocumentDraft = {
+  document_type: string;
+  display_name: string;
+  is_required: boolean;
+  notes: string;
+  accepted_formats: string[];
+};
+
+type BenefitDraft = {
+  title: string;
+  description: string;
+  is_highlight: boolean;
+};
+
+type CollateralDraft = {
+  collateral_type: string;
+  min_value_ratio: string;
+  notes: string;
+  is_optional: boolean;
+};
+
+const DOCUMENT_FORMAT_OPTIONS = ["pdf", "jpg", "png"] as const;
+
+function createDefaultRequiredDocument(): RequiredDocumentDraft {
+  return {
+    document_type: "",
+    display_name: "",
     is_required: true,
-    notes: null,
+    notes: "",
     accepted_formats: ["pdf", "jpg", "png"],
-  },
-];
+  };
+}
 
-const defaultBenefits = [
-  {
-    title: "Standard Benefit",
-    description: "Replace with product-specific benefit",
+function createDefaultBenefit(): BenefitDraft {
+  return {
+    title: "",
+    description: "",
     is_highlight: false,
-  },
-];
+  };
+}
 
-const defaultCollateral = [
-  {
-    collateral_type: "Property",
-    min_value_ratio: null,
-    notes: null,
+function createDefaultCollateral(): CollateralDraft {
+  return {
+    collateral_type: "",
+    min_value_ratio: "",
+    notes: "",
     is_optional: false,
-  },
-];
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toNormalizedFormatArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return ["pdf", "jpg", "png"];
+  }
+
+  const formats = value
+    .map((entry) => String(entry).trim().toLowerCase())
+    .filter((entry) => DOCUMENT_FORMAT_OPTIONS.includes(entry as (typeof DOCUMENT_FORMAT_OPTIONS)[number]));
+
+  return formats.length > 0 ? Array.from(new Set(formats)) : ["pdf", "jpg", "png"];
+}
 
 export default function AdminDocuments() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [productId, setProductId] = useState("");
-  const [docsJson, setDocsJson] = useState(JSON.stringify(defaultRequiredDocuments, null, 2));
-  const [benefitsJson, setBenefitsJson] = useState(JSON.stringify(defaultBenefits, null, 2));
-  const [collateralJson, setCollateralJson] = useState(JSON.stringify(defaultCollateral, null, 2));
+  const [requiredDocuments, setRequiredDocuments] = useState<RequiredDocumentDraft[]>([createDefaultRequiredDocument()]);
+  const [benefits, setBenefits] = useState<BenefitDraft[]>([createDefaultBenefit()]);
+  const [collateral, setCollateral] = useState<CollateralDraft[]>([createDefaultCollateral()]);
 
   const productsQuery = useQuery({
     queryKey: ["admin-loan-products"],
@@ -57,6 +100,11 @@ export default function AdminDocuments() {
     }
   }, [productId, productsQuery.data]);
 
+  const selectedProduct = useMemo(
+    () => (productsQuery.data ?? []).find((item) => item.id === productId) ?? null,
+    [productId, productsQuery.data],
+  );
+
   const productDetailQuery = useQuery({
     queryKey: ["loan-product-detail", productId],
     enabled: Boolean(productId),
@@ -64,19 +112,88 @@ export default function AdminDocuments() {
   });
 
   useEffect(() => {
-    if (!productDetailQuery.data) return;
+    if (!productDetailQuery.data) {
+      return;
+    }
 
-    setDocsJson(JSON.stringify((productDetailQuery.data.required_documents as unknown[]) ?? defaultRequiredDocuments, null, 2));
-    setBenefitsJson(JSON.stringify((productDetailQuery.data.benefits as unknown[]) ?? defaultBenefits, null, 2));
-    setCollateralJson(JSON.stringify((productDetailQuery.data.collateral as unknown[]) ?? defaultCollateral, null, 2));
+    const docRows = Array.isArray(productDetailQuery.data.required_documents)
+      ? (productDetailQuery.data.required_documents as Record<string, unknown>[])
+      : [];
+    setRequiredDocuments(
+      docRows.length > 0
+        ? docRows.map((doc) => ({
+            document_type: String(doc.document_type ?? ""),
+            display_name: String(doc.display_name ?? ""),
+            is_required: Boolean(doc.is_required ?? true),
+            notes: doc.notes == null ? "" : String(doc.notes),
+            accepted_formats: toNormalizedFormatArray(doc.accepted_formats),
+          }))
+        : [createDefaultRequiredDocument()],
+    );
+
+    const benefitRows = Array.isArray(productDetailQuery.data.benefits)
+      ? (productDetailQuery.data.benefits as Record<string, unknown>[])
+      : [];
+    setBenefits(
+      benefitRows.length > 0
+        ? benefitRows.map((benefit) => ({
+            title: String(benefit.title ?? ""),
+            description: benefit.description == null ? "" : String(benefit.description),
+            is_highlight: Boolean(benefit.is_highlight ?? false),
+          }))
+        : [createDefaultBenefit()],
+    );
+
+    const collateralRows = Array.isArray(productDetailQuery.data.collateral)
+      ? (productDetailQuery.data.collateral as Record<string, unknown>[])
+      : [];
+    setCollateral(
+      collateralRows.length > 0
+        ? collateralRows.map((entry) => ({
+            collateral_type: String(entry.collateral_type ?? ""),
+            min_value_ratio: entry.min_value_ratio == null ? "" : String(entry.min_value_ratio),
+            notes: entry.notes == null ? "" : String(entry.notes),
+            is_optional: Boolean(entry.is_optional ?? false),
+          }))
+        : [createDefaultCollateral()],
+    );
   }, [productDetailQuery.data]);
 
   const saveDocumentsMutation = useMutation({
     mutationFn: () => {
-      const parsed = JSON.parse(docsJson) as Array<Record<string, unknown>>;
+      if (requiredDocuments.length === 0) {
+        throw new Error("Add at least one required document row");
+      }
+
+      const payload = requiredDocuments.map((doc, index) => {
+        const documentType = doc.document_type.trim().toLowerCase();
+        const displayName = doc.display_name.trim();
+        const acceptedFormats = doc.accepted_formats
+          .map((format) => format.trim().toLowerCase())
+          .filter((format) => DOCUMENT_FORMAT_OPTIONS.includes(format as (typeof DOCUMENT_FORMAT_OPTIONS)[number]));
+
+        if (documentType.length < 2) {
+          throw new Error(`Row ${index + 1}: Document type is required`);
+        }
+        if (displayName.length < 2) {
+          throw new Error(`Row ${index + 1}: Display name is required`);
+        }
+        if (acceptedFormats.length === 0) {
+          throw new Error(`Row ${index + 1}: Select at least one accepted format`);
+        }
+
+        return {
+          document_type: documentType,
+          display_name: displayName,
+          is_required: doc.is_required,
+          notes: doc.notes.trim() || null,
+          accepted_formats: Array.from(new Set(acceptedFormats)),
+        };
+      });
+
       return apiFetch(`/api/admin/required-documents/${productId}`, {
         method: "PUT",
-        body: JSON.stringify({ documents: parsed }),
+        body: JSON.stringify({ documents: payload }),
       });
     },
     onSuccess: () => {
@@ -86,7 +203,7 @@ export default function AdminDocuments() {
     onError: (error) => {
       toast({
         title: "Save failed",
-        description: error instanceof Error ? error.message : "Invalid required documents JSON",
+        description: error instanceof Error ? error.message : "Could not save required documents",
         variant: "destructive",
       });
     },
@@ -94,10 +211,26 @@ export default function AdminDocuments() {
 
   const saveBenefitsMutation = useMutation({
     mutationFn: () => {
-      const parsed = JSON.parse(benefitsJson) as Array<Record<string, unknown>>;
+      if (benefits.length === 0) {
+        throw new Error("Add at least one benefit row");
+      }
+
+      const payload = benefits.map((benefit, index) => {
+        const title = benefit.title.trim();
+        if (title.length < 2) {
+          throw new Error(`Row ${index + 1}: Benefit title is required`);
+        }
+
+        return {
+          title,
+          description: benefit.description.trim() || null,
+          is_highlight: benefit.is_highlight,
+        };
+      });
+
       return apiFetch(`/api/admin/benefits/${productId}`, {
         method: "PUT",
-        body: JSON.stringify({ benefits: parsed }),
+        body: JSON.stringify({ benefits: payload }),
       });
     },
     onSuccess: () => {
@@ -107,7 +240,7 @@ export default function AdminDocuments() {
     onError: (error) => {
       toast({
         title: "Save failed",
-        description: error instanceof Error ? error.message : "Invalid benefits JSON",
+        description: error instanceof Error ? error.message : "Could not save benefits",
         variant: "destructive",
       });
     },
@@ -115,10 +248,37 @@ export default function AdminDocuments() {
 
   const saveCollateralMutation = useMutation({
     mutationFn: () => {
-      const parsed = JSON.parse(collateralJson) as Array<Record<string, unknown>>;
+      if (collateral.length === 0) {
+        throw new Error("Add at least one collateral row");
+      }
+
+      const payload = collateral.map((entry, index) => {
+        const collateralType = entry.collateral_type.trim();
+        if (collateralType.length < 2) {
+          throw new Error(`Row ${index + 1}: Collateral type is required`);
+        }
+
+        const minValueRatioText = entry.min_value_ratio.trim();
+        let minValueRatio: number | null = null;
+        if (minValueRatioText) {
+          const parsed = Number(minValueRatioText);
+          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 5) {
+            throw new Error(`Row ${index + 1}: Min value ratio must be between 0 and 5`);
+          }
+          minValueRatio = parsed;
+        }
+
+        return {
+          collateral_type: collateralType,
+          min_value_ratio: minValueRatio,
+          notes: entry.notes.trim() || null,
+          is_optional: entry.is_optional,
+        };
+      });
+
       return apiFetch(`/api/admin/collateral/${productId}`, {
         method: "PUT",
-        body: JSON.stringify({ collateral: parsed }),
+        body: JSON.stringify({ collateral: payload }),
       });
     },
     onSuccess: () => {
@@ -128,17 +288,67 @@ export default function AdminDocuments() {
     onError: (error) => {
       toast({
         title: "Save failed",
-        description: error instanceof Error ? error.message : "Invalid collateral JSON",
+        description: error instanceof Error ? error.message : "Could not save collateral",
         variant: "destructive",
       });
     },
   });
 
+  function updateRequiredDocument(index: number, patch: Partial<RequiredDocumentDraft>) {
+    setRequiredDocuments((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+  }
+
+  function removeRequiredDocument(index: number) {
+    setRequiredDocuments((prev) => {
+      const next = prev.filter((_, rowIndex) => rowIndex !== index);
+      return next.length > 0 ? next : [createDefaultRequiredDocument()];
+    });
+  }
+
+  function toggleDocumentFormat(index: number, format: (typeof DOCUMENT_FORMAT_OPTIONS)[number], checked: boolean) {
+    setRequiredDocuments((prev) => prev.map((row, rowIndex) => {
+      if (rowIndex !== index) {
+        return row;
+      }
+
+      const nextFormats = checked
+        ? Array.from(new Set([...row.accepted_formats, format]))
+        : row.accepted_formats.filter((item) => item !== format);
+
+      return {
+        ...row,
+        accepted_formats: nextFormats,
+      };
+    }));
+  }
+
+  function updateBenefit(index: number, patch: Partial<BenefitDraft>) {
+    setBenefits((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+  }
+
+  function removeBenefit(index: number) {
+    setBenefits((prev) => {
+      const next = prev.filter((_, rowIndex) => rowIndex !== index);
+      return next.length > 0 ? next : [createDefaultBenefit()];
+    });
+  }
+
+  function updateCollateral(index: number, patch: Partial<CollateralDraft>) {
+    setCollateral((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+  }
+
+  function removeCollateral(index: number) {
+    setCollateral((prev) => {
+      const next = prev.filter((_, rowIndex) => rowIndex !== index);
+      return next.length > 0 ? next : [createDefaultCollateral()];
+    });
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Documents and Benefits"
-        subtitle="Maintain required document definitions, product benefits, and collateral configuration."
+        subtitle="Use tabular editors to maintain required documents, benefits, and collateral settings."
       />
 
       <Card>
@@ -147,55 +357,245 @@ export default function AdminDocuments() {
           <select
             className="mt-2 w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm"
             value={productId}
-            onChange={(e) => setProductId(e.target.value)}
+            onChange={(event) => setProductId(event.target.value)}
           >
             {(productsQuery.data ?? []).map((product) => (
-              <option key={product.id} value={product.id}>{product.name} ({product.banks?.name ?? "-"})</option>
+              <option key={product.id} value={product.id}>
+                {product.name} ({product.banks?.name ?? "-"})
+              </option>
             ))}
           </select>
+          <p className="mt-2 text-xs text-muted-foreground">Selected: {selectedProduct?.name ?? "-"}</p>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Required Documents</CardTitle>
-            <Button size="sm" onClick={() => saveDocumentsMutation.mutate()} disabled={saveDocumentsMutation.isPending || !productId}>
-              <Save className="h-4 w-4" />
-              Save
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <Textarea value={docsJson} onChange={(e) => setDocsJson(e.target.value)} className="min-h-[420px] font-mono text-xs" />
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="documents">
+        <TabsList>
+          <TabsTrigger value="documents">Required Documents</TabsTrigger>
+          <TabsTrigger value="benefits">Benefits</TabsTrigger>
+          <TabsTrigger value="collateral">Collateral</TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Benefits</CardTitle>
-            <Button size="sm" onClick={() => saveBenefitsMutation.mutate()} disabled={saveBenefitsMutation.isPending || !productId}>
-              <Save className="h-4 w-4" />
-              Save
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <Textarea value={benefitsJson} onChange={(e) => setBenefitsJson(e.target.value)} className="min-h-[420px] font-mono text-xs" />
-          </CardContent>
-        </Card>
+        <TabsContent value="documents">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle>Required Documents</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setRequiredDocuments((prev) => [...prev, createDefaultRequiredDocument()])}>
+                  <Plus className="h-4 w-4" />
+                  Add Row
+                </Button>
+                <Button size="sm" onClick={() => saveDocumentsMutation.mutate()} disabled={saveDocumentsMutation.isPending || !productId}>
+                  <Save className="h-4 w-4" />
+                  {saveDocumentsMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Display Name</TableHead>
+                    <TableHead>Document Type Key</TableHead>
+                    <TableHead>Required</TableHead>
+                    <TableHead>Accepted Formats</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead className="w-16">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {requiredDocuments.map((doc, index) => (
+                    <TableRow key={`doc-${index}`}>
+                      <TableCell>
+                        <Input
+                          value={doc.display_name}
+                          onChange={(event) => updateRequiredDocument(index, { display_name: event.target.value })}
+                          placeholder="National Identity Card"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={doc.document_type}
+                          onChange={(event) => updateRequiredDocument(index, { document_type: event.target.value })}
+                          placeholder="nic"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={doc.is_required}
+                          onCheckedChange={(checked) => updateRequiredDocument(index, { is_required: checked })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          {DOCUMENT_FORMAT_OPTIONS.map((format) => (
+                            <label key={format} className="inline-flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+                              <Checkbox
+                                checked={doc.accepted_formats.includes(format)}
+                                onCheckedChange={(checked) => toggleDocumentFormat(index, format, checked === true)}
+                              />
+                              {format}
+                            </label>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={doc.notes}
+                          onChange={(event) => updateRequiredDocument(index, { notes: event.target.value })}
+                          placeholder="Optional note"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => removeRequiredDocument(index)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="px-4 py-3 text-xs text-muted-foreground">
+                Use lowercase `document_type` keys (for example `nic`, `bank_statement`) to match user uploads and verification rules.
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Collateral</CardTitle>
-            <Button size="sm" onClick={() => saveCollateralMutation.mutate()} disabled={saveCollateralMutation.isPending || !productId}>
-              <Save className="h-4 w-4" />
-              Save
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <Textarea value={collateralJson} onChange={(e) => setCollateralJson(e.target.value)} className="min-h-[420px] font-mono text-xs" />
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="benefits">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle>Benefits</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setBenefits((prev) => [...prev, createDefaultBenefit()])}>
+                  <Plus className="h-4 w-4" />
+                  Add Row
+                </Button>
+                <Button size="sm" onClick={() => saveBenefitsMutation.mutate()} disabled={saveBenefitsMutation.isPending || !productId}>
+                  <Save className="h-4 w-4" />
+                  {saveBenefitsMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Highlight</TableHead>
+                    <TableHead className="w-16">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {benefits.map((benefit, index) => (
+                    <TableRow key={`benefit-${index}`}>
+                      <TableCell>
+                        <Input
+                          value={benefit.title}
+                          onChange={(event) => updateBenefit(index, { title: event.target.value })}
+                          placeholder="Low processing fee"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={benefit.description}
+                          onChange={(event) => updateBenefit(index, { description: event.target.value })}
+                          placeholder="Describe this benefit"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={benefit.is_highlight}
+                          onCheckedChange={(checked) => updateBenefit(index, { is_highlight: checked })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => removeBenefit(index)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="collateral">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle>Collateral Configuration</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCollateral((prev) => [...prev, createDefaultCollateral()])}>
+                  <Plus className="h-4 w-4" />
+                  Add Row
+                </Button>
+                <Button size="sm" onClick={() => saveCollateralMutation.mutate()} disabled={saveCollateralMutation.isPending || !productId}>
+                  <Save className="h-4 w-4" />
+                  {saveCollateralMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Collateral Type</TableHead>
+                    <TableHead>Min Value Ratio</TableHead>
+                    <TableHead>Optional</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead className="w-16">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {collateral.map((entry, index) => (
+                    <TableRow key={`collateral-${index}`}>
+                      <TableCell>
+                        <Input
+                          value={entry.collateral_type}
+                          onChange={(event) => updateCollateral(index, { collateral_type: event.target.value })}
+                          placeholder="Property"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={5}
+                          step={0.01}
+                          value={entry.min_value_ratio}
+                          onChange={(event) => updateCollateral(index, { min_value_ratio: event.target.value })}
+                          placeholder="Optional"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={entry.is_optional}
+                          onCheckedChange={(checked) => updateCollateral(index, { is_optional: checked })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={entry.notes}
+                          onChange={(event) => updateCollateral(index, { notes: event.target.value })}
+                          placeholder="Optional note"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => removeCollateral(index)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

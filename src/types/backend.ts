@@ -250,6 +250,11 @@ export type DocumentChecklistResponse = {
       display_name: string;
       required: boolean;
       uploaded: boolean;
+      has_uploaded_record?: boolean;
+      latest_document_id?: string | null;
+      latest_status?: string | null;
+      latest_validation_status?: "valid" | "invalid" | "unclear" | null;
+      latest_uploaded_at?: string | null;
     }>;
     missing_docs: string[];
   }>;
