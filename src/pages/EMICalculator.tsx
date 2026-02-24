@@ -78,17 +78,17 @@ export default function EMICalculator() {
     };
 
     if (!Number.isFinite(next.principal) || next.principal <= 0) {
-      toast({ title: "Invalid principal amount", variant: "destructive" });
+      toast({ title: "Invalid principal amount" });
       return;
     }
 
     if (!Number.isFinite(next.annual_rate) || next.annual_rate < 0) {
-      toast({ title: "Invalid interest rate", variant: "destructive" });
+      toast({ title: "Invalid interest rate" });
       return;
     }
 
     if (!Number.isFinite(next.tenure_months) || next.tenure_months <= 0) {
-      toast({ title: "Invalid tenure", variant: "destructive" });
+      toast({ title: "Invalid tenure" });
       return;
     }
 
