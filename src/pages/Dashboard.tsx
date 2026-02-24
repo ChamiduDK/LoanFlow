@@ -139,7 +139,11 @@ export default function Dashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item, idx) => (
-          <Card key={item.label} className="border-border/50 bg-gradient-to-br from-card to-card/50 hover:shadow-lg" style={{ animationDelay: `${idx * 50}ms` }}>
+          <Card
+            key={item.label}
+            className="border-border/70 bg-card shadow-sm transition-shadow hover:shadow-md"
+            style={{ animationDelay: `${idx * 50}ms` }}
+          >
             <CardContent className="p-5">
               {isLoading ? (
                 <div className="space-y-3">
@@ -151,11 +155,11 @@ export default function Dashboard() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg transition-transform duration-300 hover:scale-110 ${item.surfaceClass}`}>
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 ${item.surfaceClass}`}>
                       <item.icon className={`h-5 w-5 ${item.iconClass}`} />
                     </div>
                   </div>
-                  <p className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">{item.value}</p>
+                  <p className="text-2xl font-bold text-foreground">{item.value}</p>
                   <p className="text-xs font-medium text-muted-foreground">{item.trend}</p>
                 </div>
               )}
@@ -165,16 +169,16 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="xl:col-span-2">
+        <Card className="border-border/70 bg-card shadow-sm xl:col-span-2">
           <CardHeader>
-            <CardTitle className="gradient-text">Quick Actions</CardTitle>
+            <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
             {quickActions.map((action, idx) => (
               <Link
                 key={action.title}
                 to={action.path}
-                className="group rounded-lg border border-border/50 bg-gradient-to-br from-muted/50 to-muted/30 p-4 transition-all duration-300 hover:border-primary/50 hover:bg-gradient-to-br hover:from-primary/10 hover:to-blue-500/10 hover:shadow-md"
+                className="group rounded-lg border border-border/70 bg-muted/30 p-4 transition-colors hover:border-primary/40 hover:bg-muted/45"
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -182,21 +186,25 @@ export default function Dashboard() {
                     <p className="text-sm font-semibold text-foreground">{action.title}</p>
                     <p className="text-xs text-muted-foreground">{action.desc}</p>
                   </div>
-                  <action.icon className="h-4 w-4 text-muted-foreground transition-all duration-300 group-hover:scale-110 group-hover:text-primary" />
+                  <action.icon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
                 </div>
               </Link>
             ))}
           </CardContent>
         </Card>
-        <Card className="xl:col-span-3">
+        <Card className="border-border/70 bg-card shadow-sm xl:col-span-3">
           <CardHeader>
-            <CardTitle className="gradient-text">Reminder Alerts</CardTitle>
+            <CardTitle>Reminder Alerts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {reminders.map((reminder, idx) => (
-              <div key={reminder.title} className="flex items-start justify-between gap-3 rounded-lg border border-border/50 bg-gradient-to-br from-card/50 to-muted/20 p-4 transition-all duration-300 hover:shadow-md" style={{ animationDelay: `${idx * 50}ms` }}>
+              <div
+                key={reminder.title}
+                className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/25 p-4 transition-shadow hover:shadow-sm"
+                style={{ animationDelay: `${idx * 50}ms` }}
+              >
                 <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 rounded-lg p-2 transition-transform duration-300 hover:scale-110 ${reminder.tone}`}>
+                  <div className={`mt-0.5 rounded-lg border border-border/70 p-2 ${reminder.tone}`}>
                     <reminder.icon className="h-4 w-4" />
                   </div>
                   <div>
@@ -211,13 +219,13 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card className="data-table-wrap">
+      <Card className="border-border/70 bg-card shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/50 pb-4">
           <div>
-            <CardTitle className="gradient-text">Recent Applications</CardTitle>
+            <CardTitle>Recent Applications</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">Track status and submission updates for your applications.</p>
           </div>
-          <Button variant="outline" size="sm" asChild className="hover:bg-primary/10">
+          <Button variant="outline" size="sm" asChild>
             <Link to="/tracker">
               Open Tracker
               <ArrowRight className="h-3.5 w-3.5" />

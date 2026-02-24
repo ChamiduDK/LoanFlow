@@ -1,99 +1,151 @@
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import ProcessBeamSection from "@/components/home/process-beam-section";
-import EMICalculatorSection from "@/components/home/EMICalculatorSection";
+import { Link } from 'react-router-dom';
+import { HeroSection } from '@/components/ui/hero-section-1';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import ProcessBeamSection from '@/components/home/process-beam-section';
+import EMICalculatorSection from '@/components/home/EMICalculatorSection';
 import {
   ArrowRight,
   Building2,
-  Calculator,
   CheckCircle2,
+  CircleHelp,
+  Clock3,
+  FileCheck2,
   GitBranch,
   Search,
-  ShieldCheck,
-  Upload,
-} from "lucide-react";
+} from 'lucide-react';
 
-const features = [
-  { icon: Search, title: "Smart Loan Comparison", desc: "Compare SME schemes across top Sri Lankan banks in one view." },
-  { icon: Calculator, title: "Live EMI Forecast", desc: "Instantly model monthly obligations, principal split, and cost bands." },
-  { icon: ShieldCheck, title: "Approval Probability", desc: "See match confidence before submitting documents." },
-  { icon: Upload, title: "Document Verification", desc: "Manage required files with checklist-driven verification status." },
-  { icon: GitBranch, title: "Application Tracking", desc: "Follow every stage from draft to final bank decision." },
+const painPoints = [
+  {
+    icon: Search,
+    title: 'Hard to Compare Schemes',
+    desc: 'Loan rates, collateral rules, and eligibility criteria differ by bank and are difficult to compare manually.',
+  },
+  {
+    icon: CircleHelp,
+    title: 'Unclear Approval Chances',
+    desc: 'Many applicants submit without knowing if they are likely to be approved.',
+  },
+  {
+    icon: Clock3,
+    title: 'Slow, Repetitive Process',
+    desc: 'Applicants often repeat the same checks and rework documents across multiple banks.',
+  },
+  {
+    icon: FileCheck2,
+    title: 'Document Gaps',
+    desc: 'Missing files or inconsistencies can delay decisions and reduce approval confidence.',
+  },
+  {
+    icon: GitBranch,
+    title: 'No Single Workflow',
+    desc: 'SMEs need one place to compare, estimate, prepare, and track progress end-to-end.',
+  },
 ];
 
-const highlights = [
-  { label: "Banks Connected", value: "7+" },
-  { label: "Average Review Time", value: "3-7 days" },
-  { label: "Active SME Profiles", value: "2,400+" },
+const platformBenefits = [
+  { icon: Search, title: 'Compare banks in one place' },
+  { icon: CheckCircle2, title: 'Check readiness before applying' },
+  { icon: FileCheck2, title: 'Prepare documents with clarity' },
+  { icon: Clock3, title: 'Track loan progress after submission' },
+];
+
+const studyFocus = [
+  { label: 'Target Users', value: 'Sri Lankan SME Owners' },
+  { label: 'Platform Type', value: 'Web-based Decision Support' },
+  { label: 'Predictive Layer', value: 'ML/DL Approval Estimation' },
+];
+
+const sectors = ['Retail', 'Services', 'Manufacturing', 'Agriculture', 'Trade'];
+
+const journeySteps = [
+  {
+    step: 'Step 1',
+    title: 'Share Business Details',
+    desc: 'Enter your SME profile, loan amount, and purpose in a guided flow.',
+  },
+  {
+    step: 'Step 2',
+    title: 'Get Smart Recommendations',
+    desc: 'Review eligible bank options, estimated EMI, and predicted approval confidence.',
+  },
+  {
+    step: 'Step 3',
+    title: 'Submit with Confidence',
+    desc: 'Upload required documents and track progress using one connected workspace.',
+  },
 ];
 
 export default function Index() {
   return (
-    <div className="min-h-screen bg-background text-foreground px-2 md:px-6">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80">
-        <div className="container flex h-16 items-center justify-between gap-2 px-2 md:px-0">
-          <Link to="/" className="group flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted text-foreground transition-colors duration-200 group-hover:bg-muted/70">
-              <Building2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground sm:text-base">SME Loan Hub</p>
-              <p className="hidden text-[11px] font-medium text-muted-foreground sm:block">Intelligent Lending</p>
-            </div>
-          </Link>
+    <div className='min-h-screen overflow-x-clip bg-background text-foreground'>
+      <HeroSection />
 
-          <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
-            <a href="#how-it-works" className="transition-colors hover:text-foreground">How it works</a>
-            <a href="#calculator" className="transition-colors hover:text-foreground">EMI Calculator</a>
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild className="hidden hover:bg-muted sm:inline-flex">
-              <Link to="/login">Log In</Link>
-            </Button>
-            <Button size="sm" asChild className="px-3 sm:px-4">
-              <Link to="/signup">Sign Up</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="pt-16">
-        <section className="border-b border-border/70 bg-muted/35">
-          <div className="container py-10 sm:py-20 px-2 md:px-0">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-center">
-              <div className="max-w-3xl">
-                <p className="inline-flex items-center rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <main className='px-2 md:px-6'>
+        <section className='border-y border-border/70 bg-muted/35'>
+          <div className='container px-2 py-10 sm:py-14 md:px-0'>
+            <div className='grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start'>
+              <div className='max-w-3xl'>
+                <p className='inline-flex items-center rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground'>
                   Built for Sri Lankan SMEs
                 </p>
-                <h1 className="mt-5 text-3xl font-bold leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                  Find the right SME loan with a clear, guided process
-                </h1>
-                <p className="mt-4 max-w-2xl text-base text-muted-foreground sm:text-lg">
-                  Compare lender options, estimate EMI, and manage your full application lifecycle in one clean dashboard.
+                <h2 className='mt-5 text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl'>
+                  Find the Right Loan Faster
+                </h2>
+                <p className='mt-4 text-base text-muted-foreground sm:text-lg'>
+                  LonaFlow brings loan comparison, EMI estimation, approval prediction, and document preparation into one simple experience.
                 </p>
-                <div className="mt-7 flex flex-wrap gap-3">
-                  <Button size="lg" asChild>
-                    <Link to="/apply">
-                      Start Loan Check
-                      <ArrowRight className="ml-2 h-4 w-4" />
+
+                <div className='mt-6 grid gap-3 sm:grid-cols-2'>
+                  {platformBenefits.map((item) => (
+                    <div
+                      key={item.title}
+                      className='flex items-center gap-3 rounded-xl border border-border/80 bg-card px-4 py-3'
+                    >
+                      <item.icon className='h-4 w-4 text-primary' />
+                      <p className='text-sm font-medium text-foreground'>{item.title}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className='mt-7 flex flex-col gap-3 sm:flex-row'>
+                  <Button size='lg' asChild className='w-full sm:w-auto'>
+                    <Link to='/signup'>
+                      Get Started
+                      <ArrowRight className='ml-2 h-4 w-4' />
                     </Link>
                   </Button>
-                  <Button size="lg" variant="outline" asChild>
-                    <Link to="/results">Explore Recommendations</Link>
+                  <Button size='lg' variant='outline' asChild className='w-full sm:w-auto'>
+                    <Link to='/login'>I Already Have an Account</Link>
                   </Button>
                 </div>
               </div>
-              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <p className="text-sm font-semibold text-foreground">Platform Snapshot</p>
-                <div className="mt-4 space-y-3">
-                  {highlights.map((stat) => (
-                    <div key={stat.label} className="flex items-center justify-between rounded-lg border border-border/80 bg-muted/35 px-4 py-3">
-                      <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
-                      <p className="text-sm font-semibold text-foreground">{stat.value}</p>
+
+              <div className='rounded-2xl border border-border bg-card p-5 shadow-sm'>
+                <p className='text-sm font-semibold text-foreground'>Study Focus</p>
+                <div className='mt-4 space-y-3'>
+                  {studyFocus.map((item) => (
+                    <div
+                      key={item.label}
+                      className='rounded-lg border border-border/80 bg-muted/35 px-4 py-3'
+                    >
+                      <p className='text-xs font-medium text-muted-foreground'>{item.label}</p>
+                      <p className='mt-1 text-sm font-semibold text-foreground'>{item.value}</p>
                     </div>
+                  ))}
+                </div>
+
+                <p className='mt-5 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground'>
+                  SME Sectors Covered
+                </p>
+                <div className='mt-3 flex flex-wrap gap-2'>
+                  {sectors.map((sector) => (
+                    <span
+                      key={sector}
+                      className='rounded-full border border-border bg-muted/35 px-3 py-1.5 text-xs font-medium text-foreground'
+                    >
+                      {sector}
+                    </span>
                   ))}
                 </div>
               </div>
@@ -103,41 +155,39 @@ export default function Index() {
 
         <ProcessBeamSection />
 
-        <section id="features" className="py-16 sm:py-20">
-          <div className="container space-y-10 px-2 md:px-0">
-            <div className="max-w-3xl">
-              <h2 className="text-3xl font-bold text-foreground sm:text-4xl">Everything needed for the SME lending journey</h2>
-              <p className="mt-3 max-w-2xl text-base text-muted-foreground sm:text-lg">
-                One platform for discovery, eligibility guidance, document readiness, and follow-through.
+        <section id='features' className='py-16 sm:py-20'>
+          <div className='container space-y-10 px-2 md:px-0'>
+            <div className='max-w-4xl'>
+              <h2 className='text-3xl font-bold sm:text-4xl'>Why This Platform Matters</h2>
+              <p className='mt-3 text-base text-muted-foreground sm:text-lg'>
+                SME financing can be complex. LonaFlow is designed to reduce confusion, shorten decision time, and improve application quality.
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {features.map((feature, idx) => (
-                <Card key={feature.title} className="border-border/80" style={{ animationDelay: `${idx * 50}ms` }}>
-                  <CardContent className="space-y-4 p-6">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-muted/45 text-foreground">
-                      <feature.icon className="h-5 w-5" />
+            <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-3'>
+              {painPoints.map((feature) => (
+                <Card key={feature.title} className='border-border/80'>
+                  <CardContent className='space-y-4 p-6'>
+                    <div className='flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-muted/45 text-foreground'>
+                      <feature.icon className='h-5 w-5' />
                     </div>
-                    <h3 className="text-lg font-semibold text-foreground">{feature.title}</h3>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{feature.desc}</p>
+                    <h3 className='text-lg font-semibold text-foreground'>{feature.title}</h3>
+                    <p className='text-sm leading-relaxed text-muted-foreground'>{feature.desc}</p>
                   </CardContent>
                 </Card>
               ))}
             </div>
-          </div>
-        </section>
-        
-        <EMICalculatorSection />
 
-        <section className="py-16">
-          <div className="container px-2 md:px-0">
-            <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Trusted by leading banks</p>
-              <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                {["Bank of Ceylon", "People's Bank", "Commercial Bank", "HNB", "Sampath Bank", "Seylan Bank", "NDB"].map((bank) => (
-                  <div key={bank} className="rounded-lg border border-border bg-muted/35 px-4 py-3 text-center font-medium text-foreground">
-                    {bank}
+            <div className='rounded-2xl border border-border bg-card p-6 sm:p-8'>
+              <h3 className='text-xl font-semibold text-foreground sm:text-2xl'>Simple 3-Step Journey</h3>
+              <div className='mt-6 grid gap-4 md:grid-cols-3'>
+                {journeySteps.map((item) => (
+                  <div key={item.step} className='rounded-xl border border-border/80 bg-muted/30 p-4'>
+                    <p className='text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground'>
+                      {item.step}
+                    </p>
+                    <p className='mt-2 text-base font-semibold text-foreground'>{item.title}</p>
+                    <p className='mt-2 text-sm text-muted-foreground'>{item.desc}</p>
                   </div>
                 ))}
               </div>
@@ -145,19 +195,21 @@ export default function Index() {
           </div>
         </section>
 
-        <section className="pb-16">
-          <div className="container px-2 md:px-0">
-            <div className="rounded-2xl border border-border bg-card p-8 text-center sm:p-10">
-              <h3 className="text-2xl font-bold text-foreground sm:text-3xl">Ready to find your ideal loan?</h3>
-              <p className="mx-auto mt-3 max-w-xl text-base text-muted-foreground">
-                Start your application and receive personalized lender recommendations in minutes.
+        <EMICalculatorSection />
+
+        <section className='pb-16 pt-16'>
+          <div className='container px-2 md:px-0'>
+            <div className='rounded-2xl border border-border bg-card p-8 text-center sm:p-10'>
+              <h3 className='text-2xl font-bold text-foreground sm:text-3xl'>Ready to Start Your Loan Plan?</h3>
+              <p className='mx-auto mt-3 max-w-2xl text-base text-muted-foreground'>
+                Create an account to compare banks, calculate EMI, and prepare a stronger SME loan application.
               </p>
-              <div className="mt-7 flex flex-wrap justify-center gap-3">
-                <Button asChild>
-                  <Link to="/apply">Start Application</Link>
+              <div className='mt-7 flex flex-col justify-center gap-3 sm:flex-row'>
+                <Button asChild className='w-full sm:w-auto'>
+                  <Link to='/signup'>Create Account</Link>
                 </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/dashboard">Open Dashboard</Link>
+                <Button variant='outline' asChild className='w-full sm:w-auto'>
+                  <Link to='/login'>Login</Link>
                 </Button>
               </div>
             </div>
@@ -165,17 +217,20 @@ export default function Index() {
         </section>
       </main>
 
-      <footer className="border-t border-border/70 bg-muted/20 py-10">
-        <div className="container flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between px-2 md:px-0">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-muted text-foreground">
-              <Building2 className="h-4 w-4" />
+      <footer className='border-t border-border/70 bg-muted/20 px-2 py-10 md:px-6'>
+        <div className='container flex flex-col gap-6 px-2 sm:flex-row sm:items-center sm:justify-between md:px-0'>
+          <Link to='/' className='flex items-center gap-2'>
+            <div className='flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-muted text-foreground'>
+              <Building2 className='h-4 w-4' />
             </div>
-            <span className="font-semibold text-foreground">SME Loan Hub</span>
+            <span className='font-semibold text-foreground'>LonaFlow</span>
           </Link>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success" />Secure processing</span>
-            <span>Support: info@smeloanhub.lk</span>
+          <div className='flex flex-wrap items-center gap-4 text-sm text-muted-foreground'>
+            <span className='inline-flex items-center gap-2'>
+              <CheckCircle2 className='h-4 w-4 text-success' />
+              Secure processing
+            </span>
+            <span>Support: info@lonaflow.lk</span>
           </div>
         </div>
       </footer>

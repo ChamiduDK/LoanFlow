@@ -119,9 +119,9 @@ export default function EMICalculatorSection() {
 
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Card className="bg-primary text-primary-foreground">
+              <Card className="border border-border/70 bg-[#f8f7f2] text-foreground dark:bg-muted/30">
                 <CardContent className="p-5 flex flex-col items-center justify-center min-h-[100px]">
-                  <p className="text-xs uppercase tracking-wider opacity-80 font-semibold text-center">Monthly EMI</p>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold text-center">Monthly EMI</p>
                   <p className="mt-2 text-2xl font-bold">{formatLKR(emi)}</p>
                 </CardContent>
               </Card>
@@ -147,10 +147,10 @@ export default function EMICalculatorSection() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-destructive/70" />
+                    <div className="h-3 w-3 rounded-full border border-border/80 bg-[#f3f2ed] dark:bg-muted/50" />
                     <span className="text-muted-foreground">Total Interest</span>
                   </div>
-                  <span className="font-semibold text-destructive">{formatLKR(totalInterest)}</span>
+                  <span className="font-semibold text-foreground">{formatLKR(totalInterest)}</span>
                 </div>
 
                 <div className="relative h-6 w-full overflow-hidden rounded-full bg-muted/40">
@@ -159,7 +159,7 @@ export default function EMICalculatorSection() {
                     style={{ width: `${principalPct}%` }}
                   />
                   <div
-                    className="absolute top-0 right-0 h-full bg-destructive/70 transition-all duration-500"
+                    className="absolute top-0 right-0 h-full border-l border-border/60 bg-[#f3f2ed] transition-all duration-500 dark:bg-muted/50"
                     style={{ left: `${principalPct}%` }}
                   />
                 </div>

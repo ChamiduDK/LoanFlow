@@ -1,3 +1,7 @@
+import { spawn } from "node:child_process";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { LoanApplication, Profile } from "../../types/domain";
 import { env } from "../config/env";
 import { forbidden, internalError, notFound } from "../lib/errors";
@@ -48,6 +52,17 @@ type AzureOcrConfig = {
   pollIntervalMs: number;
   pollTimeoutMs: number;
   requestTimeoutMs: number;
+};
+
+type TesseractOcrConfig = {
+  command: string;
+  language: string;
+  psm: number;
+  oem: number;
+  timeoutMs: number;
+  pdfToPpmCommand: string;
+  pdfDpi: number;
+  pdfMaxPages: number;
 };
 
 type ScanDocumentSummary = {
@@ -190,6 +205,258 @@ function extractNestedErrorMessage(payload: unknown): string | null {
   }
 
   return null;
+}
+
+type CommandRunOptions = {
+  timeoutMs: number;
+  cwd?: string;
+};
+
+async function runCommand(command: string, args: string[], options: CommandRunOptions): Promise<{ stdout: string; stderr: string }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, options.timeoutMs);
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`Command not found: ${command}`));
+        return;
+      }
+
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+
+      if (timedOut) {
+        reject(new Error(`Command timed out after ${options.timeoutMs}ms: ${command}`));
+        return;
+      }
+
+      if (code !== 0) {
+        const stderrMessage = stderr.trim();
+        reject(new Error(`Command failed (${code}): ${command}${stderrMessage ? ` - ${stderrMessage}` : ""}`));
+        return;
+      }
+
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function inferMimeTypeFromFileName(fileName: string): string | null {
+  const normalized = fileName.trim().toLowerCase();
+
+  if (normalized.endsWith(".pdf")) {
+    return "application/pdf";
+  }
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (normalized.endsWith(".png")) {
+    return "image/png";
+  }
+
+  return null;
+}
+
+function getTempExtension(mimeType: string | null, fileName: string): string {
+  const effectiveMimeType = mimeType ?? inferMimeTypeFromFileName(fileName);
+
+  if (effectiveMimeType === "application/pdf") return ".pdf";
+  if (effectiveMimeType === "image/jpeg") return ".jpg";
+  if (effectiveMimeType === "image/png") return ".png";
+
+  const cleanedName = fileName.trim();
+  const dotIndex = cleanedName.lastIndexOf(".");
+  if (dotIndex > -1 && dotIndex < cleanedName.length - 1) {
+    const suffix = cleanedName.slice(dotIndex);
+    if (/^\.[a-z0-9]{1,8}$/i.test(suffix)) {
+      return suffix.toLowerCase();
+    }
+  }
+
+  return ".bin";
+}
+
+function isPdfMimeType(mimeType: string | null, fileName: string): boolean {
+  return (mimeType ?? inferMimeTypeFromFileName(fileName)) === "application/pdf";
+}
+
+type ParsedTesseractTsv = {
+  text: string;
+  pageCount: number;
+  lineCount: number;
+  wordCount: number;
+  averageWordConfidence: number | null;
+  minWordConfidence: number | null;
+};
+
+function parseTesseractTsv(tsv: string): ParsedTesseractTsv {
+  const rows = tsv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
+  if (rows.length === 0) {
+    return {
+      text: "",
+      pageCount: 0,
+      lineCount: 0,
+      wordCount: 0,
+      averageWordConfidence: null,
+      minWordConfidence: null,
+    };
+  }
+
+  const header = rows[0].split("\t");
+  const indexOf = (name: string) => header.indexOf(name);
+
+  const levelIdx = indexOf("level");
+  const pageIdx = indexOf("page_num");
+  const blockIdx = indexOf("block_num");
+  const parIdx = indexOf("par_num");
+  const lineIdx = indexOf("line_num");
+  const confIdx = indexOf("conf");
+  const textIdx = indexOf("text");
+
+  if ([levelIdx, pageIdx, blockIdx, parIdx, lineIdx, confIdx, textIdx].some((idx) => idx < 0)) {
+    return {
+      text: "",
+      pageCount: 0,
+      lineCount: 0,
+      wordCount: 0,
+      averageWordConfidence: null,
+      minWordConfidence: null,
+    };
+  }
+
+  type LineAccumulator = {
+    page: number;
+    block: number;
+    paragraph: number;
+    line: number;
+    words: string[];
+  };
+
+  const lineMap = new Map<string, LineAccumulator>();
+  const pages = new Set<number>();
+  let wordCount = 0;
+  let confidenceSum = 0;
+  let confidenceCount = 0;
+  let minWordConfidence: number | null = null;
+
+  for (const rowText of rows.slice(1)) {
+    const cells = rowText.split("\t");
+    const level = Number(cells[levelIdx]);
+    const page = Number(cells[pageIdx]);
+    const block = Number(cells[blockIdx]);
+    const paragraph = Number(cells[parIdx]);
+    const lineNumber = Number(cells[lineIdx]);
+    const text = (cells[textIdx] ?? "").trim();
+
+    if (Number.isFinite(page) && page > 0) {
+      pages.add(page);
+    }
+
+    if (level !== 5 || !text) {
+      continue;
+    }
+
+    wordCount += 1;
+    const confidence = Number(cells[confIdx]);
+    if (Number.isFinite(confidence) && confidence >= 0) {
+      confidenceSum += confidence;
+      confidenceCount += 1;
+      minWordConfidence = minWordConfidence == null ? confidence : Math.min(minWordConfidence, confidence);
+    }
+
+    const key = `${page}:${block}:${paragraph}:${lineNumber}`;
+    const existing = lineMap.get(key);
+    if (existing) {
+      existing.words.push(text);
+      continue;
+    }
+
+    lineMap.set(key, {
+      page: Number.isFinite(page) ? page : 0,
+      block: Number.isFinite(block) ? block : 0,
+      paragraph: Number.isFinite(paragraph) ? paragraph : 0,
+      line: Number.isFinite(lineNumber) ? lineNumber : 0,
+      words: [text],
+    });
+  }
+
+  const orderedLines = Array.from(lineMap.values()).sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    if (a.block !== b.block) return a.block - b.block;
+    if (a.paragraph !== b.paragraph) return a.paragraph - b.paragraph;
+    return a.line - b.line;
+  });
+
+  const outputLines: string[] = [];
+  let lastPage: number | null = null;
+  for (const line of orderedLines) {
+    if (lastPage != null && line.page !== lastPage) {
+      outputLines.push("");
+    }
+    outputLines.push(line.words.join(" "));
+    lastPage = line.page;
+  }
+
+  return {
+    text: outputLines.join("\n").trim(),
+    pageCount: pages.size > 0 ? pages.size : (orderedLines.length > 0 ? 1 : 0),
+    lineCount: orderedLines.length,
+    wordCount,
+    averageWordConfidence: confidenceCount > 0 ? confidenceSum / confidenceCount : null,
+    minWordConfidence,
+  };
+}
+
+async function runTesseractOnImageAsTsv(input: {
+  config: TesseractOcrConfig;
+  imagePath: string;
+}): Promise<ParsedTesseractTsv> {
+  const args = [
+    input.imagePath,
+    "stdout",
+    "-l",
+    input.config.language,
+    "--psm",
+    String(input.config.psm),
+    "--oem",
+    String(input.config.oem),
+    "tsv",
+  ];
+
+  const { stdout } = await runCommand(input.config.command, args, {
+    timeoutMs: input.config.timeoutMs,
+  });
+
+  return parseTesseractTsv(stdout);
 }
 
 function detectMimeTypeFromSignature(bytes: Uint8Array): string | null {
@@ -476,6 +743,23 @@ function extractIssueDateFromText(text: string, fallbackTokens: string[]): strin
   return null;
 }
 
+function getTesseractOcrConfig(): TesseractOcrConfig | null {
+  if (env.OCR_PROVIDER !== "tesseract") {
+    return null;
+  }
+
+  return {
+    command: env.OCR_TESSERACT_COMMAND.trim(),
+    language: env.OCR_TESSERACT_LANGUAGE.trim(),
+    psm: env.OCR_TESSERACT_PSM,
+    oem: env.OCR_TESSERACT_OEM,
+    timeoutMs: env.OCR_TESSERACT_TIMEOUT_MS,
+    pdfToPpmCommand: env.OCR_PDFTOPPM_COMMAND.trim(),
+    pdfDpi: env.OCR_PDF_DPI,
+    pdfMaxPages: env.OCR_PDF_MAX_PAGES,
+  };
+}
+
 function getAzureOcrConfig(): AzureOcrConfig | null {
   if (env.OCR_PROVIDER !== "azure_document_intelligence") {
     return null;
@@ -682,6 +966,277 @@ function parseAzureOcrPayload(payload: Record<string, unknown>): ParsedAzureOcrP
     languages,
     modelId: typeof analyzeResult.modelId === "string" ? analyzeResult.modelId : null,
     apiVersion: typeof analyzeResult.apiVersion === "string" ? analyzeResult.apiVersion : null,
+  };
+}
+
+type TesseractOcrExecutionResult = {
+  text: string;
+  pageCount: number;
+  lineCount: number;
+  wordCount: number;
+  averageWordConfidence: number | null;
+  minWordConfidence: number | null;
+  warnings: string[];
+};
+
+function aggregateTesseractResults(results: ParsedTesseractTsv[]): Omit<TesseractOcrExecutionResult, "warnings"> {
+  const text = results
+    .map((result) => result.text.trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+
+  const pageCount = results.reduce((sum, result) => sum + Math.max(result.pageCount, 1), 0);
+  const lineCount = results.reduce((sum, result) => sum + result.lineCount, 0);
+  const wordCount = results.reduce((sum, result) => sum + result.wordCount, 0);
+
+  let weightedConfidenceSum = 0;
+  let weightedConfidenceCount = 0;
+  let minWordConfidence: number | null = null;
+
+  for (const result of results) {
+    if (result.averageWordConfidence != null && result.wordCount > 0) {
+      weightedConfidenceSum += result.averageWordConfidence * result.wordCount;
+      weightedConfidenceCount += result.wordCount;
+    }
+
+    if (result.minWordConfidence != null) {
+      minWordConfidence = minWordConfidence == null
+        ? result.minWordConfidence
+        : Math.min(minWordConfidence, result.minWordConfidence);
+    }
+  }
+
+  return {
+    text,
+    pageCount,
+    lineCount,
+    wordCount,
+    averageWordConfidence: weightedConfidenceCount > 0 ? weightedConfidenceSum / weightedConfidenceCount : null,
+    minWordConfidence,
+  };
+}
+
+async function runTesseractOcr(input: {
+  config: TesseractOcrConfig;
+  fileBytes: Uint8Array;
+  mimeType: string | null;
+  fileName: string;
+}): Promise<TesseractOcrExecutionResult> {
+  const tempDir = await mkdtemp(join(tmpdir(), "sme-loanhub-ocr-"));
+  const warnings: string[] = [];
+
+  try {
+    const inputExt = getTempExtension(input.mimeType, input.fileName);
+    const inputPath = join(tempDir, `source${inputExt}`);
+    await writeFile(inputPath, input.fileBytes);
+
+    if (isPdfMimeType(input.mimeType, input.fileName)) {
+      const outputPrefix = join(tempDir, "pdf-page");
+      const pdfArgs = [
+        "-png",
+        "-r",
+        String(input.config.pdfDpi),
+        "-f",
+        "1",
+        "-l",
+        String(input.config.pdfMaxPages),
+        inputPath,
+        outputPrefix,
+      ];
+
+      try {
+        await runCommand(input.config.pdfToPpmCommand, pdfArgs, {
+          timeoutMs: input.config.timeoutMs,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown pdftoppm error";
+        if (message.includes("Command not found")) {
+          throw new Error(
+            `PDF OCR requires Poppler 'pdftoppm'. Set OCR_PDFTOPPM_COMMAND or install Poppler. (${message})`,
+          );
+        }
+        throw new Error(`Failed to convert PDF pages for OCR: ${message}`);
+      }
+
+      const files = (await readdir(tempDir))
+        .filter((name) => /^pdf-page-\d+\.png$/i.test(name))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+
+      if (files.length === 0) {
+        throw new Error("PDF conversion produced no page images for OCR.");
+      }
+
+      if (files.length >= input.config.pdfMaxPages) {
+        warnings.push(`PDF OCR processed up to ${input.config.pdfMaxPages} page(s). Increase OCR_PDF_MAX_PAGES for longer files.`);
+      }
+
+      const pageResults: ParsedTesseractTsv[] = [];
+      for (const file of files) {
+        try {
+          const pageResult = await runTesseractOnImageAsTsv({
+            config: input.config,
+            imagePath: join(tempDir, file),
+          });
+          pageResults.push(pageResult);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unknown Tesseract OCR error";
+          if (message.includes("Command not found")) {
+            throw new Error(
+              `Tesseract OCR command not found. Set OCR_TESSERACT_COMMAND or install Tesseract OCR. (${message})`,
+            );
+          }
+          throw new Error(`Tesseract OCR failed on PDF page '${file}': ${message}`);
+        }
+      }
+
+      return {
+        ...aggregateTesseractResults(pageResults),
+        warnings,
+      };
+    }
+
+    try {
+      const result = await runTesseractOnImageAsTsv({
+        config: input.config,
+        imagePath: inputPath,
+      });
+
+      return {
+        ...aggregateTesseractResults([result]),
+        warnings,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown Tesseract OCR error";
+      if (message.includes("Command not found")) {
+        throw new Error(
+          `Tesseract OCR command not found. Set OCR_TESSERACT_COMMAND or install Tesseract OCR. (${message})`,
+        );
+      }
+      throw new Error(`Tesseract OCR failed: ${message}`);
+    }
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+function buildTesseractExtractor(
+  profile: Profile,
+  application: LoanApplication,
+  config: TesseractOcrConfig,
+): OcrExtractor {
+  return {
+    async extract(input): Promise<ExtractedDocument> {
+      const fileTokens = tokenize(input.fileName);
+      const declaredTokens = tokenize(input.declaredType);
+      const storageContent = await downloadStorageObjectContent({
+        storageBucket: input.storageBucket,
+        storagePath: input.storagePath,
+        mimeType: input.mimeType,
+      });
+
+      if (!storageContent.exists || !storageContent.bytes || storageContent.bytes.byteLength === 0) {
+        const issues = storageContent.issues.length > 0
+          ? storageContent.issues
+          : ["Unable to load file bytes for OCR processing."];
+        throw new Error(issues.join(" "));
+      }
+
+      const tesseractResult = await runTesseractOcr({
+        config,
+        fileBytes: storageContent.bytes,
+        mimeType: storageContent.detectedMimeType ?? input.mimeType,
+        fileName: input.fileName,
+      });
+
+      const ocrTokens = tokenize(tesseractResult.text.slice(0, 12000));
+      const combinedTokens = uniqueStrings([...fileTokens, ...ocrTokens]);
+      const detection = detectDocumentTypeFromTokens(combinedTokens);
+      const detectedType = detection.detectedType;
+      const declaredType = normalizeText(input.declaredType);
+      const detectedNormalized = detectedType ? normalizeText(detectedType) : null;
+      const overlapCount = declaredTokens.filter((token) => combinedTokens.includes(token)).length;
+      const overlapRatio = declaredTokens.length > 0 ? overlapCount / declaredTokens.length : 0;
+      const typeMatched = detectedNormalized !== null && detectedNormalized === declaredType;
+
+      let confidenceScore = tesseractResult.averageWordConfidence != null
+        ? tesseractResult.averageWordConfidence
+        : tesseractResult.text.length > 24
+          ? 70
+          : 35;
+
+      if (!tesseractResult.text) {
+        confidenceScore = Math.min(confidenceScore, 10);
+      }
+      if (storageContent.issues.length > 0) {
+        confidenceScore = Math.min(confidenceScore, 60);
+      }
+      if (typeMatched && detection.score > 0) {
+        confidenceScore = Math.max(confidenceScore, Math.min(detection.score, 98));
+      } else if (!detectedType && overlapRatio >= 0.6) {
+        confidenceScore = Math.max(confidenceScore, 72);
+      }
+
+      confidenceScore = Number(Math.max(0, Math.min(99, confidenceScore)).toFixed(2));
+
+      const warnings: string[] = [];
+      if (storageContent.issues.length > 0) {
+        warnings.push(...storageContent.issues);
+      }
+      warnings.push(...tesseractResult.warnings);
+      if (!tesseractResult.text) {
+        warnings.push("OCR completed but no text content was extracted.");
+      }
+      if (!detectedType) {
+        warnings.push("Document type could not be confidently inferred from OCR text.");
+      }
+
+      const issueDate = extractIssueDateFromText(tesseractResult.text, fileTokens);
+
+      const extractedFields: Record<string, unknown> = {
+        source: "tesseract",
+        provider: "tesseract",
+        provider_model_id: "tesseract-cli",
+        provider_api_version: null,
+        detected_document_type: detectedType,
+        detection_score: detection.score,
+        detection_keywords: detection.matchedKeywords,
+        declared_document_type: input.declaredType,
+        declared_token_overlap_count: overlapCount,
+        declared_token_overlap_ratio: Number(overlapRatio.toFixed(2)),
+        storage_verified: storageContent.exists,
+        storage_size_bytes: storageContent.byteLength,
+        detected_mime_type: storageContent.detectedMimeType,
+        storage_probe_issues: storageContent.issues,
+        page_count: tesseractResult.pageCount,
+        line_count: tesseractResult.lineCount,
+        word_count: tesseractResult.wordCount,
+        average_word_confidence: tesseractResult.averageWordConfidence != null
+          ? Number(tesseractResult.averageWordConfidence.toFixed(2))
+          : null,
+        min_word_confidence: tesseractResult.minWordConfidence != null
+          ? Number(tesseractResult.minWordConfidence.toFixed(2))
+          : null,
+        languages: uniqueStrings(config.language.split("+")),
+        tesseract_command: config.command,
+        tesseract_psm: config.psm,
+        tesseract_oem: config.oem,
+        pdf_converter_command: config.pdfToPpmCommand,
+        business_name: profile.business_name ?? null,
+        applicant_name: profile.full_name ?? null,
+        requested_amount: Number(application.requested_amount ?? 0),
+        issue_date: issueDate,
+      };
+
+      return {
+        text: tesseractResult.text,
+        confidenceScore,
+        detectedType,
+        extractedFields,
+        warnings: uniqueStrings(warnings),
+        engine: "ocr",
+      };
+    },
   };
 }
 
@@ -900,10 +1455,23 @@ function buildPlaceholderExtractor(
 }
 
 function buildConfiguredExtractor(profile: Profile, application: LoanApplication): OcrExtractor {
+  const tesseractConfig = getTesseractOcrConfig();
+  if (tesseractConfig) {
+    return buildTesseractExtractor(profile, application, tesseractConfig);
+  }
+
   const azureConfig = getAzureOcrConfig();
 
   if (azureConfig) {
     return buildAzureDocumentIntelligenceExtractor(profile, application, azureConfig);
+  }
+
+  if (env.OCR_PROVIDER === "tesseract") {
+    return buildPlaceholderExtractor(
+      profile,
+      application,
+      "Tesseract OCR provider was selected but configuration is invalid. Falling back to placeholder verification.",
+    );
   }
 
   if (env.OCR_PROVIDER === "azure_document_intelligence") {
@@ -975,13 +1543,8 @@ function evaluateDocumentValidation(input: {
   };
 }
 
-function getDocumentWorkflowStatus(status: ScanValidationStatus): "verified" | "rejected" | "needs_review" {
-  if (status === "valid") {
-    return "verified";
-  }
-  if (status === "invalid") {
-    return "rejected";
-  }
+function getDocumentWorkflowStatus(_status: ScanValidationStatus): "verified" | "rejected" | "needs_review" {
+  // Scanner classifications are advisory; human review is required before final workflow state.
   return "needs_review";
 }
 
@@ -1150,7 +1713,7 @@ export async function scanApplicationDocuments(
         extractedFields = {
           ...existingExtracted,
           confidence_score: 0,
-          extraction_engine: env.OCR_PROVIDER === "azure_document_intelligence" ? "ocr" : "placeholder",
+          extraction_engine: env.OCR_PROVIDER === "placeholder" ? "placeholder" : "ocr",
           configured_ocr_provider: env.OCR_PROVIDER,
           scan_error: {
             message: errorMessage,
@@ -1187,6 +1750,20 @@ export async function scanApplicationDocuments(
       ocrText = row.ocr_text ? String(row.ocr_text) : null;
       confidenceScore = Number(existingExtracted.confidence_score ?? 0);
       notes = ["Using previously scanned extraction data."];
+
+      if (String(row.status ?? "").toLowerCase() !== "needs_review") {
+        const updateDocument = await supabaseAdmin
+          .from("documents")
+          .update({
+            status: "needs_review",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", row.id);
+
+        if (updateDocument.error) {
+          throw internalError("Failed to persist document review status", updateDocument.error);
+        }
+      }
     }
 
     if (validationStatus === "valid") {

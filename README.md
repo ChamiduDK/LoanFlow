@@ -26,7 +26,16 @@ Copy `.env.example` to `.env` and configure:
 - `NODE_ENV`
 - `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
 - `ML_ASSETS_DIR` (filesystem path for trained ML model artifacts)
-- `OCR_PROVIDER` (`placeholder` or `azure_document_intelligence`)
+- `OCR_PROVIDER` (`placeholder`, `tesseract`, or `azure_document_intelligence`)
+- Tesseract OCR settings (used when `OCR_PROVIDER=tesseract`):
+  - `OCR_TESSERACT_COMMAND` (default `tesseract`)
+  - `OCR_TESSERACT_LANGUAGE` (default `eng`)
+  - `OCR_TESSERACT_PSM` (default `3`)
+  - `OCR_TESSERACT_OEM` (default `1`)
+  - `OCR_TESSERACT_TIMEOUT_MS`
+  - `OCR_PDFTOPPM_COMMAND` (default `pdftoppm`, for PDF pages -> images)
+  - `OCR_PDF_DPI` (default `200`)
+  - `OCR_PDF_MAX_PAGES` (default `10`)
 - Azure OCR settings (required when `OCR_PROVIDER=azure_document_intelligence`):
   - `OCR_AZURE_ENDPOINT`
   - `OCR_AZURE_API_KEY`
