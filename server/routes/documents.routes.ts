@@ -26,6 +26,60 @@ const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "image/png",
 ]);
 
+const ALLOWED_FILE_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png"]);
+
+const MIME_TO_ALLOWED_EXTENSIONS: Record<string, Set<string>> = {
+  "application/pdf": new Set(["pdf"]),
+  "image/jpeg": new Set(["jpg", "jpeg"]),
+  "image/png": new Set(["png"]),
+};
+
+function getFileExtension(fileName: string): string | null {
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex < 0 || dotIndex === fileName.length - 1) {
+    return null;
+  }
+
+  return fileName.slice(dotIndex + 1).trim().toLowerCase();
+}
+
+function detectMimeTypeFromSignature(bytes: Buffer): string | null {
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x25 && // %
+    bytes[1] === 0x50 && // P
+    bytes[2] === 0x44 && // D
+    bytes[3] === 0x46 // F
+  ) {
+    return "application/pdf";
+  }
+
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+
+  return null;
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -53,6 +107,21 @@ documentsRouter.post(
     const mimeType = req.file.mimetype.toLowerCase();
     if (!ALLOWED_UPLOAD_MIME_TYPES.has(mimeType)) {
       throw badRequest("Unsupported file type. Allowed formats: PDF, JPG, PNG");
+    }
+
+    const fileExtension = getFileExtension(req.file.originalname);
+    if (!fileExtension || !ALLOWED_FILE_EXTENSIONS.has(fileExtension)) {
+      throw badRequest("Unsupported file extension. Allowed formats: .pdf, .jpg, .jpeg, .png");
+    }
+
+    const allowedExtensionsForMime = MIME_TO_ALLOWED_EXTENSIONS[mimeType];
+    if (allowedExtensionsForMime && !allowedExtensionsForMime.has(fileExtension)) {
+      throw badRequest("File extension does not match the uploaded content type");
+    }
+
+    const signatureMimeType = detectMimeTypeFromSignature(req.file.buffer);
+    if (signatureMimeType && signatureMimeType !== mimeType) {
+      throw badRequest("File content does not match the declared file type");
     }
 
     const payload = parseWithSchema(documentUploadBodySchema, req.body);

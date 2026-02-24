@@ -18,16 +18,55 @@ type ChecklistItem = {
   display_name: string;
   required: boolean;
   uploaded: boolean;
+  has_uploaded_record: boolean;
+  latest_document_id: string | null;
+  latest_status: string | null;
+  latest_validation_status: string | null;
+  latest_uploaded_at: string | null;
 };
 
 function sanitizeFilename(input: string): string {
   return input.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-async function assertApplicationOwnership(userId: string, applicationId: string): Promise<void> {
+function getFileExtension(fileName: string): string | null {
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex < 0 || dotIndex === fileName.length - 1) {
+    return null;
+  }
+
+  return fileName.slice(dotIndex + 1).trim().toLowerCase();
+}
+
+function normalizeDocumentType(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeDocumentWorkflowStatus(value: unknown): string {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (status === "uploaded" || status === "processing" || status === "verified" || status === "rejected" || status === "needs_review") {
+    return status;
+  }
+
+  return "needs_review";
+}
+
+function normalizeValidationStatus(value: unknown): "valid" | "invalid" | "unclear" {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (status === "valid" || status === "invalid") {
+    return status;
+  }
+
+  return "unclear";
+}
+
+async function assertApplicationOwnership(
+  userId: string,
+  applicationId: string,
+): Promise<{ id: string; user_id: string; selected_product_id: string | null }> {
   const { data, error } = await supabaseAdmin
     .from("loan_applications")
-    .select("id, user_id")
+    .select("id, user_id, selected_product_id")
     .eq("id", applicationId)
     .maybeSingle();
 
@@ -42,6 +81,12 @@ async function assertApplicationOwnership(userId: string, applicationId: string)
   if (data.user_id !== userId) {
     throw forbidden("You cannot access this application");
   }
+
+  return {
+    id: String(data.id),
+    user_id: String(data.user_id),
+    selected_product_id: data.selected_product_id ? String(data.selected_product_id) : null,
+  };
 }
 
 export async function uploadDocumentForApplication(input: UploadInput): Promise<Record<string, unknown>> {
@@ -54,6 +99,32 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
   const normalizedDocumentType = input.documentType.trim().toLowerCase();
   if (!normalizedDocumentType) {
     throw badRequest("Document type is required");
+  }
+
+  if (input.productId) {
+    const requiredDocResult = await supabaseAdmin
+      .from("required_documents")
+      .select("id, accepted_formats")
+      .eq("product_id", input.productId)
+      .eq("document_type", normalizedDocumentType)
+      .maybeSingle();
+
+    if (requiredDocResult.error) {
+      throw internalError("Failed to validate required document type", requiredDocResult.error);
+    }
+
+    if (!requiredDocResult.data) {
+      throw badRequest("Document type is not configured for the selected product");
+    }
+
+    const allowedFormats = Array.isArray(requiredDocResult.data.accepted_formats)
+      ? requiredDocResult.data.accepted_formats.map((value) => String(value).trim().toLowerCase())
+      : [];
+    const fileExtension = getFileExtension(input.file.originalname);
+
+    if (allowedFormats.length > 0 && (!fileExtension || !allowedFormats.includes(fileExtension))) {
+      throw badRequest(`File extension .${fileExtension ?? "unknown"} is not allowed for this document type`);
+    }
   }
 
   const safeName = sanitizeFilename(input.file.originalname);
@@ -156,19 +227,47 @@ export async function checkDocumentCompleteness(
   applicationId: string,
   productIds?: string[],
 ): Promise<Record<string, unknown>> {
-  await assertApplicationOwnership(userId, applicationId);
+  const ownedApplication = await assertApplicationOwnership(userId, applicationId);
+  const explicitProductIds = Array.from(
+    new Set((productIds ?? []).map((value) => String(value).trim()).filter((value) => value.length > 0)),
+  );
+  let targetProductIds = explicitProductIds;
+
+  if (targetProductIds.length === 0) {
+    const appliedProductsResult = await supabaseAdmin
+      .from("application_results")
+      .select("product_id")
+      .eq("application_id", applicationId);
+
+    if (appliedProductsResult.error) {
+      throw internalError("Failed to load application product context", appliedProductsResult.error);
+    }
+
+    targetProductIds = Array.from(
+      new Set(
+        (appliedProductsResult.data ?? [])
+          .map((row) => (row.product_id ? String(row.product_id).trim() : ""))
+          .filter((value) => value.length > 0),
+      ),
+    );
+  }
+
+  if (targetProductIds.length === 0 && ownedApplication.selected_product_id) {
+    targetProductIds = [ownedApplication.selected_product_id];
+  }
 
   const [uploadedDocsResult, productsResult] = await Promise.all([
     supabaseAdmin
       .from("documents")
-      .select("id, document_type, product_id")
+      .select("id, document_type, product_id, status, validation_status, created_at")
       .eq("application_id", applicationId)
-      .eq("user_id", userId),
-    productIds && productIds.length > 0
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    targetProductIds.length > 0
       ? supabaseAdmin
           .from("loan_products")
           .select("id, name, bank_id, banks(name)")
-          .in("id", productIds)
+          .in("id", targetProductIds)
           .eq("is_active", true)
       : supabaseAdmin.from("loan_products").select("id, name, bank_id, banks(name)").eq("is_active", true),
   ]);
@@ -208,9 +307,7 @@ export async function checkDocumentCompleteness(
   }
 
   const requiredDocs = requiredResult.data ?? [];
-  const uploadedDocTypes = new Set(
-    (uploadedDocsResult.data ?? []).map((row) => String(row.document_type).trim().toLowerCase()),
-  );
+  const uploadedDocs = uploadedDocsResult.data ?? [];
 
   const checks: Array<Record<string, unknown>> = [];
   const upsertRows: Array<Record<string, unknown>> = [];
@@ -219,14 +316,52 @@ export async function checkDocumentCompleteness(
 
   for (const product of products) {
     const perProduct = requiredDocs.filter((doc) => doc.product_id === product.id);
+    const latestDocByType = new Map<
+      string,
+      {
+        id: string;
+        status: string;
+        validation_status: "valid" | "invalid" | "unclear";
+        created_at: string | null;
+      }
+    >();
+
+    for (const uploaded of uploadedDocs) {
+      const uploadedProductId = uploaded.product_id ? String(uploaded.product_id) : null;
+      if (uploadedProductId && uploadedProductId !== product.id) {
+        continue;
+      }
+
+      const normalizedType = normalizeDocumentType(uploaded.document_type);
+      if (!normalizedType || latestDocByType.has(normalizedType)) {
+        continue;
+      }
+
+      latestDocByType.set(normalizedType, {
+        id: String(uploaded.id),
+        status: normalizeDocumentWorkflowStatus(uploaded.status),
+        validation_status: normalizeValidationStatus(uploaded.validation_status),
+        created_at: uploaded.created_at ? String(uploaded.created_at) : null,
+      });
+    }
 
     const checklist: ChecklistItem[] = perProduct.map((doc) => {
-      const uploaded = uploadedDocTypes.has(String(doc.document_type).trim().toLowerCase());
+      const latestDoc = latestDocByType.get(normalizeDocumentType(doc.document_type));
+      const hasUploadedRecord = Boolean(latestDoc);
+      const workflowStatus = latestDoc?.status ?? null;
+      const validationStatus = latestDoc?.validation_status ?? null;
+      const uploaded = hasUploadedRecord && workflowStatus !== "rejected" && validationStatus !== "invalid";
+
       return {
         document_type: String(doc.document_type),
         display_name: String(doc.display_name),
         required: Boolean(doc.is_required),
         uploaded,
+        has_uploaded_record: hasUploadedRecord,
+        latest_document_id: latestDoc?.id ?? null,
+        latest_status: workflowStatus,
+        latest_validation_status: validationStatus,
+        latest_uploaded_at: latestDoc?.created_at ?? null,
       };
     });
 
