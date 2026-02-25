@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LoanApplication, Profile } from "../../types/domain";
@@ -65,6 +65,23 @@ type TesseractOcrConfig = {
   pdfMaxPages: number;
 };
 
+type GoogleVisionOcrConfig = {
+  endpoint: string;
+  apiKey: string;
+  requestTimeoutMs: number;
+  pdfToPpmCommand: string;
+  pdfDpi: number;
+  pdfMaxPages: number;
+};
+
+type GeminiDocClassifierConfig = {
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+  minOcrChars: number;
+  maxTextChars: number;
+};
+
 type ScanDocumentSummary = {
   document_id: string;
   document_type: string;
@@ -76,6 +93,12 @@ type ScanDocumentSummary = {
   extracted_fields: Record<string, unknown>;
   ocr_preview: string | null;
   scanned: boolean;
+};
+
+type AiTypeClassification = {
+  detectedType: string | null;
+  confidenceScore: number;
+  reason: string;
 };
 
 export type DocumentScanResponse = {
@@ -133,6 +156,44 @@ function uniqueStrings(values: string[]): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const DOCUMENT_TYPE_ALIASES: Record<string, string[]> = {
+  nic_copy: ["nic_copy", "nic", "national_identity_card", "national_id", "identity_card"],
+  tax_certificate: ["tax_certificate", "tin", "tin_certificate", "tax_registration"],
+  bank_statement: ["bank_statement", "bank_stmt", "account_statement", "acct_statement"],
+  financial_statement: ["financial_statement", "financials", "pnl", "profit_and_loss"],
+  business_registration: ["business_registration", "business_reg", "br", "br_certificate"],
+  collateral_document: ["collateral_document", "title_deed", "mortgage_document", "valuation_report"],
+};
+
+const DOCUMENT_TYPE_ALIAS_LOOKUP = new Map<string, string>(
+  Object.entries(DOCUMENT_TYPE_ALIASES).flatMap(([canonical, aliases]) =>
+    aliases.map((alias) => [alias, canonical] as const),
+  ),
+);
+
+function normalizeTypeToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function canonicalizeDocumentType(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = normalizeTypeToken(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return DOCUMENT_TYPE_ALIAS_LOOKUP.get(normalized) ?? normalized;
+}
+
+function areEquivalentDocumentTypes(left: string | null | undefined, right: string | null | undefined): boolean {
+  const leftCanonical = canonicalizeDocumentType(left);
+  const rightCanonical = canonicalizeDocumentType(right);
+  return leftCanonical !== null && rightCanonical !== null && leftCanonical === rightCanonical;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -781,6 +842,43 @@ function getAzureOcrConfig(): AzureOcrConfig | null {
   };
 }
 
+function getGoogleVisionOcrConfig(): GoogleVisionOcrConfig | null {
+  if (env.OCR_PROVIDER !== "google_vision") {
+    return null;
+  }
+
+  if (!env.OCR_GOOGLE_API_KEY) {
+    return null;
+  }
+
+  return {
+    endpoint: env.OCR_GOOGLE_ENDPOINT.replace(/\/+$/, ""),
+    apiKey: env.OCR_GOOGLE_API_KEY,
+    requestTimeoutMs: env.OCR_GOOGLE_REQUEST_TIMEOUT_MS,
+    pdfToPpmCommand: env.OCR_PDFTOPPM_COMMAND.trim(),
+    pdfDpi: env.OCR_PDF_DPI,
+    pdfMaxPages: env.OCR_PDF_MAX_PAGES,
+  };
+}
+
+function getGeminiDocClassifierConfig(): GeminiDocClassifierConfig | null {
+  if (env.DOCUMENT_AI_PROVIDER !== "gemini") {
+    return null;
+  }
+
+  if (!env.DOCUMENT_AI_GEMINI_API_KEY) {
+    return null;
+  }
+
+  return {
+    apiKey: env.DOCUMENT_AI_GEMINI_API_KEY,
+    model: env.DOCUMENT_AI_GEMINI_MODEL,
+    timeoutMs: env.DOCUMENT_AI_TIMEOUT_MS,
+    minOcrChars: env.DOCUMENT_AI_MIN_OCR_CHARS,
+    maxTextChars: env.DOCUMENT_AI_MAX_TEXT_CHARS,
+  };
+}
+
 function buildAzureAnalyzeUrl(config: AzureOcrConfig): string {
   const params = new URLSearchParams({
     "api-version": config.apiVersion,
@@ -967,6 +1065,329 @@ function parseAzureOcrPayload(payload: Record<string, unknown>): ParsedAzureOcrP
     modelId: typeof analyzeResult.modelId === "string" ? analyzeResult.modelId : null,
     apiVersion: typeof analyzeResult.apiVersion === "string" ? analyzeResult.apiVersion : null,
   };
+}
+
+type ParsedGoogleVisionPayload = {
+  text: string;
+  pageCount: number;
+  lineCount: number;
+  wordCount: number;
+  averageWordConfidence: number | null;
+  minWordConfidence: number | null;
+  languages: string[];
+};
+
+function collectGoogleLanguagesFromProperty(
+  property: unknown,
+  accumulator: Set<string>,
+): void {
+  if (!isRecord(property) || !Array.isArray(property.detectedLanguages)) {
+    return;
+  }
+
+  for (const language of property.detectedLanguages) {
+    if (!isRecord(language)) {
+      continue;
+    }
+    const code = typeof language.languageCode === "string" ? language.languageCode.trim() : "";
+    if (code) {
+      accumulator.add(code);
+    }
+  }
+}
+
+function parseGoogleVisionPayload(payload: Record<string, unknown>): ParsedGoogleVisionPayload {
+  const fullTextAnnotation = isRecord(payload.fullTextAnnotation) ? payload.fullTextAnnotation : {};
+  const textAnnotations = Array.isArray(payload.textAnnotations) ? payload.textAnnotations : [];
+  const pages = Array.isArray(fullTextAnnotation.pages) ? fullTextAnnotation.pages : [];
+
+  const text = typeof fullTextAnnotation.text === "string"
+    ? fullTextAnnotation.text.trim()
+    : (
+      isRecord(textAnnotations[0]) && typeof textAnnotations[0].description === "string"
+        ? textAnnotations[0].description.trim()
+        : ""
+    );
+
+  const languages = new Set<string>();
+  collectGoogleLanguagesFromProperty(fullTextAnnotation.property, languages);
+
+  let lineCount = 0;
+  let wordCount = 0;
+  let confidenceSum = 0;
+  let confidenceCount = 0;
+  let minWordConfidence: number | null = null;
+
+  for (const page of pages) {
+    if (!isRecord(page)) {
+      continue;
+    }
+
+    collectGoogleLanguagesFromProperty(page.property, languages);
+    const blocks = Array.isArray(page.blocks) ? page.blocks : [];
+
+    for (const block of blocks) {
+      if (!isRecord(block)) {
+        continue;
+      }
+
+      collectGoogleLanguagesFromProperty(block.property, languages);
+      const paragraphs = Array.isArray(block.paragraphs) ? block.paragraphs : [];
+      lineCount += paragraphs.length;
+
+      for (const paragraph of paragraphs) {
+        if (!isRecord(paragraph)) {
+          continue;
+        }
+
+        collectGoogleLanguagesFromProperty(paragraph.property, languages);
+        const words = Array.isArray(paragraph.words) ? paragraph.words : [];
+        wordCount += words.length;
+
+        for (const word of words) {
+          if (!isRecord(word)) {
+            continue;
+          }
+
+          collectGoogleLanguagesFromProperty(word.property, languages);
+
+          const wordConfidence = Number(word.confidence);
+          if (Number.isFinite(wordConfidence) && wordConfidence >= 0) {
+            confidenceSum += wordConfidence;
+            confidenceCount += 1;
+            minWordConfidence = minWordConfidence == null
+              ? wordConfidence
+              : Math.min(minWordConfidence, wordConfidence);
+            continue;
+          }
+
+          const symbols = Array.isArray(word.symbols) ? word.symbols : [];
+          for (const symbol of symbols) {
+            if (!isRecord(symbol)) {
+              continue;
+            }
+
+            collectGoogleLanguagesFromProperty(symbol.property, languages);
+            const symbolConfidence = Number(symbol.confidence);
+            if (!Number.isFinite(symbolConfidence) || symbolConfidence < 0) {
+              continue;
+            }
+
+            confidenceSum += symbolConfidence;
+            confidenceCount += 1;
+            minWordConfidence = minWordConfidence == null
+              ? symbolConfidence
+              : Math.min(minWordConfidence, symbolConfidence);
+          }
+        }
+      }
+    }
+  }
+
+  const pageCount = pages.length > 0 ? pages.length : (text ? 1 : 0);
+  const normalizedLineCount = lineCount > 0 ? lineCount : (text ? text.split(/\r?\n/).filter(Boolean).length : 0);
+  const normalizedWordCount = wordCount > 0 ? wordCount : tokenize(text).length;
+
+  return {
+    text,
+    pageCount,
+    lineCount: normalizedLineCount,
+    wordCount: normalizedWordCount,
+    averageWordConfidence: confidenceCount > 0 ? confidenceSum / confidenceCount : null,
+    minWordConfidence,
+    languages: Array.from(languages),
+  };
+}
+
+async function runGoogleVisionTextDetection(input: {
+  config: GoogleVisionOcrConfig;
+  imageBase64: string;
+}): Promise<ParsedGoogleVisionPayload> {
+  const endpoint = `${input.config.endpoint}/images:annotate?key=${encodeURIComponent(input.config.apiKey)}`;
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        requests: [
+          {
+            image: {
+              content: input.imageBase64,
+            },
+            features: [
+              {
+                type: "DOCUMENT_TEXT_DETECTION",
+              },
+            ],
+          },
+        ],
+      }),
+    },
+    input.config.requestTimeoutMs,
+  );
+
+  const payload = await readResponsePayload(response);
+  if (!response.ok) {
+    const remoteMessage = extractNestedErrorMessage(payload);
+    throw new Error(
+      `Google OCR request failed (${response.status})${remoteMessage ? `: ${remoteMessage}` : ""}`,
+    );
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.responses) || payload.responses.length === 0) {
+    throw new Error("Google OCR response did not contain responses.");
+  }
+
+  const firstResponse = payload.responses[0];
+  if (!isRecord(firstResponse)) {
+    throw new Error("Google OCR response format was invalid.");
+  }
+
+  if (isRecord(firstResponse.error)) {
+    const remoteMessage = extractNestedErrorMessage(firstResponse.error) ?? "Unknown Google OCR error";
+    throw new Error(`Google OCR returned an error: ${remoteMessage}`);
+  }
+
+  return parseGoogleVisionPayload(firstResponse);
+}
+
+type GoogleVisionOcrExecutionResult = {
+  text: string;
+  pageCount: number;
+  lineCount: number;
+  wordCount: number;
+  averageWordConfidence: number | null;
+  minWordConfidence: number | null;
+  languages: string[];
+  warnings: string[];
+};
+
+function aggregateGoogleVisionResults(results: ParsedGoogleVisionPayload[]): Omit<GoogleVisionOcrExecutionResult, "warnings"> {
+  const text = results
+    .map((result) => result.text.trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+
+  const pageCount = results.reduce((sum, result) => sum + Math.max(result.pageCount, 1), 0);
+  const lineCount = results.reduce((sum, result) => sum + result.lineCount, 0);
+  const wordCount = results.reduce((sum, result) => sum + result.wordCount, 0);
+  const languages = uniqueStrings(results.flatMap((result) => result.languages));
+
+  let weightedConfidenceSum = 0;
+  let weightedConfidenceCount = 0;
+  let minWordConfidence: number | null = null;
+
+  for (const result of results) {
+    if (result.averageWordConfidence != null && result.wordCount > 0) {
+      weightedConfidenceSum += result.averageWordConfidence * result.wordCount;
+      weightedConfidenceCount += result.wordCount;
+    }
+
+    if (result.minWordConfidence != null) {
+      minWordConfidence = minWordConfidence == null
+        ? result.minWordConfidence
+        : Math.min(minWordConfidence, result.minWordConfidence);
+    }
+  }
+
+  return {
+    text,
+    pageCount,
+    lineCount,
+    wordCount,
+    averageWordConfidence: weightedConfidenceCount > 0 ? weightedConfidenceSum / weightedConfidenceCount : null,
+    minWordConfidence,
+    languages,
+  };
+}
+
+async function runGoogleVisionOcr(input: {
+  config: GoogleVisionOcrConfig;
+  fileBytes: Uint8Array;
+  mimeType: string | null;
+  fileName: string;
+}): Promise<GoogleVisionOcrExecutionResult> {
+  const tempDir = await mkdtemp(join(tmpdir(), "sme-loanhub-google-ocr-"));
+  const warnings: string[] = [];
+
+  try {
+    const inputExt = getTempExtension(input.mimeType, input.fileName);
+    const inputPath = join(tempDir, `source${inputExt}`);
+    await writeFile(inputPath, input.fileBytes);
+
+    if (isPdfMimeType(input.mimeType, input.fileName)) {
+      const outputPrefix = join(tempDir, "pdf-page");
+      const pdfArgs = [
+        "-png",
+        "-r",
+        String(input.config.pdfDpi),
+        "-f",
+        "1",
+        "-l",
+        String(input.config.pdfMaxPages),
+        inputPath,
+        outputPrefix,
+      ];
+
+      try {
+        await runCommand(input.config.pdfToPpmCommand, pdfArgs, {
+          timeoutMs: Math.max(input.config.requestTimeoutMs, 120000),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown pdftoppm error";
+        if (message.includes("Command not found")) {
+          throw new Error(
+            `Google OCR for PDF requires Poppler 'pdftoppm'. Set OCR_PDFTOPPM_COMMAND or install Poppler. (${message})`,
+          );
+        }
+        throw new Error(`Failed to convert PDF pages for Google OCR: ${message}`);
+      }
+
+      const files = (await readdir(tempDir))
+        .filter((name) => /^pdf-page-\d+\.png$/i.test(name))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+
+      if (files.length === 0) {
+        throw new Error("PDF conversion produced no page images for Google OCR.");
+      }
+
+      if (files.length >= input.config.pdfMaxPages) {
+        warnings.push(`Google OCR processed up to ${input.config.pdfMaxPages} page(s). Increase OCR_PDF_MAX_PAGES for longer files.`);
+      }
+
+      const pageResults: ParsedGoogleVisionPayload[] = [];
+      for (const file of files) {
+        const pageBytes = await readFile(join(tempDir, file));
+        const pageResult = await runGoogleVisionTextDetection({
+          config: input.config,
+          imageBase64: pageBytes.toString("base64"),
+        });
+        pageResults.push(pageResult);
+      }
+
+      return {
+        ...aggregateGoogleVisionResults(pageResults),
+        warnings,
+      };
+    }
+
+    const imageBytes = await readFile(inputPath);
+    const imageResult = await runGoogleVisionTextDetection({
+      config: input.config,
+      imageBase64: imageBytes.toString("base64"),
+    });
+
+    return {
+      ...aggregateGoogleVisionResults([imageResult]),
+      warnings,
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 type TesseractOcrExecutionResult = {
@@ -1240,6 +1661,128 @@ function buildTesseractExtractor(
   };
 }
 
+function buildGoogleVisionExtractor(
+  profile: Profile,
+  application: LoanApplication,
+  config: GoogleVisionOcrConfig,
+): OcrExtractor {
+  return {
+    async extract(input): Promise<ExtractedDocument> {
+      const fileTokens = tokenize(input.fileName);
+      const declaredTokens = tokenize(input.declaredType);
+      const storageContent = await downloadStorageObjectContent({
+        storageBucket: input.storageBucket,
+        storagePath: input.storagePath,
+        mimeType: input.mimeType,
+      });
+
+      if (!storageContent.exists || !storageContent.bytes || storageContent.bytes.byteLength === 0) {
+        const issues = storageContent.issues.length > 0
+          ? storageContent.issues
+          : ["Unable to load file bytes for OCR processing."];
+        throw new Error(issues.join(" "));
+      }
+
+      const googleResult = await runGoogleVisionOcr({
+        config,
+        fileBytes: storageContent.bytes,
+        mimeType: storageContent.detectedMimeType ?? input.mimeType,
+        fileName: input.fileName,
+      });
+
+      const ocrTokens = tokenize(googleResult.text.slice(0, 12000));
+      const combinedTokens = uniqueStrings([...fileTokens, ...ocrTokens]);
+      const detection = detectDocumentTypeFromTokens(combinedTokens);
+      const detectedType = detection.detectedType;
+      const declaredType = normalizeText(input.declaredType);
+      const detectedNormalized = detectedType ? normalizeText(detectedType) : null;
+      const overlapCount = declaredTokens.filter((token) => combinedTokens.includes(token)).length;
+      const overlapRatio = declaredTokens.length > 0 ? overlapCount / declaredTokens.length : 0;
+      const typeMatched = detectedNormalized !== null && detectedNormalized === declaredType;
+
+      let confidenceScore = googleResult.averageWordConfidence != null
+        ? (googleResult.averageWordConfidence <= 1 ? googleResult.averageWordConfidence * 100 : googleResult.averageWordConfidence)
+        : googleResult.text.length > 24
+          ? 70
+          : 35;
+
+      if (!googleResult.text) {
+        confidenceScore = Math.min(confidenceScore, 10);
+      }
+      if (storageContent.issues.length > 0) {
+        confidenceScore = Math.min(confidenceScore, 60);
+      }
+      if (typeMatched && detection.score > 0) {
+        confidenceScore = Math.max(confidenceScore, Math.min(detection.score, 98));
+      } else if (!detectedType && overlapRatio >= 0.6) {
+        confidenceScore = Math.max(confidenceScore, 72);
+      }
+
+      confidenceScore = Number(Math.max(0, Math.min(99, confidenceScore)).toFixed(2));
+
+      const warnings: string[] = [];
+      if (storageContent.issues.length > 0) {
+        warnings.push(...storageContent.issues);
+      }
+      warnings.push(...googleResult.warnings);
+      if (!googleResult.text) {
+        warnings.push("OCR completed but no text content was extracted.");
+      }
+      if (!detectedType) {
+        warnings.push("Document type could not be confidently inferred from OCR text.");
+      }
+
+      const issueDate = extractIssueDateFromText(googleResult.text, fileTokens);
+
+      const extractedFields: Record<string, unknown> = {
+        source: "google_vision",
+        provider: "google_vision",
+        provider_model_id: "DOCUMENT_TEXT_DETECTION",
+        provider_api_version: "v1",
+        detected_document_type: detectedType,
+        detection_score: detection.score,
+        detection_keywords: detection.matchedKeywords,
+        declared_document_type: input.declaredType,
+        declared_token_overlap_count: overlapCount,
+        declared_token_overlap_ratio: Number(overlapRatio.toFixed(2)),
+        storage_verified: storageContent.exists,
+        storage_size_bytes: storageContent.byteLength,
+        detected_mime_type: storageContent.detectedMimeType,
+        storage_probe_issues: storageContent.issues,
+        page_count: googleResult.pageCount,
+        line_count: googleResult.lineCount,
+        word_count: googleResult.wordCount,
+        average_word_confidence: googleResult.averageWordConfidence != null
+          ? Number(((googleResult.averageWordConfidence <= 1
+            ? googleResult.averageWordConfidence * 100
+            : googleResult.averageWordConfidence)).toFixed(2))
+          : null,
+        min_word_confidence: googleResult.minWordConfidence != null
+          ? Number(((googleResult.minWordConfidence <= 1
+            ? googleResult.minWordConfidence * 100
+            : googleResult.minWordConfidence)).toFixed(2))
+          : null,
+        languages: googleResult.languages,
+        google_endpoint: config.endpoint,
+        pdf_converter_command: config.pdfToPpmCommand,
+        business_name: profile.business_name ?? null,
+        applicant_name: profile.full_name ?? null,
+        requested_amount: Number(application.requested_amount ?? 0),
+        issue_date: issueDate,
+      };
+
+      return {
+        text: googleResult.text,
+        confidenceScore,
+        detectedType,
+        extractedFields,
+        warnings: uniqueStrings(warnings),
+        engine: "ocr",
+      };
+    },
+  };
+}
+
 function buildAzureDocumentIntelligenceExtractor(
   profile: Profile,
   application: LoanApplication,
@@ -1455,6 +1998,11 @@ function buildPlaceholderExtractor(
 }
 
 function buildConfiguredExtractor(profile: Profile, application: LoanApplication): OcrExtractor {
+  const googleConfig = getGoogleVisionOcrConfig();
+  if (googleConfig) {
+    return buildGoogleVisionExtractor(profile, application, googleConfig);
+  }
+
   const tesseractConfig = getTesseractOcrConfig();
   if (tesseractConfig) {
     return buildTesseractExtractor(profile, application, tesseractConfig);
@@ -1482,7 +2030,303 @@ function buildConfiguredExtractor(profile: Profile, application: LoanApplication
     );
   }
 
+  if (env.OCR_PROVIDER === "google_vision") {
+    return buildPlaceholderExtractor(
+      profile,
+      application,
+      "Google OCR provider was selected but OCR_GOOGLE_API_KEY is missing. Falling back to placeholder verification.",
+    );
+  }
+
   return buildPlaceholderExtractor(profile, application);
+}
+
+function buildAiCandidateTypes(input: {
+  declaredType: string;
+  extractedDetectedType: string | null;
+  requiredTypes: Set<string>;
+}): string[] {
+  const rawCandidates = [
+    input.declaredType,
+    input.extractedDetectedType ?? "",
+    ...Array.from(input.requiredTypes),
+    ...Object.keys(DOCUMENT_TYPE_ALIASES),
+  ];
+
+  return uniqueStrings(
+    rawCandidates
+      .map((value) => canonicalizeDocumentType(value))
+      .filter((value): value is string => value !== null),
+  );
+}
+
+function parseGeminiCandidateContent(candidate: unknown): string {
+  if (!isRecord(candidate) || !isRecord(candidate.content) || !Array.isArray(candidate.content.parts)) {
+    return "";
+  }
+
+  return candidate.content.parts
+    .flatMap((part) => (isRecord(part) && typeof part.text === "string" ? [part.text] : []))
+    .join("\n")
+    .trim();
+}
+
+function parseAiClassification(content: string): AiTypeClassification {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content) as unknown;
+  } catch {
+    throw new Error("AI response was not valid JSON.");
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("AI response JSON must be an object.");
+  }
+
+  const rawDetectedType = typeof parsed.detected_type === "string"
+    ? parsed.detected_type.trim()
+    : parsed.detected_type === null
+      ? null
+      : "";
+  const normalizedDetectedType = rawDetectedType && rawDetectedType.toLowerCase() !== "unknown"
+    ? canonicalizeDocumentType(rawDetectedType)
+    : null;
+
+  const rawConfidence = Number(parsed.confidence_score);
+  const confidenceScore = Number.isFinite(rawConfidence)
+    ? Number(Math.max(0, Math.min(99, rawConfidence)).toFixed(2))
+    : 0;
+
+  const reason = typeof parsed.reason === "string" && parsed.reason.trim().length > 0
+    ? parsed.reason.trim()
+    : "No reason provided by AI classifier.";
+
+  return {
+    detectedType: normalizedDetectedType,
+    confidenceScore,
+    reason,
+  };
+}
+
+async function classifyDocumentTypeWithGemini(input: {
+  config: GeminiDocClassifierConfig;
+  declaredType: string;
+  fileName: string;
+  ocrText: string;
+  candidateTypes: string[];
+}): Promise<AiTypeClassification> {
+  const content = input.ocrText.slice(0, input.config.maxTextChars);
+  const modelPath = encodeURIComponent(input.config.model);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelPath}:generateContent?key=${encodeURIComponent(input.config.apiKey)}`;
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: [
+              "You classify SME loan supporting documents using OCR text.",
+              "Return strict JSON with keys: detected_type, confidence_score, reason.",
+              "detected_type must be one of candidate types or null.",
+              "confidence_score must be 0..99.",
+            ].join(" "),
+          }],
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [{
+              text: JSON.stringify({
+                declared_type: input.declaredType,
+                file_name: input.fileName,
+                candidate_types: input.candidateTypes,
+                ocr_text: content,
+              }),
+            }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+    input.config.timeoutMs,
+  );
+
+  const payload = await readResponsePayload(response);
+  if (!response.ok) {
+    const remoteMessage = extractNestedErrorMessage(payload);
+    throw new Error(
+      `AI classifier request failed (${response.status})${remoteMessage ? `: ${remoteMessage}` : ""}`,
+    );
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.candidates) || payload.candidates.length === 0) {
+    throw new Error("AI classifier response did not contain candidates.");
+  }
+
+  const firstCandidate = payload.candidates[0];
+  const contentText = parseGeminiCandidateContent(firstCandidate);
+  if (!contentText) {
+    throw new Error("AI classifier returned empty content.");
+  }
+
+  const result = parseAiClassification(contentText);
+  const candidateSet = new Set(input.candidateTypes.map((type) => canonicalizeDocumentType(type)).filter((type): type is string => type !== null));
+
+  if (result.detectedType && candidateSet.size > 0 && !candidateSet.has(result.detectedType) && result.confidenceScore < 85) {
+    return {
+      ...result,
+      detectedType: null,
+      reason: `${result.reason} Detected type was outside candidate types and confidence was below 85.`,
+    };
+  }
+
+  return result;
+}
+
+async function applyAiTypeEnhancement(input: {
+  extracted: ExtractedDocument;
+  declaredType: string;
+  fileName: string;
+  requiredTypes: Set<string>;
+}): Promise<ExtractedDocument> {
+  const config = getGeminiDocClassifierConfig();
+  if (!config) {
+    return input.extracted;
+  }
+
+  if (input.extracted.engine !== "ocr") {
+    return {
+      ...input.extracted,
+      extractedFields: {
+        ...input.extracted.extractedFields,
+        ai_classifier: {
+          provider: "gemini",
+          enabled: false,
+          skipped: true,
+          reason: "OCR engine is not active for this document.",
+        },
+      },
+    };
+  }
+
+  const trimmedText = input.extracted.text.trim();
+  if (trimmedText.length < config.minOcrChars) {
+    return {
+      ...input.extracted,
+      extractedFields: {
+        ...input.extracted.extractedFields,
+        ai_classifier: {
+          provider: "gemini",
+          enabled: false,
+          skipped: true,
+          reason: `OCR text is too short for AI classification (min ${config.minOcrChars} chars).`,
+        },
+      },
+    };
+  }
+
+  const candidateTypes = buildAiCandidateTypes({
+    declaredType: input.declaredType,
+    extractedDetectedType: input.extracted.detectedType,
+    requiredTypes: input.requiredTypes,
+  });
+
+  try {
+    const aiResult = await classifyDocumentTypeWithGemini({
+      config,
+      declaredType: input.declaredType,
+      fileName: input.fileName,
+      ocrText: trimmedText,
+      candidateTypes,
+    });
+
+    const heuristicType = input.extracted.detectedType;
+    const heuristicConfidence = input.extracted.confidenceScore;
+    let resolvedType = heuristicType;
+    let resolvedConfidence = heuristicConfidence;
+    const warnings = [...input.extracted.warnings];
+
+    if (aiResult.detectedType) {
+      if (!heuristicType) {
+        resolvedType = aiResult.detectedType;
+        resolvedConfidence = Math.max(heuristicConfidence, aiResult.confidenceScore);
+      } else if (areEquivalentDocumentTypes(aiResult.detectedType, heuristicType)) {
+        resolvedType = canonicalizeDocumentType(aiResult.detectedType) ?? heuristicType;
+        resolvedConfidence = Math.max(heuristicConfidence, aiResult.confidenceScore);
+      } else if (aiResult.confidenceScore >= heuristicConfidence + 12 || aiResult.confidenceScore >= 85) {
+        warnings.push(
+          `AI classifier overrode detected type from '${heuristicType}' to '${aiResult.detectedType}' (confidence ${aiResult.confidenceScore}).`,
+        );
+        resolvedType = aiResult.detectedType;
+        resolvedConfidence = aiResult.confidenceScore;
+      } else {
+        warnings.push(
+          `AI classifier suggested '${aiResult.detectedType}' but heuristic result '${heuristicType}' was retained due to lower confidence.`,
+        );
+      }
+    }
+
+    return {
+      ...input.extracted,
+      detectedType: resolvedType,
+      confidenceScore: Number(Math.max(0, Math.min(99, resolvedConfidence)).toFixed(2)),
+      warnings: uniqueStrings(warnings),
+      extractedFields: {
+        ...input.extracted.extractedFields,
+        detected_document_type: resolvedType,
+        ai_classifier: {
+          provider: "gemini",
+          enabled: true,
+          model: config.model,
+          candidate_types: candidateTypes,
+          detected_type: aiResult.detectedType,
+          confidence_score: aiResult.confidenceScore,
+          reason: aiResult.reason,
+          resolved_detected_type: resolvedType,
+        },
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown AI classification error";
+    return {
+      ...input.extracted,
+      warnings: uniqueStrings([
+        ...input.extracted.warnings,
+        `AI classification skipped: ${message}`,
+      ]),
+      extractedFields: {
+        ...input.extracted.extractedFields,
+        ai_classifier: {
+          provider: "gemini",
+          enabled: false,
+          failed: true,
+          model: config.model,
+          reason: message,
+        },
+      },
+    };
+  }
+}
+
+function isDocumentTypeRequiredForBank(requiredTypes: Set<string>, declaredType: string): boolean {
+  if (requiredTypes.size === 0) {
+    return true;
+  }
+
+  for (const requiredType of requiredTypes) {
+    if (normalizeText(requiredType) === normalizeText(declaredType) || areEquivalentDocumentTypes(requiredType, declaredType)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function evaluateDocumentValidation(input: {
@@ -1498,7 +2342,7 @@ function evaluateDocumentValidation(input: {
 
   const declaredType = normalizeText(input.declaredType);
   const detectedType = input.detectedType ? normalizeText(input.detectedType) : null;
-  const requiredForBank = input.requiredTypes.size === 0 || input.requiredTypes.has(declaredType);
+  const requiredForBank = isDocumentTypeRequiredForBank(input.requiredTypes, declaredType);
 
   if (input.requiredTypes.size === 0) {
     notes.push("No selected bank checklist found; only file-level verification was performed.");
@@ -1508,7 +2352,7 @@ function evaluateDocumentValidation(input: {
     notes.push("Document type matches selected bank checklist.");
   }
 
-  if (detectedType && detectedType !== declaredType) {
+  if (detectedType && !areEquivalentDocumentTypes(detectedType, declaredType)) {
     notes.push(`Detected document type (${detectedType}) differs from declared type (${declaredType}).`);
     return {
       status: "invalid",
@@ -1517,7 +2361,7 @@ function evaluateDocumentValidation(input: {
   }
 
   if (!detectedType) {
-    notes.push("Document type could not be confidently inferred from filename metadata.");
+    notes.push("Document type could not be confidently inferred from OCR evidence.");
   }
 
   if (input.confidenceScore >= 75) {
@@ -1670,25 +2514,31 @@ export async function scanApplicationDocuments(
           fileName: String(row.file_name),
           declaredType: String(row.document_type),
         });
+        const extractedWithAi = await applyAiTypeEnhancement({
+          extracted,
+          declaredType: String(row.document_type),
+          fileName: String(row.file_name),
+          requiredTypes,
+        });
 
         const validation = evaluateDocumentValidation({
           declaredType: String(row.document_type),
-          detectedType: extracted.detectedType,
-          confidenceScore: extracted.confidenceScore,
+          detectedType: extractedWithAi.detectedType,
+          confidenceScore: extractedWithAi.confidenceScore,
           requiredTypes,
         });
 
         validationStatus = validation.status;
-        detectedDocType = extracted.detectedType;
-        notes = uniqueStrings([...validation.notes, ...extracted.warnings]);
+        detectedDocType = extractedWithAi.detectedType;
+        notes = uniqueStrings([...validation.notes, ...extractedWithAi.warnings]);
         extractedFields = {
-          ...extracted.extractedFields,
-          confidence_score: extracted.confidenceScore,
-          extraction_engine: extracted.engine,
+          ...extractedWithAi.extractedFields,
+          confidence_score: extractedWithAi.confidenceScore,
+          extraction_engine: extractedWithAi.engine,
           scanned_at: new Date().toISOString(),
         };
-        ocrText = extracted.text;
-        confidenceScore = extracted.confidenceScore;
+        ocrText = extractedWithAi.text;
+        confidenceScore = extractedWithAi.confidenceScore;
 
         const updateDocument = await supabaseAdmin
           .from("documents")
