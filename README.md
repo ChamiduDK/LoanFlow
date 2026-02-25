@@ -26,7 +26,7 @@ Copy `.env.example` to `.env` and configure:
 - `NODE_ENV`
 - `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
 - `ML_ASSETS_DIR` (filesystem path for trained ML model artifacts)
-- `OCR_PROVIDER` (`placeholder`, `tesseract`, or `azure_document_intelligence`)
+- `OCR_PROVIDER` (`placeholder`, `tesseract`, `azure_document_intelligence`, or `google_vision`)
 - Tesseract OCR settings (used when `OCR_PROVIDER=tesseract`):
   - `OCR_TESSERACT_COMMAND` (default `tesseract`)
   - `OCR_TESSERACT_LANGUAGE` (default `eng`)
@@ -45,6 +45,17 @@ Copy `.env.example` to `.env` and configure:
   - `OCR_AZURE_POLL_INTERVAL_MS`
   - `OCR_AZURE_POLL_TIMEOUT_MS`
   - `OCR_AZURE_REQUEST_TIMEOUT_MS`
+- Google OCR settings (required when `OCR_PROVIDER=google_vision`):
+  - `OCR_GOOGLE_API_KEY`
+  - `OCR_GOOGLE_ENDPOINT` (default `https://vision.googleapis.com/v1`)
+  - `OCR_GOOGLE_REQUEST_TIMEOUT_MS`
+- Optional AI-assisted document type classification (runs after OCR):
+  - `DOCUMENT_AI_PROVIDER` (`disabled` or `gemini`)
+  - `DOCUMENT_AI_GEMINI_API_KEY` (required when provider is `gemini`)
+  - `DOCUMENT_AI_GEMINI_MODEL` (default `gemini-2.0-flash-lite`)
+  - `DOCUMENT_AI_TIMEOUT_MS` (default `20000`)
+  - `DOCUMENT_AI_MIN_OCR_CHARS` (default `120`)
+  - `DOCUMENT_AI_MAX_TEXT_CHARS` (default `6000`)
 
 ## Backend Commands
 
