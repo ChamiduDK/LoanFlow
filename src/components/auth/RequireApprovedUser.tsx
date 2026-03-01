@@ -3,7 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { apiFetch } from "@/lib/api/client";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import RouteFallback from "./RouteFallback";
-import { resolvePostAuthPath } from "@/lib/auth";
+import { resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 
 type MePayload = {
   profile?: {
@@ -41,10 +41,9 @@ export default function RequireApprovedUser() {
     return <Navigate to="/login" replace />;
   }
 
-  const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
-  const isApproved = Boolean(meQuery.data?.profile?.is_approved);
-  if (!isAdmin && !isApproved) {
-    return <Navigate to={resolvePostAuthPath(undefined, { isAdmin, isApproved })} replace />;
+  const access = resolveAccessState(meQuery.data?.profile);
+  if (!access.isAdmin && !access.isApproved) {
+    return <Navigate to={resolvePostAuthPath(undefined, access)} replace />;
   }
 
   return <Outlet />;

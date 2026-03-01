@@ -7,6 +7,11 @@ export type AccessState = {
   isApproved: boolean;
 };
 
+export type MeProfileAccess = {
+  is_admin?: boolean;
+  is_approved?: boolean;
+} | null | undefined;
+
 const userAppRoutePrefixes = [
   "/dashboard",
   "/apply",
@@ -27,6 +32,19 @@ function defaultPostAuthPath(access: AccessState): string {
 
 function isUserAppPath(path: string): boolean {
   return userAppRoutePrefixes.some((prefix) => path.startsWith(prefix));
+}
+
+export function resolveAccessState(profile: MeProfileAccess): AccessState {
+  const isAdmin = Boolean(profile?.is_admin);
+
+  // Backward compatibility: older DBs may not have is_approved yet.
+  const hasApprovalFlag =
+    profile !== null &&
+    profile !== undefined &&
+    Object.prototype.hasOwnProperty.call(profile, "is_approved");
+  const isApproved = isAdmin || !hasApprovalFlag ? true : Boolean(profile?.is_approved);
+
+  return { isAdmin, isApproved };
 }
 
 export function resolvePostAuthPath(fromPath: string | undefined, access: AccessState): string {

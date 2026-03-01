@@ -3,7 +3,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import RouteFallback from "./RouteFallback";
 import { apiFetch } from "@/lib/api/client";
 import { useAuthSession } from "@/hooks/useAuthSession";
-import { resolvePostAuthPath } from "@/lib/auth";
+import { resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 
 type MePayload = {
   profile?: {
@@ -27,9 +27,8 @@ export default function RequireGuest() {
   }
 
   if (sessionQuery.data) {
-    const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
-    const isApproved = Boolean(meQuery.data?.profile?.is_approved);
-    return <Navigate to={resolvePostAuthPath(undefined, { isAdmin, isApproved })} replace />;
+    const access = resolveAccessState(meQuery.data?.profile);
+    return <Navigate to={resolvePostAuthPath(undefined, access)} replace />;
   }
 
   return <Outlet />;

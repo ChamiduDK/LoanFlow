@@ -5,6 +5,7 @@ export type AdminOverview = {
     total_applications: number;
     under_review_applications: number;
     approved_outcomes: number;
+    pending_user_approvals: number;
   };
   recent_activity: AdminAuditLog[];
 };

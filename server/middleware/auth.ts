@@ -70,7 +70,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 async function fetchProfileAccess(userId: string): Promise<ProfileAccessRow | null> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, email, is_admin, is_approved")
+    .select("*")
     .eq("id", userId)
     .maybeSingle();
 
@@ -78,11 +78,13 @@ async function fetchProfileAccess(userId: string): Promise<ProfileAccessRow | nu
     return null;
   }
 
+  const hasApprovalFlag = Object.prototype.hasOwnProperty.call(data, "is_approved");
+
   return {
     id: String(data.id),
     email: data.email ?? null,
     is_admin: Boolean(data.is_admin),
-    is_approved: Boolean(data.is_approved),
+    is_approved: hasApprovalFlag ? Boolean(data.is_approved) : true,
   };
 }
 

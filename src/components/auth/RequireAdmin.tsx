@@ -3,7 +3,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { apiFetch } from "@/lib/api/client";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import RouteFallback from "./RouteFallback";
-import { resolvePostAuthPath } from "@/lib/auth";
+import { resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 
 type MePayload = {
   profile?: {
@@ -35,10 +35,9 @@ export default function RequireAdmin() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
-  const isApproved = Boolean(meQuery.data?.profile?.is_approved);
-  if (!isAdmin) {
-    return <Navigate to={resolvePostAuthPath(undefined, { isAdmin: false, isApproved })} replace />;
+  const access = resolveAccessState(meQuery.data?.profile);
+  if (!access.isAdmin) {
+    return <Navigate to={resolvePostAuthPath(undefined, access)} replace />;
   }
 
   return <Outlet />;

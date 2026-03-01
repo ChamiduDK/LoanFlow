@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Banknote, CheckCircle2, FileText, GitBranch } from "lucide-react";
+import { Activity, Banknote, CheckCircle2, FileText, GitBranch, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import PageHeader from "@/components/shared/PageHeader";
 import { apiFetch } from "@/lib/api/client";
 import type { AdminOverview } from "@/types/admin";
@@ -61,7 +62,40 @@ export default function AdminOverview() {
       tone: "text-success",
       surface: "bg-success/10",
     },
-  ], [metrics?.approved_outcomes, metrics?.total_applications, metrics?.total_banks, metrics?.total_products, metrics?.under_review_applications]);
+    {
+      label: "Pending User Approvals",
+      value: metrics?.pending_user_approvals ?? 0,
+      icon: UserCheck,
+      tone: "text-warning",
+      surface: "bg-warning/15",
+    },
+  ], [
+    metrics?.approved_outcomes,
+    metrics?.pending_user_approvals,
+    metrics?.total_applications,
+    metrics?.total_banks,
+    metrics?.total_products,
+    metrics?.under_review_applications,
+  ]);
+
+  if (overviewQuery.isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Admin Overview"
+          subtitle="Live operational metrics and latest sensitive actions across the platform."
+        />
+        <Card className="border-border/70 bg-card shadow-sm">
+          <CardContent className="space-y-4 p-6">
+            <p className="text-sm text-muted-foreground">
+              Failed to load admin metrics. Please retry.
+            </p>
+            <Button onClick={() => void overviewQuery.refetch()}>Retry</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -70,7 +104,7 @@ export default function AdminOverview() {
         subtitle="Live operational metrics and latest sensitive actions across the platform."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         {cards.map((item) => (
           <Card key={item.label} className="border-border/70 bg-card shadow-sm transition-shadow hover:shadow-md">
             <CardContent className="p-5">
