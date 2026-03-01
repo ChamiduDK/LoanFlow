@@ -21,7 +21,7 @@ import {
 import EmptyState from "@/components/shared/EmptyState";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, ApiRequestError } from "@/lib/api/client";
 import type { LoanApplication } from "@/types/backend";
 import { formatLKR } from "@/lib/currency";
 
@@ -121,7 +121,7 @@ export default function Dashboard() {
       </div>
 
       {/* Error banner */}
-      {applicationsQuery.isError && (
+      {applicationsQuery.isError && !(applicationsQuery.error instanceof ApiRequestError && applicationsQuery.error.status === 403) && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
           <p className="text-sm text-red-700 dark:text-red-400 font-medium">Could not load application data.</p>
           <Button size="sm" variant="outline" onClick={() => void applicationsQuery.refetch()}>Retry</Button>
