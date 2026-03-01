@@ -1,7 +1,9 @@
 import { badRequest, internalError, notFound } from "../lib/errors";
 import { supabaseAdmin } from "../lib/supabase/client";
+import { aiService, type ChatMessage as AiChatMessage } from "./ai.service";
+import { env } from "../config/env";
 
-const MODEL_NAME = "LoanFlow 1.0";
+const MODEL_NAME = "LoanFlow AI (Gemini)";
 const WEB_CHANNEL = "web";
 const REFERENCE_CACHE_TTL_MS = 2 * 60 * 1000;
 
@@ -134,9 +136,9 @@ type SendMessageResult = {
 
 let referenceCache:
   | {
-      expires_at: number;
-      snapshot: ReferenceDataSnapshot;
-    }
+    expires_at: number;
+    snapshot: ReferenceDataSnapshot;
+  }
   | null = null;
 
 const STOP_WORDS = new Set([
@@ -830,11 +832,70 @@ export async function sendLoanFlowChatMessage(
 
   const history = await listSessionMessages(userId, session.id);
   const reference = await getReferenceDataSnapshot();
-  const context = parseQuery(message);
-  const scoredProducts = scoreProducts(reference, context);
+  const queryContext = parseQuery(message);
+  const scoredProducts = scoreProducts(reference, queryContext);
   const previousProductIds = getMatchedProductIdsFromHistory(history);
   const topProducts = pickTopProducts(scoredProducts, previousProductIds);
-  const assistant = composeAssistantResponse(reference, context, topProducts);
+
+  // --- Gemini AI Integration ---
+
+  const aiHistory: AiChatMessage[] = history
+    .filter(msg => msg.role === "user" || msg.role === "assistant")
+    .map(msg => ({
+      role: msg.role === "assistant" ? "model" as const : "user" as const,
+      parts: [{ text: msg.message_text ?? "" }]
+    }))
+    .slice(-10); // Last 10 messages for context
+
+  const systemPrompt = `You are LoanFlow AI, a specialized SME loan assistant for Sri Lankan businesses.
+Your goal is to provide accurate, helpful, and professional advice on loan products, eligibility, and document requirements.
+
+CONTEXT DATA:
+Generated At: ${reference.generated_at}
+Available Banks: ${reference.banks.map(b => b.name).join(", ")}
+Top Matching Products:
+${topProducts.map((p, i) => `
+${i + 1}. ${p.bank_name} - ${p.name}
+   - Amount: ${formatLkr(p.min_amount)} to ${formatLkr(p.max_amount)}
+   - Rates: ${p.rate_min}% to ${p.rate_max}%
+   - Tenure: ${p.tenure_min_months} to ${p.tenure_max_months} months
+   - Collateral: ${p.collateral_required ? "Required" : "Not mandatory"}
+   - Key Eligibility: ${formatEligibilityHighlights(p.rules_json).join("; ")}
+   - Documents: ${p.required_documents.map(d => d.display_name).join(", ")}
+`).join("\n")}
+
+STRICT RULES:
+1. ONLY recommend products from the CONTEXT DATA above. Do not hallucinate or suggest banks/products not listed.
+2. If the user asks for an amount or tenure not covered by the context, explain the limitation and suggest the closest matches.
+3. Be concise but friendly. Use Sri Lankan context (LKR, local bank names).
+4. If you are unsure, advise the user to contact a LoanFlow consultant.
+5. Do not disclose internal system names like "LoanFlow 1.0" or "Gemini". Refer to yourself as LoanFlow AI.`;
+
+  let responseText: string;
+  let assistantMeta: any = {
+    model: MODEL_NAME,
+    intents: queryContext.intents,
+    matched_product_ids: topProducts.map(p => p.id),
+    matched_bank_ids: topProducts.map(p => p.bank_id),
+    reference_generated_at: reference.generated_at,
+  };
+
+  if (env.AI_CHAT_PROVIDER === "gemini") {
+    try {
+      responseText = await aiService.generateChatResponse(systemPrompt, aiHistory, message);
+      assistantMeta.ai_enhanced = true;
+    } catch (error) {
+      console.error("Gemini fallback to rule-based:", error);
+      const ruleAssistant = composeAssistantResponse(reference, queryContext, topProducts);
+      responseText = ruleAssistant.text;
+      assistantMeta.ai_enhanced = false;
+      assistantMeta.error = (error as Error).message;
+    }
+  } else {
+    const ruleAssistant = composeAssistantResponse(reference, queryContext, topProducts);
+    responseText = ruleAssistant.text;
+    assistantMeta.ai_enhanced = false;
+  }
 
   const assistantInsert = await supabaseAdmin
     .from("chat_messages")
@@ -842,14 +903,8 @@ export async function sendLoanFlowChatMessage(
       session_id: session.id,
       user_id: userId,
       role: "assistant",
-      message_text: assistant.text,
-      message_json: {
-        model: MODEL_NAME,
-        intents: context.intents,
-        matched_product_ids: assistant.matched_product_ids,
-        matched_bank_ids: assistant.matched_bank_ids,
-        reference_generated_at: reference.generated_at,
-      },
+      message_text: responseText,
+      message_json: assistantMeta,
     })
     .select("id, session_id, user_id, role, message_text, message_json, created_at")
     .single();

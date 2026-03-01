@@ -5,6 +5,7 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
+import { globalRateLimiter } from "./middleware/rate-limiter";
 import { healthRouter } from "./routes/health.routes";
 import { authRouter } from "./routes/auth.routes";
 import { profileRouter } from "./routes/profile.routes";
@@ -28,13 +29,13 @@ const allowedOrigins = env.CORS_ORIGIN
 const corsOrigin: CorsOptions["origin"] = allowedOrigins.includes("*")
   ? true
   : (requestOrigin, callback) => {
-      if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
-        callback(null, true);
-        return;
-      }
+    if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+      callback(null, true);
+      return;
+    }
 
-      callback(null, false);
-    };
+    callback(null, false);
+  };
 
 app.set("trust proxy", 1);
 app.use(
@@ -45,6 +46,8 @@ app.use(
 );
 app.use(helmet());
 app.use(morgan("dev"));
+app.use(globalRateLimiter);
+
 app.use(
   express.json({
     limit: "5mb",
