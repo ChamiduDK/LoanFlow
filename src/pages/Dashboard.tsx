@@ -21,6 +21,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import EmptyState from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import LoanFlowChatPanel from "@/components/dashboard/LoanFlowChatPanel";
 import { apiFetch } from "@/lib/api/client";
 import type { LoanApplication } from "@/types/backend";
 import { formatLKR } from "@/lib/currency";
@@ -131,7 +132,7 @@ export default function Dashboard() {
     <div className="flex flex-col gap-4 px-1 md:px-2">
       <PageHeader
         title="Dashboard"
-        subtitle="See your latest loan progress and jump directly to the next action."
+        subtitle="LoanFlow 1.0 chat is your main workspace for scheme guidance and next actions."
         className="top-0 z-0 border-none bg-transparent pb-0 pt-0 backdrop-blur-none"
         actions={(
           <Button asChild>
@@ -142,6 +143,8 @@ export default function Dashboard() {
           </Button>
         )}
       />
+
+      <LoanFlowChatPanel />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item, idx) => (

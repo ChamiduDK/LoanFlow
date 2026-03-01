@@ -29,3 +29,12 @@ export const agentEmiSchema = z.object({
   annual_rate: z.number().min(0).max(100),
   tenure_months: z.number().int().min(1).max(360),
 });
+
+export const createAgentChatSessionSchema = z.object({
+  application_id: uuidSchema.optional(),
+});
+
+export const sendAgentChatMessageSchema = z.object({
+  session_id: uuidSchema.optional(),
+  message: z.string().trim().min(1).max(3000),
+});

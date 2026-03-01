@@ -9,12 +9,19 @@ import { sendSuccess } from "../lib/response";
 import {
   agentContextParamsSchema,
   chatWebhookSchema,
+  createAgentChatSessionSchema,
   linkWhatsappSchema,
   logAgentActionSchema,
+  sendAgentChatMessageSchema,
 } from "../schemas/agent";
 import { supabaseAdmin } from "../lib/supabase/client";
 import { logAudit } from "../services/audit.service";
 import { getMissingDocumentsForApplication, getTrackerSummaryForAgent } from "../services/agent-tools.service";
+import {
+  createLoanFlowChatSession,
+  getOrCreateLoanFlowChat,
+  sendLoanFlowChatMessage,
+} from "../services/loanflow-chat.service";
 
 export const agentRouter = Router();
 
@@ -69,6 +76,47 @@ agentRouter.post(
 );
 
 agentRouter.use(requireAuth, requireApprovedUser);
+
+agentRouter.get(
+  "/agent/chat/session",
+  asyncHandler(async (req, res) => {
+    const userId = req.auth?.user.id;
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const session = await getOrCreateLoanFlowChat(userId);
+    sendSuccess(res, session);
+  }),
+);
+
+agentRouter.post(
+  "/agent/chat/session",
+  asyncHandler(async (req, res) => {
+    const userId = req.auth?.user.id;
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const payload = parseWithSchema(createAgentChatSessionSchema, req.body ?? {});
+    const session = await createLoanFlowChatSession(userId, payload.application_id);
+    sendSuccess(res, session, undefined, 201);
+  }),
+);
+
+agentRouter.post(
+  "/agent/chat/message",
+  asyncHandler(async (req, res) => {
+    const userId = req.auth?.user.id;
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const payload = parseWithSchema(sendAgentChatMessageSchema, req.body ?? {});
+    const response = await sendLoanFlowChatMessage(userId, payload);
+    sendSuccess(res, response, undefined, 201);
+  }),
+);
 
 agentRouter.post(
   "/agent/link-whatsapp",
