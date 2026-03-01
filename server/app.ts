@@ -60,7 +60,7 @@ app.get("/", (_req, res) => {
   res.json({
     success: true,
     data: {
-      service: "sme-loanhub-api",
+      service: "loanflow-api",
       status: "ok",
       message: "Use /api/* endpoints. Try /api/health",
     },

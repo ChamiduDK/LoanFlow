@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Building2, ShieldCheck, Sparkles } from "lucide-react";
+import { ShieldCheck, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
 import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
@@ -71,10 +71,7 @@ export default function Login() {
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md lg:grid-cols-2">
         <div className="hidden border-r border-border bg-muted/35 p-10 lg:flex lg:flex-col lg:justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground">
-              <Building2 className="h-5 w-5" />
-            </div>
-            <span className="text-lg font-semibold text-foreground">SME Loan Hub</span>
+            <span className="text-lg font-semibold text-foreground">LoanFlow</span>
           </div>
           <div className="space-y-4">
             <h2 className="text-3xl font-semibold text-foreground">Welcome back to your lending workspace</h2>
@@ -93,10 +90,7 @@ export default function Login() {
           <Card className="w-full max-w-md border-0 shadow-none">
             <CardHeader className="px-0 text-left">
               <div className="mb-2 flex items-center gap-2 lg:hidden">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Building2 className="h-4 w-4" />
-                </div>
-                <span className="font-semibold">SME Loan Hub</span>
+                <span className="font-semibold">LoanFlow</span>
               </div>
               <CardTitle className="text-2xl">Sign In</CardTitle>
               <CardDescription>Access your dashboard and continue your loan journey.</CardDescription>

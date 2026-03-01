@@ -101,6 +101,35 @@ type AiTypeClassification = {
   reason: string;
 };
 
+type DocumentVerificationRules = {
+  requiredKeywords: string[];
+  forbiddenKeywords: string[];
+  minTextLength: number | null;
+  aiInstructions: string | null;
+};
+
+type RequiredDocumentRuleDefinition = {
+  documentType: string;
+  displayName: string;
+  isRequired: boolean;
+  rules: DocumentVerificationRules;
+};
+
+type AiRuleVerification = {
+  status: ScanValidationStatus;
+  confidenceScore: number;
+  reasons: string[];
+  missingRequiredKeywords: string[];
+  forbiddenKeywordsFound: string[];
+};
+
+type DocumentRuleVerificationResult = {
+  status: ScanValidationStatus;
+  confidenceScore: number;
+  notes: string[];
+  details: Record<string, unknown>;
+};
+
 export type DocumentScanResponse = {
   application_id: string;
   product_id: string | null;
@@ -154,8 +183,81 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function isLikelyGoogleApiKey(value: string): boolean {
+  return /^AIza[0-9A-Za-z_-]{20,}$/.test(value.trim());
+}
+
+function sanitizeScanErrorMessage(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  const redactedKeys = normalized
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED_GOOGLE_API_KEY]")
+    .replace(/([?&]key=)[^&\s]+/gi, "$1[REDACTED]")
+    .replace(/\b(?:sk|rk)-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED_API_KEY]");
+
+  if (redactedKeys.length <= 320) {
+    return redactedKeys;
+  }
+
+  return `${redactedKeys.slice(0, 317)}...`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeTextForSearch(value: string): string {
+  return normalizeText(value).replace(/\s+/g, " ");
+}
+
+function normalizeRuleKeyword(value: string): string {
+  return normalizeTextForSearch(value).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseRuleKeywords(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return uniqueStrings(
+    value
+      .map((entry) => normalizeRuleKeyword(String(entry)))
+      .filter((entry) => entry.length > 0),
+  );
+}
+
+function parseDocumentVerificationRules(value: unknown): DocumentVerificationRules {
+  if (!isRecord(value)) {
+    return {
+      requiredKeywords: [],
+      forbiddenKeywords: [],
+      minTextLength: null,
+      aiInstructions: null,
+    };
+  }
+
+  const rawMinLength = Number(value.min_text_length);
+  const minTextLength = Number.isFinite(rawMinLength) && rawMinLength >= 0
+    ? Math.round(rawMinLength)
+    : null;
+
+  const aiInstructions = typeof value.ai_instructions === "string" && value.ai_instructions.trim().length > 0
+    ? value.ai_instructions.trim().slice(0, 800)
+    : null;
+
+  return {
+    requiredKeywords: parseRuleKeywords(value.required_keywords),
+    forbiddenKeywords: parseRuleKeywords(value.forbidden_keywords),
+    minTextLength,
+    aiInstructions,
+  };
+}
+
+function hasDocumentVerificationRules(value: DocumentVerificationRules): boolean {
+  return value.requiredKeywords.length > 0 ||
+    value.forbiddenKeywords.length > 0 ||
+    value.minTextLength !== null ||
+    value.aiInstructions !== null;
 }
 
 const DOCUMENT_TYPE_ALIASES: Record<string, string[]> = {
@@ -851,6 +953,10 @@ function getGoogleVisionOcrConfig(): GoogleVisionOcrConfig | null {
     return null;
   }
 
+  if (!isLikelyGoogleApiKey(env.OCR_GOOGLE_API_KEY)) {
+    return null;
+  }
+
   return {
     endpoint: env.OCR_GOOGLE_ENDPOINT.replace(/\/+$/, ""),
     apiKey: env.OCR_GOOGLE_API_KEY,
@@ -1311,7 +1417,7 @@ async function runGoogleVisionOcr(input: {
   mimeType: string | null;
   fileName: string;
 }): Promise<GoogleVisionOcrExecutionResult> {
-  const tempDir = await mkdtemp(join(tmpdir(), "sme-loanhub-google-ocr-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "loanflow-google-ocr-"));
   const warnings: string[] = [];
 
   try {
@@ -1444,7 +1550,7 @@ async function runTesseractOcr(input: {
   mimeType: string | null;
   fileName: string;
 }): Promise<TesseractOcrExecutionResult> {
-  const tempDir = await mkdtemp(join(tmpdir(), "sme-loanhub-ocr-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "loanflow-ocr-"));
   const warnings: string[] = [];
 
   try {
@@ -2031,6 +2137,14 @@ function buildConfiguredExtractor(profile: Profile, application: LoanApplication
   }
 
   if (env.OCR_PROVIDER === "google_vision") {
+    if (env.OCR_GOOGLE_API_KEY && !isLikelyGoogleApiKey(env.OCR_GOOGLE_API_KEY)) {
+      return buildPlaceholderExtractor(
+        profile,
+        application,
+        "Google OCR key format is invalid. Use a Cloud Vision API key starting with 'AIza'. Falling back to placeholder verification.",
+      );
+    }
+
     return buildPlaceholderExtractor(
       profile,
       application,
@@ -2315,6 +2429,361 @@ async function applyAiTypeEnhancement(input: {
   }
 }
 
+function buildRequiredDocumentRuleMap(rows: Array<Record<string, unknown>>): Map<string, RequiredDocumentRuleDefinition> {
+  const map = new Map<string, RequiredDocumentRuleDefinition>();
+
+  for (const row of rows) {
+    const documentType = String(row.document_type ?? "").trim();
+    if (!documentType) {
+      continue;
+    }
+
+    const ruleDefinition: RequiredDocumentRuleDefinition = {
+      documentType: normalizeText(documentType),
+      displayName: String(row.display_name ?? documentType).trim() || documentType,
+      isRequired: Boolean(row.is_required ?? true),
+      rules: parseDocumentVerificationRules(row.verification_rules_json),
+    };
+
+    const keys = uniqueStrings([
+      normalizeText(documentType),
+      canonicalizeDocumentType(documentType) ?? "",
+    ]);
+
+    for (const key of keys) {
+      map.set(key, ruleDefinition);
+    }
+  }
+
+  return map;
+}
+
+function getRuleDefinitionForDocumentType(
+  map: Map<string, RequiredDocumentRuleDefinition>,
+  declaredType: string,
+): RequiredDocumentRuleDefinition | null {
+  const normalized = normalizeText(declaredType);
+  const canonical = canonicalizeDocumentType(declaredType);
+  return map.get(normalized) ?? (canonical ? map.get(canonical) ?? null : null);
+}
+
+function evaluateDeterministicRuleChecks(input: {
+  ocrText: string;
+  rules: DocumentVerificationRules;
+}): {
+  status: ScanValidationStatus;
+  notes: string[];
+  missingRequiredKeywords: string[];
+  forbiddenKeywordsFound: string[];
+} {
+  const notes: string[] = [];
+  const normalizedText = normalizeTextForSearch(input.ocrText);
+  const missingRequiredKeywords = input.rules.requiredKeywords.filter((keyword) => !normalizedText.includes(keyword));
+  const forbiddenKeywordsFound = input.rules.forbiddenKeywords.filter((keyword) => normalizedText.includes(keyword));
+
+  if (missingRequiredKeywords.length > 0) {
+    notes.push(`Missing required keywords: ${missingRequiredKeywords.join(", ")}.`);
+  } else if (input.rules.requiredKeywords.length > 0) {
+    notes.push("All required keywords were detected.");
+  }
+
+  if (forbiddenKeywordsFound.length > 0) {
+    notes.push(`Forbidden keywords detected: ${forbiddenKeywordsFound.join(", ")}.`);
+  } else if (input.rules.forbiddenKeywords.length > 0) {
+    notes.push("No forbidden keywords were detected.");
+  }
+
+  if (input.rules.minTextLength !== null) {
+    if (input.ocrText.trim().length < input.rules.minTextLength) {
+      notes.push(`OCR text length is below minimum rule (${input.rules.minTextLength} chars).`);
+    } else {
+      notes.push(`OCR text length meets minimum rule (${input.rules.minTextLength} chars).`);
+    }
+  }
+
+  if (missingRequiredKeywords.length > 0 || forbiddenKeywordsFound.length > 0) {
+    return {
+      status: "invalid",
+      notes,
+      missingRequiredKeywords,
+      forbiddenKeywordsFound,
+    };
+  }
+
+  if (input.rules.minTextLength !== null && input.ocrText.trim().length < input.rules.minTextLength) {
+    return {
+      status: "unclear",
+      notes,
+      missingRequiredKeywords,
+      forbiddenKeywordsFound,
+    };
+  }
+
+  if (!hasDocumentVerificationRules(input.rules)) {
+    return {
+      status: "unclear",
+      notes: [...notes, "No verification rules were configured for this document type."],
+      missingRequiredKeywords,
+      forbiddenKeywordsFound,
+    };
+  }
+
+  if (input.rules.aiInstructions && input.rules.requiredKeywords.length === 0 && input.rules.forbiddenKeywords.length === 0 && input.rules.minTextLength === null) {
+    return {
+      status: "unclear",
+      notes: [...notes, "Only AI instructions are configured; deterministic verification is inconclusive."],
+      missingRequiredKeywords,
+      forbiddenKeywordsFound,
+    };
+  }
+
+  return {
+    status: "valid",
+    notes,
+    missingRequiredKeywords,
+    forbiddenKeywordsFound,
+  };
+}
+
+function parseAiRuleVerification(content: string): AiRuleVerification {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content) as unknown;
+  } catch {
+    throw new Error("AI rule verification response was not valid JSON.");
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("AI rule verification JSON must be an object.");
+  }
+
+  const rawStatus = typeof parsed.status === "string" ? normalizeText(parsed.status) : "";
+  const status: ScanValidationStatus = rawStatus === "valid" || rawStatus === "invalid" || rawStatus === "unclear"
+    ? rawStatus
+    : "unclear";
+
+  const rawConfidence = Number(parsed.confidence_score);
+  const confidenceScore = Number.isFinite(rawConfidence)
+    ? Number(Math.max(0, Math.min(99, rawConfidence)).toFixed(2))
+    : 0;
+
+  const reasons = Array.isArray(parsed.reasons)
+    ? uniqueStrings(parsed.reasons.map((reason) => String(reason)))
+    : [];
+
+  return {
+    status,
+    confidenceScore,
+    reasons,
+    missingRequiredKeywords: parseRuleKeywords(parsed.missing_required_keywords),
+    forbiddenKeywordsFound: parseRuleKeywords(parsed.forbidden_keywords_found),
+  };
+}
+
+async function verifyDocumentRulesWithGemini(input: {
+  config: GeminiDocClassifierConfig;
+  declaredType: string;
+  fileName: string;
+  ocrText: string;
+  rules: DocumentVerificationRules;
+}): Promise<AiRuleVerification> {
+  const content = input.ocrText.slice(0, input.config.maxTextChars);
+  const modelPath = encodeURIComponent(input.config.model);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelPath}:generateContent?key=${encodeURIComponent(input.config.apiKey)}`;
+
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: [
+              "You verify whether OCR text satisfies document verification rules for SME loan processing.",
+              "Return strict JSON only with keys: status, confidence_score, reasons, missing_required_keywords, forbidden_keywords_found.",
+              "status must be one of: valid, invalid, unclear.",
+              "confidence_score must be in range 0..99.",
+              "Use invalid when rules are clearly violated, valid when rules are satisfied, unclear when OCR evidence is insufficient.",
+            ].join(" "),
+          }],
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [{
+              text: JSON.stringify({
+                declared_type: input.declaredType,
+                file_name: input.fileName,
+                verification_rules: {
+                  required_keywords: input.rules.requiredKeywords,
+                  forbidden_keywords: input.rules.forbiddenKeywords,
+                  min_text_length: input.rules.minTextLength,
+                  ai_instructions: input.rules.aiInstructions,
+                },
+                ocr_text: content,
+              }),
+            }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+    input.config.timeoutMs,
+  );
+
+  const payload = await readResponsePayload(response);
+  if (!response.ok) {
+    const remoteMessage = extractNestedErrorMessage(payload);
+    throw new Error(`AI rule verification request failed (${response.status})${remoteMessage ? `: ${remoteMessage}` : ""}`);
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.candidates) || payload.candidates.length === 0) {
+    throw new Error("AI rule verification response did not contain candidates.");
+  }
+
+  const contentText = parseGeminiCandidateContent(payload.candidates[0]);
+  if (!contentText) {
+    throw new Error("AI rule verification returned empty content.");
+  }
+
+  return parseAiRuleVerification(contentText);
+}
+
+async function applyDocumentRuleVerification(input: {
+  extracted: ExtractedDocument;
+  declaredType: string;
+  fileName: string;
+  ruleDefinition: RequiredDocumentRuleDefinition | null;
+}): Promise<DocumentRuleVerificationResult | null> {
+  if (!input.ruleDefinition || !hasDocumentVerificationRules(input.ruleDefinition.rules)) {
+    return null;
+  }
+
+  const rules = input.ruleDefinition.rules;
+  const deterministic = evaluateDeterministicRuleChecks({
+    ocrText: input.extracted.text,
+    rules,
+  });
+
+  let status = deterministic.status;
+  let confidenceScore = status === "valid" ? 80 : status === "unclear" ? 55 : 30;
+  const notes = [
+    `Applied verification rules for '${input.ruleDefinition.displayName}'.`,
+    ...deterministic.notes,
+  ];
+  let aiVerification: AiRuleVerification | null = null;
+
+  const config = getGeminiDocClassifierConfig();
+  const trimmedText = input.extracted.text.trim();
+
+  if (!config) {
+    notes.push("Gemini verification is disabled; rule evaluation used deterministic checks only.");
+  } else if (input.extracted.engine !== "ocr") {
+    notes.push("Gemini verification skipped because OCR engine is not active.");
+  } else if (trimmedText.length < config.minOcrChars) {
+    notes.push(`Gemini verification skipped because OCR text is too short (min ${config.minOcrChars} chars).`);
+  } else {
+    try {
+      aiVerification = await verifyDocumentRulesWithGemini({
+        config,
+        declaredType: input.declaredType,
+        fileName: input.fileName,
+        ocrText: trimmedText,
+        rules,
+      });
+
+      confidenceScore = Math.max(confidenceScore, aiVerification.confidenceScore);
+
+      if (aiVerification.status === "invalid") {
+        status = "invalid";
+      } else if (status !== "invalid" && aiVerification.status === "valid") {
+        status = "valid";
+      } else if (status !== "invalid" && aiVerification.status === "unclear") {
+        status = "unclear";
+      }
+
+      if (aiVerification.reasons.length > 0) {
+        notes.push(...aiVerification.reasons.map((reason) => `Gemini: ${reason}`));
+      }
+      if (aiVerification.missingRequiredKeywords.length > 0) {
+        notes.push(`Gemini missing required keywords: ${aiVerification.missingRequiredKeywords.join(", ")}.`);
+      }
+      if (aiVerification.forbiddenKeywordsFound.length > 0) {
+        notes.push(`Gemini detected forbidden keywords: ${aiVerification.forbiddenKeywordsFound.join(", ")}.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown Gemini verification error";
+      notes.push(`Gemini rule verification skipped: ${message}`);
+    }
+  }
+
+  return {
+    status,
+    confidenceScore: Number(Math.max(0, Math.min(99, confidenceScore)).toFixed(2)),
+    notes: uniqueStrings(notes),
+    details: {
+      document_type: input.ruleDefinition.documentType,
+      display_name: input.ruleDefinition.displayName,
+      rules,
+      deterministic: {
+        status: deterministic.status,
+        missing_required_keywords: deterministic.missingRequiredKeywords,
+        forbidden_keywords_found: deterministic.forbiddenKeywordsFound,
+      },
+      ai_verification: aiVerification
+        ? {
+            provider: "gemini",
+            model: config?.model ?? null,
+            status: aiVerification.status,
+            confidence_score: aiVerification.confidenceScore,
+            reasons: aiVerification.reasons,
+            missing_required_keywords: aiVerification.missingRequiredKeywords,
+            forbidden_keywords_found: aiVerification.forbiddenKeywordsFound,
+          }
+        : {
+            provider: "gemini",
+            enabled: false,
+          },
+    },
+  };
+}
+
+function mergeValidationWithRuleResult(input: {
+  baseValidation: { status: ScanValidationStatus; notes: string[] };
+  ruleResult: DocumentRuleVerificationResult | null;
+}): { status: ScanValidationStatus; notes: string[] } {
+  if (!input.ruleResult) {
+    return input.baseValidation;
+  }
+
+  const notes = uniqueStrings([...input.baseValidation.notes, ...input.ruleResult.notes]);
+
+  if (input.baseValidation.status === "invalid" || input.ruleResult.status === "invalid") {
+    return {
+      status: "invalid",
+      notes,
+    };
+  }
+
+  if (input.ruleResult.status === "valid") {
+    return {
+      status: "valid",
+      notes,
+    };
+  }
+
+  return {
+    status: "unclear",
+    notes,
+  };
+}
+
 function isDocumentTypeRequiredForBank(requiredTypes: Set<string>, declaredType: string): boolean {
   if (requiredTypes.size === 0) {
     return true;
@@ -2446,18 +2915,21 @@ export async function scanApplicationDocuments(
   const requiredDocsResult = selectedProductId
     ? await supabaseAdmin
         .from("required_documents")
-        .select("document_type")
+        .select("document_type, display_name, is_required, verification_rules_json")
         .eq("product_id", selectedProductId)
-        .eq("is_required", true)
     : { data: [], error: null };
 
   if (requiredDocsResult.error) {
     throw internalError("Failed to load selected bank requirements", requiredDocsResult.error);
   }
 
+  const requiredDocRows = ((requiredDocsResult.data ?? []) as Array<Record<string, unknown>>);
   const requiredTypes = new Set(
-    (requiredDocsResult.data ?? []).map((row) => normalizeText(String(row.document_type))),
+    requiredDocRows
+      .filter((row) => Boolean(row.is_required ?? true))
+      .map((row) => normalizeText(String(row.document_type))),
   );
+  const requiredDocRuleMap = buildRequiredDocumentRuleMap(requiredDocRows);
 
   let documentsQuery = supabaseAdmin
     .from("documents")
@@ -2520,12 +2992,23 @@ export async function scanApplicationDocuments(
           fileName: String(row.file_name),
           requiredTypes,
         });
+        const ruleDefinition = getRuleDefinitionForDocumentType(requiredDocRuleMap, String(row.document_type));
+        const ruleVerification = await applyDocumentRuleVerification({
+          extracted: extractedWithAi,
+          declaredType: String(row.document_type),
+          fileName: String(row.file_name),
+          ruleDefinition,
+        });
 
-        const validation = evaluateDocumentValidation({
+        const baseValidation = evaluateDocumentValidation({
           declaredType: String(row.document_type),
           detectedType: extractedWithAi.detectedType,
           confidenceScore: extractedWithAi.confidenceScore,
           requiredTypes,
+        });
+        const validation = mergeValidationWithRuleResult({
+          baseValidation,
+          ruleResult: ruleVerification,
         });
 
         validationStatus = validation.status;
@@ -2533,12 +3016,13 @@ export async function scanApplicationDocuments(
         notes = uniqueStrings([...validation.notes, ...extractedWithAi.warnings]);
         extractedFields = {
           ...extractedWithAi.extractedFields,
-          confidence_score: extractedWithAi.confidenceScore,
+          rule_verification: ruleVerification?.details ?? null,
+          confidence_score: Math.max(extractedWithAi.confidenceScore, ruleVerification?.confidenceScore ?? 0),
           extraction_engine: extractedWithAi.engine,
           scanned_at: new Date().toISOString(),
         };
         ocrText = extractedWithAi.text;
-        confidenceScore = extractedWithAi.confidenceScore;
+        confidenceScore = Math.max(extractedWithAi.confidenceScore, ruleVerification?.confidenceScore ?? 0);
 
         const updateDocument = await supabaseAdmin
           .from("documents")
@@ -2557,6 +3041,7 @@ export async function scanApplicationDocuments(
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unexpected scan error";
+        const safeErrorMessage = sanitizeScanErrorMessage(errorMessage);
 
         validationStatus = "unclear";
         detectedDocType = row.detected_doc_type ? String(row.detected_doc_type) : null;
@@ -2566,7 +3051,7 @@ export async function scanApplicationDocuments(
           extraction_engine: env.OCR_PROVIDER === "placeholder" ? "placeholder" : "ocr",
           configured_ocr_provider: env.OCR_PROVIDER,
           scan_error: {
-            message: errorMessage,
+            message: safeErrorMessage,
             at: new Date().toISOString(),
           },
         };
@@ -2575,6 +3060,7 @@ export async function scanApplicationDocuments(
         notes = [
           "Document scan could not be completed for this file.",
           "Manual review is required.",
+          `Scan error: ${safeErrorMessage}`,
         ];
 
         const updateDocument = await supabaseAdmin

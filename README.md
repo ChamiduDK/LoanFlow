@@ -1,6 +1,6 @@
-# SME LoanHub
+# LoanFlow
 
-Sri Lankan SME Loan Recommendation and Approval Prediction platform.
+LoanFlow is a Sri Lankan SME loan recommendation and approval prediction platform.
 
 ## Project Structure
 
@@ -29,6 +29,7 @@ Copy `.env.example` to `.env` and configure:
 - `OCR_PROVIDER` (`placeholder`, `tesseract`, `azure_document_intelligence`, or `google_vision`)
 - Tesseract OCR settings (used when `OCR_PROVIDER=tesseract`):
   - `OCR_TESSERACT_COMMAND` (default `tesseract`)
+  - `TESSDATA_PREFIX` (optional; set when language files are not detected, e.g. `...\tessdata`)
   - `OCR_TESSERACT_LANGUAGE` (default `eng`)
   - `OCR_TESSERACT_PSM` (default `3`)
   - `OCR_TESSERACT_OEM` (default `1`)
@@ -46,16 +47,23 @@ Copy `.env.example` to `.env` and configure:
   - `OCR_AZURE_POLL_TIMEOUT_MS`
   - `OCR_AZURE_REQUEST_TIMEOUT_MS`
 - Google OCR settings (required when `OCR_PROVIDER=google_vision`):
-  - `OCR_GOOGLE_API_KEY`
+  - `OCR_GOOGLE_API_KEY` (Cloud Vision API key, usually starts with `AIza`)
   - `OCR_GOOGLE_ENDPOINT` (default `https://vision.googleapis.com/v1`)
   - `OCR_GOOGLE_REQUEST_TIMEOUT_MS`
-- Optional AI-assisted document type classification (runs after OCR):
+  - PDF scans with Google OCR still require `OCR_PDFTOPPM_COMMAND` (`pdftoppm`) to convert pages to images first.
+- Optional AI-assisted document verification with Gemini (runs after OCR):
   - `DOCUMENT_AI_PROVIDER` (`disabled` or `gemini`)
   - `DOCUMENT_AI_GEMINI_API_KEY` (required when provider is `gemini`)
   - `DOCUMENT_AI_GEMINI_MODEL` (default `gemini-2.0-flash-lite`)
   - `DOCUMENT_AI_TIMEOUT_MS` (default `20000`)
   - `DOCUMENT_AI_MIN_OCR_CHARS` (default `120`)
   - `DOCUMENT_AI_MAX_TEXT_CHARS` (default `6000`)
+  - Used for document type detection and rule-based verification status (`valid` / `invalid` / `unclear`)
+- Admin document verification rules (`required_documents.verification_rules_json`):
+  - `required_keywords`: string array that must appear in OCR text
+  - `forbidden_keywords`: string array that must not appear
+  - `min_text_length`: minimum OCR character count
+  - `ai_instructions`: optional extra Gemini instruction for edge cases
 
 ## Backend Commands
 
@@ -75,6 +83,7 @@ Apply migrations in order:
 4. `supabase/migrations/20260222013000_profile_metadata_on_signup.sql`
 5. `supabase/migrations/20260222030000_tracking_final_verification.sql`
 6. `supabase/migrations/20260222050000_ml_pipeline.sql`
+7. `supabase/migrations/20260225143000_document_verification_rules.sql`
 
 Then apply baseline seed script:
 

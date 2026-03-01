@@ -1,4 +1,4 @@
--- Initial schema for SME LoanHub Supabase backend
+-- Initial schema for LoanFlow Supabase backend
 -- Includes core loan modules, AI agent foundation tables, tracker support, and audit logging
 
 create extension if not exists pgcrypto;

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useId, useMemo, useState, type RefObject } from "react";
 
 import { cn } from "@/lib/utils";
@@ -87,6 +87,7 @@ export function AnimatedBeam({
 }: AnimatedBeamProps) {
   const [path, setPath] = useState<BeamPath | null>(null);
   const gradientId = useId().replace(/:/g, "");
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const container = containerRef.current;
@@ -97,6 +98,7 @@ export function AnimatedBeam({
       return;
     }
 
+    let frameId = 0;
     const updatePath = () => {
       setPath(
         buildPath(
@@ -112,20 +114,30 @@ export function AnimatedBeam({
       );
     };
 
-    updatePath();
+    const requestPathUpdate = () => {
+      if (frameId) {
+        return;
+      }
 
-    const observer = new ResizeObserver(updatePath);
-    observer.observe(container);
-    observer.observe(from);
-    observer.observe(to);
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0;
+        updatePath();
+      });
+    };
 
-    window.addEventListener("resize", updatePath);
-    window.addEventListener("scroll", updatePath, true);
+    requestPathUpdate();
+
+    const observer = new ResizeObserver(requestPathUpdate);
+    [container, from, to].forEach((element) => observer.observe(element));
+
+    window.addEventListener("resize", requestPathUpdate);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", updatePath);
-      window.removeEventListener("scroll", updatePath, true);
+      window.removeEventListener("resize", requestPathUpdate);
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
     };
   }, [
     containerRef,
@@ -180,25 +192,27 @@ export function AnimatedBeam({
         fill="none"
       />
 
-      <motion.path
-        d={path.d}
-        stroke={`url(#${gradientId})`}
-        strokeWidth={pathWidth + 0.65}
-        strokeLinecap="round"
-        strokeDasharray={`28 ${dashAnimationDistance}`}
-        fill="none"
-        animate={{
-          strokeDashoffset: reverse
-            ? [0, dashAnimationDistance]
-            : [dashAnimationDistance, 0],
-        }}
-        transition={{
-          duration,
-          repeat: Number.POSITIVE_INFINITY,
-          ease: "linear",
-          delay,
-        }}
-      />
+      {!prefersReducedMotion && (
+        <motion.path
+          d={path.d}
+          stroke={`url(#${gradientId})`}
+          strokeWidth={pathWidth + 0.65}
+          strokeLinecap="round"
+          strokeDasharray={`28 ${dashAnimationDistance}`}
+          fill="none"
+          animate={{
+            strokeDashoffset: reverse
+              ? [0, dashAnimationDistance]
+              : [dashAnimationDistance, 0],
+          }}
+          transition={{
+            duration,
+            repeat: Number.POSITIVE_INFINITY,
+            ease: "linear",
+            delay,
+          }}
+        />
+      )}
     </svg>
   );
 }

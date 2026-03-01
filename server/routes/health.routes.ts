@@ -5,7 +5,7 @@ export const healthRouter = Router();
 
 healthRouter.get("/health", (_req, res) => {
   sendSuccess(res, {
-    service: "sme-loanhub-api",
+    service: "loanflow-api",
     status: "ok",
     timestamp: new Date().toISOString(),
   });
