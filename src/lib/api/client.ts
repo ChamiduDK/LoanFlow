@@ -141,7 +141,7 @@ export async function apiUpload<T>(
 
     xhr.onload = () => {
       const contentType = xhr.getResponseHeader("content-type") ?? "";
-      let payload: any = null;
+      let payload: ApiEnvelope<T> | T | string | null = null;
 
       if (xhr.responseText) {
         try {
@@ -168,9 +168,10 @@ export async function apiUpload<T>(
         let message = `Upload failed with status ${xhr.status}`;
         let code: string | undefined;
 
-        if (payload && typeof payload === "object" && payload.error) {
-          message = payload.error.message ?? message;
-          code = payload.error.code;
+        if (payload && typeof payload === "object" && "error" in payload) {
+          const env = payload as ApiEnvelope<T>;
+          message = env.error?.message ?? message;
+          code = env.error?.code;
         }
 
         reject(new ApiRequestError(message, { status: xhr.status, code }));

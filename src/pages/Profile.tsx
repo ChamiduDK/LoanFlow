@@ -63,7 +63,10 @@ export default function Profile() {
   });
 
   const profile = meQuery.data?.profile;
-  const applications = applicationsQuery.data ?? [];
+  const applications = useMemo(
+    () => applicationsQuery.data ?? [],
+    [applicationsQuery.data],
+  );
 
   const stats = useMemo(() => {
     const approved = applications.filter((a) => a.status === "approved").length;

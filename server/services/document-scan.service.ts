@@ -141,18 +141,32 @@ async function applyAiTypeEnhancement(input: {
 
 // --- Rule Verification Placeholders ---
 
-async function applyDocumentRuleVerification(input: any): Promise<{ status: ScanValidationStatus; confidenceScore: number; details: any; notes: string[] } | null> {
+type DocumentValidationInput = {
+  declaredType: string;
+  detectedType: string | null;
+  confidenceScore: number;
+  requiredTypes: string[];
+};
+
+type RuleVerificationResult = {
+  status: ScanValidationStatus;
+  confidenceScore: number;
+  details: Record<string, unknown>;
+  notes: string[];
+} | null;
+
+async function applyDocumentRuleVerification(input: DocumentValidationInput): Promise<RuleVerificationResult> {
   return null;
 }
 
-function evaluateDocumentValidation(input: any): { status: ScanValidationStatus; notes: string[] } {
-  const { declaredType, detectedType, confidenceScore } = input;
+function evaluateDocumentValidation(input: DocumentValidationInput): { status: ScanValidationStatus; notes: string[] } {
+  const { declaredType, detectedType } = input;
   if (!detectedType) return { status: "unclear", notes: ["Document type could not be confidently identified."] };
   if (normalizeText(declaredType) === normalizeText(detectedType)) return { status: "valid", notes: ["Document type matches requirement."] };
   return { status: "invalid", notes: [`Document looks like ${detectedType}, but was uploaded as ${declaredType}.`] };
 }
 
-function mergeValidationWithRuleResult(input: any): { status: ScanValidationStatus; notes: string[] } {
+function mergeValidationWithRuleResult(input: { baseValidation: { status: ScanValidationStatus; notes: string[] }; ruleResult: RuleVerificationResult }): { status: ScanValidationStatus; notes: string[] } {
   return input.baseValidation;
 }
 
@@ -173,7 +187,7 @@ export async function scanApplicationDocuments(
 
   const selectedProductId = options.productId || application.selected_product_id;
 
-  const requiredDocRows: any[] = []; // Simplified for this refactor
+  const requiredDocRows: Array<{ document_type: string }> = []; // Simplified for this refactor
   const requiredTypes = uniqueStrings(requiredDocRows.map((r) => normalizeText(String(r.document_type))));
 
   let documentsQuery = supabaseAdmin
@@ -200,7 +214,9 @@ export async function scanApplicationDocuments(
   const summaries: ScanDocumentSummary[] = [];
 
   for (const row of rows) {
-    const existingExtracted = row.extracted_json && typeof row.extracted_json === "object" ? (row.extracted_json as any) : {};
+    const existingExtracted = row.extracted_json && typeof row.extracted_json === "object"
+      ? (row.extracted_json as Record<string, unknown>)
+      : {};
     const existingValidation = String(row.validation_status ?? "unclear").toLowerCase();
     const shouldRescan = Boolean(options.forceRescan) || !existingValidation || Object.keys(existingExtracted).length === 0;
 

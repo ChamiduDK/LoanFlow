@@ -2,7 +2,13 @@ import { join } from "node:path";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { LoanApplication, Profile } from "../../../types/domain";
-import type { TesseractOcrConfig, ExtractedDocument, OcrExtractor, DetectionResult } from "./ocr.types";
+import type {
+  TesseractOcrConfig,
+  ExtractedDocument,
+  OcrExtractor,
+  DetectionResult,
+  StorageObjectContent,
+} from "./ocr.types";
 import {
   getTempExtension,
   isPdfMimeType,
@@ -20,6 +26,22 @@ export type ParsedTesseractTsv = {
   wordCount: number;
   averageWordConfidence: number | null;
   minWordConfidence: number | null;
+};
+
+type ExtractInput = {
+  storageBucket: string;
+  storagePath: string;
+  mimeType: string | null;
+  fileName: string;
+  declaredType: string;
+};
+
+type LineAggregate = {
+  page: number;
+  block: number;
+  paragraph: number;
+  line: number;
+  words: string[];
 };
 
 export async function runTesseractOnImageAsTsv(input: {
@@ -80,7 +102,7 @@ function parseTesseractTsv(tsv: string): ParsedTesseractTsv {
     };
   }
 
-  const lineMap = new Map<string, any>();
+  const lineMap = new Map<string, LineAggregate>();
   const pages = new Set<number>();
   let wordCount = 0;
   let confidenceSum = 0;
@@ -128,7 +150,7 @@ function parseTesseractTsv(tsv: string): ParsedTesseractTsv {
     });
   }
 
-  const orderedLines = Array.from(lineMap.values()).sort((a: any, b: any) => {
+  const orderedLines = Array.from(lineMap.values()).sort((a, b) => {
     if (a.page !== b.page) return a.page - b.page;
     if (a.block !== b.block) return a.block - b.block;
     if (a.paragraph !== b.paragraph) return a.paragraph - b.paragraph;
@@ -164,7 +186,7 @@ export class TesseractExtractor implements OcrExtractor {
     private extractIssueDateFromText: (text: string, tokens: string[]) => string | null,
   ) { }
 
-  async extract(input: any): Promise<ExtractedDocument> {
+  async extract(input: ExtractInput): Promise<ExtractedDocument> {
     const storageContent = await downloadStorageObjectContent({
       storageBucket: input.storageBucket,
       storagePath: input.storagePath,
@@ -246,9 +268,9 @@ export class TesseractExtractor implements OcrExtractor {
   }
 
   private buildResponse(
-    input: any,
+    input: ExtractInput,
     result: ParsedTesseractTsv,
-    storage: any,
+    storage: StorageObjectContent,
     warnings: string[]
   ): ExtractedDocument {
     const ocrTokens = tokenize(result.text.slice(0, 12000));
@@ -257,7 +279,7 @@ export class TesseractExtractor implements OcrExtractor {
     const detection = this.detectDocumentTypeFromTokens(combinedTokens);
 
     // Simplification for brevity, full logic should be migrated
-    let confidenceScore = result.averageWordConfidence ?? 50;
+    const confidenceScore = result.averageWordConfidence ?? 50;
 
     return {
       text: result.text,
