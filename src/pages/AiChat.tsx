@@ -12,7 +12,7 @@ export default function AiChat() {
           LoanFlow AI Chat
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Designed to understand and generate human-like text in a conversational format.
+          the LoanFlow AI Chat need to be LoanFlow designed to understand and generate human-like text in a conversational format. It uses a large language model (LLM) , What it does: It generates human-like responses to prompts, allowing for interactive, dialogue-based communication.
         </p>
       </div>
 
@@ -21,21 +21,21 @@ export default function AiChat() {
           <Info className="h-4 w-4" />
           <AlertTitle>Technology</AlertTitle>
           <AlertDescription>
-            Chat Generative Pre-Trained Transformer. It utilizes neural networks trained with reinforcement learning from human feedback (RLHF).
+            It stands for "Chat Generative Pre-Trained Transformer," utilizing neural networks trained with reinforcement learning from human feedback (RLHF).
           </AlertDescription>
         </Alert>
         <Alert>
           <Zap className="h-4 w-4" />
           <AlertTitle>Capabilities</AlertTitle>
           <AlertDescription>
-            Generates human-like responses, drafts emails, writes essays, brainstorms ideas, translates languages, and summarizes text.
+            It can draft emails, write essays, brainstorm ideas, translate languages, and summarize text.
           </AlertDescription>
         </Alert>
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Limitations</AlertTitle>
           <AlertDescription>
-            Can sometimes provide incorrect/nonsensical answers, has limited knowledge of events after its training cutoff, and can struggle with complex, multi-step queries.
+            It can sometimes provide incorrect or nonsensical answers, has limited knowledge of events after its training cutoff, and can struggle with complex, multi-step queries.
           </AlertDescription>
         </Alert>
       </div>
