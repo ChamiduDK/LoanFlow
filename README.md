@@ -84,6 +84,7 @@ Apply migrations in order:
 5. `supabase/migrations/20260222030000_tracking_final_verification.sql`
 6. `supabase/migrations/20260222050000_ml_pipeline.sql`
 7. `supabase/migrations/20260225143000_document_verification_rules.sql`
+8. `supabase/migrations/20260301130000_user_approval_access.sql`
 
 Then apply baseline seed script:
 
@@ -105,6 +106,7 @@ Then apply baseline seed script:
   - `GET /api/admin/overview`
   - `GET /api/admin/users`
   - `PUT /api/admin/users/:id/role`
+  - `PUT /api/admin/users/:id/approval`
   - `GET /api/admin/applications`
   - `PUT /api/admin/applications/:id/decision`
   - `GET /api/admin/audit-logs`

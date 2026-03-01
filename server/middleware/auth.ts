@@ -2,6 +2,13 @@ import type { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../lib/supabase/client";
 import { forbidden, unauthorized } from "../lib/errors";
 
+type ProfileAccessRow = {
+  id: string;
+  email: string | null;
+  is_admin: boolean;
+  is_approved: boolean;
+};
+
 function readAccessToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
 
@@ -60,26 +67,64 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   next();
 }
 
-export async function requireAdmin(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  if (!req.auth?.user?.id) {
+async function fetchProfileAccess(userId: string): Promise<ProfileAccessRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, is_admin, is_approved")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: String(data.id),
+    email: data.email ?? null,
+    is_admin: Boolean(data.is_admin),
+    is_approved: Boolean(data.is_approved),
+  };
+}
+
+export async function requireApprovedUser(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const auth = req.auth;
+  if (!auth?.user?.id) {
     next(unauthorized());
     return;
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .select("id, email, is_admin")
-    .eq("id", req.auth.user.id)
-    .maybeSingle();
-
-  if (error || !data) {
+  const profile = await fetchProfileAccess(auth.user.id);
+  if (!profile) {
     next(unauthorized("Profile not found for authenticated user"));
     return;
   }
 
-  req.auth.profile = data;
+  auth.profile = profile;
 
-  if (!data.is_admin) {
+  if (!profile.is_admin && !profile.is_approved) {
+    next(forbidden("Account is pending admin approval"));
+    return;
+  }
+
+  next();
+}
+
+export async function requireAdmin(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const auth = req.auth;
+  if (!auth?.user?.id) {
+    next(unauthorized());
+    return;
+  }
+
+  const profile = await fetchProfileAccess(auth.user.id);
+  if (!profile) {
+    next(unauthorized("Profile not found for authenticated user"));
+    return;
+  }
+
+  auth.profile = profile;
+
+  if (!profile.is_admin) {
     next(forbidden("Admin access required"));
     return;
   }

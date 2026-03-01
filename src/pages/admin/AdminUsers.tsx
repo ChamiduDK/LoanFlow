@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shield, User } from "lucide-react";
+import { CheckCircle2, Clock3, Shield, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,6 +49,25 @@ export default function AdminUsers() {
       });
     },
   });
+  const approvalMutation = useMutation({
+    mutationFn: ({ userId, is_approved }: { userId: string; is_approved: boolean }) =>
+      apiFetch(`/api/admin/users/${userId}/approval`, {
+        method: "PUT",
+        body: JSON.stringify({ is_approved }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      void queryClient.invalidateQueries({ queryKey: ["me-profile"] });
+      toast({ title: "User approval updated" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Approval update failed",
+        description: error instanceof Error ? error.message : "Request failed",
+        variant: "destructive",
+      });
+    },
+  });
 
   const rows = (usersQuery.data ?? []).filter((user) => {
     const term = search.trim().toLowerCase();
@@ -80,6 +99,7 @@ export default function AdminUsers() {
                 <TableHead>User</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Approval</TableHead>
                 <TableHead>Total Apps</TableHead>
                 <TableHead>Active Apps</TableHead>
                 <TableHead>Joined</TableHead>
@@ -102,31 +122,64 @@ export default function AdminUsers() {
                     <TableCell className="font-medium">{user.full_name || "Unnamed"}</TableCell>
                     <TableCell>{user.email || "-"}</TableCell>
                     <TableCell>{user.is_admin ? "Admin" : "User"}</TableCell>
+                    <TableCell>
+                      {user.is_approved ? (
+                        <span className="inline-flex items-center gap-1 text-success">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Approved
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-warning">
+                          <Clock3 className="h-4 w-4" />
+                          Pending
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>{user.applications_total}</TableCell>
                     <TableCell>{user.applications_active}</TableCell>
                     <TableCell>{formatDate(user.created_at)}</TableCell>
                     <TableCell>
-                      {user.is_admin ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          title={disableReason}
-                          onClick={() => roleMutation.mutate({ userId: user.id, is_admin: false })}
-                          disabled={disableDemote}
-                        >
-                          <User className="h-4 w-4" />
-                          {isCurrentUser ? "Current Admin" : "Set User"}
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => roleMutation.mutate({ userId: user.id, is_admin: true })}
-                          disabled={roleMutation.isPending}
-                        >
-                          <Shield className="h-4 w-4" />
-                          Set Admin
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {user.is_admin ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title={disableReason}
+                            onClick={() => roleMutation.mutate({ userId: user.id, is_admin: false })}
+                            disabled={disableDemote}
+                          >
+                            <User className="h-4 w-4" />
+                            {isCurrentUser ? "Current Admin" : "Set User"}
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => roleMutation.mutate({ userId: user.id, is_admin: true })}
+                            disabled={roleMutation.isPending}
+                          >
+                            <Shield className="h-4 w-4" />
+                            Set Admin
+                          </Button>
+                        )}
+                        {user.is_approved ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => approvalMutation.mutate({ userId: user.id, is_approved: false })}
+                            disabled={approvalMutation.isPending}
+                          >
+                            Set Pending
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => approvalMutation.mutate({ userId: user.id, is_approved: true })}
+                            disabled={approvalMutation.isPending}
+                          >
+                            Approve User
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

@@ -24,6 +24,7 @@ import { logAudit } from "../services/audit.service";
 const idParamsSchema = z.object({ id: z.string().uuid() });
 const userRoleParamsSchema = z.object({ id: z.string().uuid() });
 const userRoleBodySchema = z.object({ is_admin: z.boolean() });
+const userApprovalBodySchema = z.object({ is_approved: z.boolean() });
 const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -158,7 +159,7 @@ adminRouter.get(
     const [profilesResult, applicationsResult] = await Promise.all([
       supabaseAdmin
         .from("profiles")
-        .select("id, email, full_name, phone, is_admin, created_at, updated_at")
+        .select("id, email, full_name, phone, is_admin, is_approved, created_at, updated_at")
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("loan_applications")
@@ -203,7 +204,7 @@ adminRouter.put(
 
     const profileResult = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, is_admin, updated_at")
+      .select("id, email, full_name, is_admin, is_approved, updated_at")
       .eq("id", params.id)
       .maybeSingle();
 
@@ -243,7 +244,7 @@ adminRouter.put(
       .from("profiles")
       .update({ is_admin: payload.is_admin })
       .eq("id", params.id)
-      .select("id, email, full_name, is_admin, updated_at")
+      .select("id, email, full_name, is_admin, is_approved, updated_at")
       .maybeSingle();
 
     if (updateResult.error) {
@@ -260,6 +261,40 @@ adminRouter.put(
       entityType: "profiles",
       entityId: params.id,
       payloadSummary: { is_admin: payload.is_admin },
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, updateResult.data);
+  }),
+);
+
+adminRouter.put(
+  "/admin/users/:id/approval",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(userRoleParamsSchema, req.params);
+    const payload = parseWithSchema(userApprovalBodySchema, req.body);
+
+    const updateResult = await supabaseAdmin
+      .from("profiles")
+      .update({ is_approved: payload.is_approved })
+      .eq("id", params.id)
+      .select("id, email, full_name, is_admin, is_approved, updated_at")
+      .maybeSingle();
+
+    if (updateResult.error) {
+      throw internalError("Failed to update user approval", updateResult.error);
+    }
+
+    if (!updateResult.data) {
+      throw notFound("User profile not found");
+    }
+
+    await logAudit({
+      actorUserId: req.auth?.user.id,
+      action: "admin.user_approval.update",
+      entityType: "profiles",
+      entityId: params.id,
+      payloadSummary: { is_approved: payload.is_approved },
       ipAddress: req.ip,
     });
 

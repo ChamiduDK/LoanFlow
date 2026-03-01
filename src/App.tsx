@@ -9,12 +9,14 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { supabaseClient } from "@/lib/supabase/client";
 import RequireAdmin from "@/components/auth/RequireAdmin";
 import RequireAuth from "@/components/auth/RequireAuth";
+import RequireApprovedUser from "@/components/auth/RequireApprovedUser";
 import RequireGuest from "@/components/auth/RequireGuest";
 import RouteFallback from "@/components/auth/RouteFallback";
 
 const Index = lazy(() => import("./pages/Index"));
 const Login = lazy(() => import("./pages/Login"));
 const SignUp = lazy(() => import("./pages/SignUp"));
+const ApprovalPending = lazy(() => import("./pages/ApprovalPending"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const LoanApplication = lazy(() => import("./pages/LoanApplication"));
 const LoanResults = lazy(() => import("./pages/LoanResults"));
@@ -61,14 +63,18 @@ function AppRoutes() {
         </Route>
 
         <Route element={<RequireAuth />}>
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/apply" element={<LoanApplication />} />
-            <Route path="/results" element={<LoanResults />} />
-            <Route path="/calculator" element={<EMICalculator />} />
-            <Route path="/documents" element={<DocumentUpload />} />
-            <Route path="/tracker" element={<ApplicationTracker />} />
-            <Route path="/management" element={<LoanManagement />} />
+          <Route path="/approval-pending" element={<ApprovalPending />} />
+
+          <Route element={<RequireApprovedUser />}>
+            <Route element={<AppLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/apply" element={<LoanApplication />} />
+              <Route path="/results" element={<LoanResults />} />
+              <Route path="/calculator" element={<EMICalculator />} />
+              <Route path="/documents" element={<DocumentUpload />} />
+              <Route path="/tracker" element={<ApplicationTracker />} />
+              <Route path="/management" element={<LoanManagement />} />
+            </Route>
           </Route>
         </Route>
 

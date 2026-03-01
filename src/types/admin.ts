@@ -50,6 +50,7 @@ export type AdminUser = {
   full_name: string | null;
   phone: string | null;
   is_admin: boolean;
+  is_approved: boolean;
   created_at: string;
   updated_at: string;
   applications_total: number;

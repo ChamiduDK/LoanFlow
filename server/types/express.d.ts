@@ -10,6 +10,7 @@ declare global {
         profile?: {
           id: string;
           is_admin: boolean;
+          is_approved: boolean;
           email: string | null;
         };
       };

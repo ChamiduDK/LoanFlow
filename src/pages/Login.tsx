@@ -13,6 +13,7 @@ import { supabaseClient } from "@/lib/supabase/client";
 type MePayload = {
   profile?: {
     is_admin?: boolean;
+    is_approved?: boolean;
   } | null;
 };
 
@@ -50,17 +51,18 @@ export default function Login() {
 
       const state = location.state as { from?: string } | null;
       let isAdmin = false;
+      let isApproved = false;
 
-      if (!state?.from) {
-        try {
-          const me = await apiFetch<MePayload>("/api/me");
-          isAdmin = Boolean(me.profile?.is_admin);
-        } catch {
-          isAdmin = false;
-        }
+      try {
+        const me = await apiFetch<MePayload>("/api/me");
+        isAdmin = Boolean(me.profile?.is_admin);
+        isApproved = Boolean(me.profile?.is_approved);
+      } catch {
+        isAdmin = false;
+        isApproved = false;
       }
 
-      navigate(resolvePostAuthPath(state?.from, isAdmin), { replace: true });
+      navigate(resolvePostAuthPath(state?.from, { isAdmin, isApproved }), { replace: true });
     } finally {
       setSubmitting(false);
     }

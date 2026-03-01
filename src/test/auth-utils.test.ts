@@ -6,15 +6,19 @@ describe("auth utils", () => {
     expect(normalizeEmail("  USER@Example.COM  ")).toBe("user@example.com");
   });
 
-  it("prefers requested return path after login", () => {
-    expect(resolvePostAuthPath("/admin/users", false)).toBe("/admin/users");
+  it("blocks non-admin users from admin return paths", () => {
+    expect(resolvePostAuthPath("/admin/users", { isAdmin: false, isApproved: true })).toBe("/dashboard");
   });
 
   it("routes admins to admin dashboard by default", () => {
-    expect(resolvePostAuthPath(undefined, true)).toBe("/admin");
+    expect(resolvePostAuthPath(undefined, { isAdmin: true, isApproved: true })).toBe("/admin");
   });
 
-  it("routes regular users to user dashboard by default", () => {
-    expect(resolvePostAuthPath(undefined, false)).toBe("/dashboard");
+  it("routes approved regular users to user dashboard by default", () => {
+    expect(resolvePostAuthPath(undefined, { isAdmin: false, isApproved: true })).toBe("/dashboard");
+  });
+
+  it("routes pending regular users to approval page by default", () => {
+    expect(resolvePostAuthPath(undefined, { isAdmin: false, isApproved: false })).toBe("/approval-pending");
   });
 });
