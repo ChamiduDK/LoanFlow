@@ -24,6 +24,8 @@ const EMICalculator = lazy(() => import("./pages/EMICalculator"));
 const DocumentUpload = lazy(() => import("./pages/DocumentUpload"));
 const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker"));
 const LoanManagement = lazy(() => import("./pages/LoanManagement"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Notifications = lazy(() => import("./pages/Notifications"));
 const AdminOverview = lazy(() => import("./pages/admin/AdminOverview"));
 const AdminBanks = lazy(() => import("./pages/admin/AdminBanks"));
 const AdminSchemes = lazy(() => import("./pages/admin/AdminSchemes"));
@@ -74,6 +76,8 @@ function AppRoutes() {
               <Route path="/documents" element={<DocumentUpload />} />
               <Route path="/tracker" element={<ApplicationTracker />} />
               <Route path="/management" element={<LoanManagement />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/notifications" element={<Notifications />} />
             </Route>
           </Route>
         </Route>
