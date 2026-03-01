@@ -839,13 +839,17 @@ export async function sendLoanFlowChatMessage(
 
   // --- Gemini AI Integration ---
 
-  const aiHistory: AiChatMessage[] = history
-    .filter(msg => msg.role === "user" || msg.role === "assistant")
-    .map(msg => ({
-      role: msg.role === "assistant" ? "model" as const : "user" as const,
-      parts: [{ text: msg.message_text ?? "" }]
+  let aiHistory: AiChatMessage[] = history
+    .filter((msg) => msg.role === "user" || msg.role === "assistant")
+    .map((msg) => ({
+      role: msg.role === "assistant" ? ("model" as const) : ("user" as const),
+      parts: [{ text: msg.message_text ?? "" }],
     }))
-    .slice(-10); // Last 10 messages for context
+    .slice(-10);
+
+  if (aiHistory.length > 0 && aiHistory[0].role === "model") {
+    aiHistory = aiHistory.slice(1);
+  }
 
   const systemPrompt = `You are LoanFlow AI, a specialized SME loan assistant for Sri Lankan businesses.
 Your goal is to provide accurate, helpful, and professional advice on loan products, eligibility, and document requirements.

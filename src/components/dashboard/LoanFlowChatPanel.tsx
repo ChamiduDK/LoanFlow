@@ -240,6 +240,8 @@ export default function LoanFlowChatPanel() {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <Textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value.slice(0, 3000))}
             placeholder="Ask LoanFlow AI about banks, schemes, rules, documents, or benefits..."
             className="min-h-[96px] flex-1"
             disabled={isBusy}
