@@ -2817,6 +2817,10 @@ function evaluateDocumentValidation(input: {
     notes.push("No selected bank checklist found; only file-level verification was performed.");
   } else if (!requiredForBank) {
     notes.push("Document type is not listed in selected bank's required checklist.");
+    return {
+      status: "invalid",
+      notes,
+    };
   } else {
     notes.push("Document type matches selected bank checklist.");
   }
@@ -2831,6 +2835,20 @@ function evaluateDocumentValidation(input: {
 
   if (!detectedType) {
     notes.push("Document type could not be confidently inferred from OCR evidence.");
+    if (input.requiredTypes.size === 0) {
+      notes.push("Without selected bank checklist and without type evidence, the document is treated as invalid.");
+      return {
+        status: "invalid",
+        notes,
+      };
+    }
+    if (input.confidenceScore >= 75) {
+      notes.push("OCR confidence is high, but confidence alone cannot validate document authenticity.");
+    }
+    return {
+      status: "unclear",
+      notes,
+    };
   }
 
   if (input.confidenceScore >= 75) {
