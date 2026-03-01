@@ -57,7 +57,7 @@ export default function LoanFlowChatPanel() {
   });
 
   const messages = chatQuery.data?.messages ?? [];
-  const model = chatQuery.data?.model ?? "LoanFlow 1.0";
+  const model = chatQuery.data?.model ?? "LoanFlow AI";
   const activeSessionId = chatQuery.data?.session.id ?? "";
   const canSubmit = input.trim().length > 0 && !chatQuery.isLoading;
 
@@ -240,9 +240,7 @@ export default function LoanFlowChatPanel() {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <Textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value.slice(0, 3000))}
-            placeholder="Ask LoanFlow 1.0 about banks, schemes, rules, documents, or benefits..."
+            placeholder="Ask LoanFlow AI about banks, schemes, rules, documents, or benefits..."
             className="min-h-[96px] flex-1"
             disabled={isBusy}
             onKeyDown={(event) => {
