@@ -269,7 +269,7 @@ export default function DocumentUpload() {
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Document Upload & Verification"
-        subtitle="Upload supporting documents, monitor verification status, and resolve missing requirements."
+        subtitle="Upload required files, check verification status, and complete missing items quickly."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <Select
@@ -333,7 +333,7 @@ export default function DocumentUpload() {
               <div className="subtle-grid rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-10 text-center">
                 <Upload className="mx-auto h-10 w-10 text-primary" />
                 <p className="mt-3 text-base font-semibold text-foreground">Upload document files</p>
-                <p className="mt-1 text-sm text-muted-foreground">Select document type before choosing a file</p>
+                <p className="mt-1 text-sm text-muted-foreground">Select the document type first, then choose the matching file.</p>
                 <div className="mx-auto mt-4 max-w-sm space-y-3">
                   <Select value={selectedDocumentType} onValueChange={setSelectedDocumentType}>
                     <SelectTrigger>
@@ -345,9 +345,17 @@ export default function DocumentUpload() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedDocumentType ? (
+                    <p className="rounded-md border border-border/70 bg-background px-3 py-2 text-left text-xs text-muted-foreground">
+                      Selected type:{" "}
+                      <span className="font-semibold text-foreground">
+                        {checklistRows.find((item) => item.document_type === selectedDocumentType)?.name ?? selectedDocumentType}
+                      </span>
+                    </p>
+                  ) : null}
                   <input
                     type="file"
-                    className="block w-full text-sm"
+                    className="block w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
                     accept=".pdf,.png,.jpg,.jpeg"
                     onChange={(event) => {
                       const file = event.target.files?.[0];

@@ -14,7 +14,6 @@ import {
   LayoutGrid,
   Medal,
   RefreshCcw,
-  SlidersHorizontal,
   Table2,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -187,6 +186,7 @@ export default function LoanResults() {
   const hasEligibleResults = (evaluationQuery.data?.ranked_results.length ?? 0) > 0;
   const hasIneligibleResults = (evaluationQuery.data?.ineligible_results.length ?? 0) > 0;
   const hasActiveFilters = bankFilter !== "all" || maxEmiFilter > 0 || minProbabilityFilter > 0;
+  const totalVisibleResults = rankedSchemes.length + ineligibleSchemes.length;
   const filtersHidEligibleResults = hasActiveFilters && hasEligibleResults && rankedSchemes.length === 0;
   const noEligibleRecommendations = hasStoredEvaluation && !hasEligibleResults && hasIneligibleResults;
 
@@ -202,7 +202,7 @@ export default function LoanResults() {
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
           title="Loan Recommendations"
-          subtitle="Run an application evaluation first to see ranked recommendations."
+          subtitle="Choose an application and run evaluation to see lender matches."
         />
         <EmptyState
           title="No applications found"
@@ -218,7 +218,7 @@ export default function LoanResults() {
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
           title="Loan Recommendations"
-          subtitle="Ranked matches based on your application profile and lender criteria."
+          subtitle="Compare lender options, apply simple filters, and track the best match."
           actions={(
             <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
               {evaluateMutation.isPending ? "Evaluating..." : "Run Evaluation"}
@@ -237,7 +237,7 @@ export default function LoanResults() {
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Loan Recommendations"
-        subtitle="Ranked matches based on your application profile and lender criteria."
+        subtitle="Compare lender options, apply simple filters, and track the best match."
         actions={(
           <div className="flex flex-wrap gap-2">
             <Select
@@ -291,12 +291,19 @@ export default function LoanResults() {
                 <p className="text-sm font-semibold text-foreground">Filter and Sort</p>
               </div>
               <div className="flex items-center gap-2">
+                {hasActiveFilters ? (
+                  <Button variant="outline" size="sm" onClick={resetFilters}>
+                    Reset Filters
+                  </Button>
+                ) : null}
                 <TabsList className="h-9">
-                  <TabsTrigger value="grid" className="h-7 px-2.5">
+                  <TabsTrigger value="grid" className="h-7 gap-1.5 px-2.5">
                     <LayoutGrid className="h-4 w-4" />
+                    Grid
                   </TabsTrigger>
-                  <TabsTrigger value="table" className="h-7 px-2.5">
+                  <TabsTrigger value="table" className="h-7 gap-1.5 px-2.5">
                     <Table2 className="h-4 w-4" />
+                    Table
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -341,6 +348,29 @@ export default function LoanResults() {
             </div>
           </CardContent>
         </Card>
+
+        {hasStoredEvaluation ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Card>
+              <CardContent className="p-4">
+                <p className="label-xs">Eligible Matches</p>
+                <p className="mt-1 text-2xl font-semibold text-success">{rankedSchemes.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="label-xs">Needs Review</p>
+                <p className="mt-1 text-2xl font-semibold text-warning-foreground">{ineligibleSchemes.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="label-xs">Visible Results</p>
+                <p className="mt-1 text-2xl font-semibold text-foreground">{totalVisibleResults}</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
 
         <TabsContent value="grid">
           {evaluationQuery.isLoading ? (

@@ -27,13 +27,13 @@ type MePayload = {
 };
 
 const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
-  { label: "Loan Application", icon: FileText, path: "/apply" },
-  { label: "Loan Results", icon: Search, path: "/results" },
-  { label: "EMI Calculator", icon: Calculator, path: "/calculator" },
-  { label: "Documents", icon: Upload, path: "/documents" },
-  { label: "Tracker", icon: GitBranch, path: "/tracker" },
-  { label: "Loan Management", icon: Wallet, path: "/management" },
+  { label: "Dashboard", description: "Summary and quick actions", icon: LayoutDashboard, path: "/dashboard" },
+  { label: "Loan Application", description: "Create or update your request", icon: FileText, path: "/apply" },
+  { label: "Loan Results", description: "View ranked lender matches", icon: Search, path: "/results" },
+  { label: "EMI Calculator", description: "Estimate monthly repayment", icon: Calculator, path: "/calculator" },
+  { label: "Documents", description: "Upload and verify required files", icon: Upload, path: "/documents" },
+  { label: "Tracker", description: "Track final bank decision flow", icon: GitBranch, path: "/tracker" },
+  { label: "Loan Management", description: "Manage approved repayments", icon: Wallet, path: "/management" },
 ];
 
 interface AppSidebarProps {
@@ -175,15 +175,18 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
                       onClick={onClose}
                       className={({ isActive }) =>
                         cn(
-                          "group flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                          "group flex min-h-12 items-start gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                           isActive
                             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                             : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
                         )
                       }
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      {item.label}
+                      <item.icon className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{item.label}</p>
+                        <p className="truncate text-xs opacity-80">{item.description}</p>
+                      </div>
                     </NavLink>
                   );
                 })}

@@ -36,7 +36,7 @@ type EmiResponse = {
 export default function EMICalculator() {
   const { toast } = useToast();
 
-  const [form, setForm] = useState({
+  const defaultScenario = {
     principal: "5000000",
     annual_rate: "14",
     tenure_months: "36",
@@ -44,6 +44,10 @@ export default function EMICalculator() {
     max_rate: "18",
     min_tenure_months: "24",
     max_tenure_months: "60",
+  };
+
+  const [form, setForm] = useState({
+    ...defaultScenario,
   });
   const [request, setRequest] = useState<EmiPayload>({
     principal: 5_000_000,
@@ -99,7 +103,7 @@ export default function EMICalculator() {
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="EMI Calculator"
-        subtitle="Run backend-powered EMI calculations with scenario ranges."
+        subtitle="Estimate monthly installments with different rates and tenures before you apply."
       />
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -116,6 +120,7 @@ export default function EMICalculator() {
                 value={form.principal}
                 onChange={(event) => setForm((prev) => ({ ...prev, principal: event.target.value }))}
               />
+              <p className="text-xs text-muted-foreground">Current input: {formatLKR(Number(form.principal || 0))}</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -180,10 +185,19 @@ export default function EMICalculator() {
                 />
               </div>
             </div>
-            <Button onClick={runCalculation} disabled={resultQuery.isFetching}>
-              <Calculator className="h-4 w-4" />
-              {resultQuery.isFetching ? "Calculating..." : "Calculate EMI"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={runCalculation} disabled={resultQuery.isFetching}>
+                <Calculator className="h-4 w-4" />
+                {resultQuery.isFetching ? "Calculating..." : "Calculate EMI"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setForm(defaultScenario)}
+                disabled={resultQuery.isFetching}
+              >
+                Reset Defaults
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

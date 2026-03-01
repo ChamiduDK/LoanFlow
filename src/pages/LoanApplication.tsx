@@ -222,7 +222,7 @@ export default function LoanApplication() {
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="New Loan Application"
-        subtitle="Complete each step to generate lender recommendations tailored to your business profile."
+        subtitle="Fill in each step with accurate business details to get better lender recommendations."
       />
 
       <Card className="overflow-hidden">
@@ -280,11 +280,19 @@ export default function LoanApplication() {
             </div>
           </CardHeader>
           <CardContent className="space-y-5">
+            <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Required fields should be completed before moving to the next step.
+            </p>
             {step === 0 && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="business-name">Business Name</Label>
-                  <Input id="business-name" value={form.business_name} onChange={(e) => setForm((f) => ({ ...f, business_name: e.target.value }))} />
+                  <Input
+                    id="business-name"
+                    placeholder="Example: ABC Traders (Pvt) Ltd"
+                    value={form.business_name}
+                    onChange={(e) => setForm((f) => ({ ...f, business_name: e.target.value }))}
+                  />
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
@@ -309,7 +317,14 @@ export default function LoanApplication() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="years-operation">Years in Operation</Label>
-                    <Input id="years-operation" type="number" value={form.years_active} onChange={(e) => setForm((f) => ({ ...f, years_active: e.target.value }))} />
+                    <Input
+                      id="years-operation"
+                      type="number"
+                      min={0}
+                      placeholder="0"
+                      value={form.years_active}
+                      onChange={(e) => setForm((f) => ({ ...f, years_active: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>District</Label>
@@ -328,7 +343,14 @@ export default function LoanApplication() {
               <>
                 <div className="space-y-2">
                   <Label htmlFor="loan-amount">Loan Amount (LKR)</Label>
-                  <Input id="loan-amount" type="number" value={form.requested_amount} onChange={(e) => setForm((f) => ({ ...f, requested_amount: e.target.value }))} />
+                  <Input
+                    id="loan-amount"
+                    type="number"
+                    min={1}
+                    placeholder="5000000"
+                    value={form.requested_amount}
+                    onChange={(e) => setForm((f) => ({ ...f, requested_amount: e.target.value }))}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Loan Purpose</Label>
@@ -341,7 +363,14 @@ export default function LoanApplication() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tenure">Preferred Tenure (months)</Label>
-                  <Input id="tenure" type="number" value={form.preferred_tenure_months} onChange={(e) => setForm((f) => ({ ...f, preferred_tenure_months: e.target.value }))} />
+                  <Input
+                    id="tenure"
+                    type="number"
+                    min={1}
+                    placeholder="36"
+                    value={form.preferred_tenure_months}
+                    onChange={(e) => setForm((f) => ({ ...f, preferred_tenure_months: e.target.value }))}
+                  />
                 </div>
               </>
             )}
@@ -384,7 +413,13 @@ export default function LoanApplication() {
                   <Label>Collateral Available?</Label>
                   <RadioGroup
                     value={form.collateral_available ? "yes" : "no"}
-                    onValueChange={(value) => setForm((f) => ({ ...f, collateral_available: value === "yes" }))}
+                    onValueChange={(value) =>
+                      setForm((f) => ({
+                        ...f,
+                        collateral_available: value === "yes",
+                        collateral_type: value === "yes" ? f.collateral_type : "",
+                      }))
+                    }
                     className="grid gap-3 sm:grid-cols-2"
                   >
                     <Label htmlFor="yes" className="flex items-center gap-2 rounded-lg border border-border p-3">
@@ -399,7 +434,11 @@ export default function LoanApplication() {
                 </div>
                 <div className="space-y-2">
                   <Label>Collateral Type (if applicable)</Label>
-                  <Select value={form.collateral_type} onValueChange={(value) => setForm((f) => ({ ...f, collateral_type: value }))}>
+                  <Select
+                    value={form.collateral_type}
+                    onValueChange={(value) => setForm((f) => ({ ...f, collateral_type: value }))}
+                    disabled={!form.collateral_available}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="property">Property / Land</SelectItem>
@@ -410,6 +449,9 @@ export default function LoanApplication() {
                     </SelectContent>
                   </Select>
                 </div>
+                {!form.collateral_available ? (
+                  <p className="text-xs text-muted-foreground">Collateral type will be enabled if you select "Yes".</p>
+                ) : null}
                 <div className="rounded-xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
                   Document upload is handled after application creation in the Document Upload module.
                 </div>

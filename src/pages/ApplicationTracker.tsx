@@ -322,7 +322,7 @@ export default function ApplicationTracker() {
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Application Tracker"
-        subtitle="Bank-specific re-check, final verification, and proposal preparation."
+        subtitle="Track your selected lender, run final checks, and prepare the proposal."
         actions={
           <div className="flex flex-wrap gap-2">
             <Select value={applicationId} onValueChange={(value) => {
