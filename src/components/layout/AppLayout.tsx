@@ -7,12 +7,12 @@ export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen overflow-hidden app-shell-bg">
+    <div className="flex h-screen overflow-hidden app-shell-bg">
       <AppSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
         <TopNav onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto">
-          <div className="page-shell px-4 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+          <div className="page-shell px-4 pt-4 sm:px-6 lg:px-8 lg:pt-6 pb-10">
             <Outlet />
           </div>
         </main>
