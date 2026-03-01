@@ -125,7 +125,7 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
             </div>
           </div>
 
-          <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+          <nav className="flex-1 space-y-5 overflow-hidden px-3 py-4">
             <div>
               <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/50">
                 Navigation
