@@ -58,10 +58,10 @@ const SRI_LANKA_DOCUMENT_PRESETS: Record<string, SriLankaDocumentPreset> = {
     display_name: "National Identity Card",
     accepted_formats: ["jpg", "png", "pdf"],
     required_keywords: [
-      "democratic socialist republic of sri lanka",
       "national identity card",
       "identity card",
-      "date of birth",
+      "sri lanka",
+      "name",
     ],
     forbidden_keywords: ["sample", "specimen", "dummy"],
     min_text_length: 45,

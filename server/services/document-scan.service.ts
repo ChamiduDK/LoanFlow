@@ -202,6 +202,33 @@ function sanitizeScanErrorMessage(value: string): string {
   return `${redactedKeys.slice(0, 317)}...`;
 }
 
+function summarizeGeminiErrorMessage(value: string): string {
+  const sanitized = sanitizeScanErrorMessage(value);
+  const normalized = sanitized.toLowerCase();
+
+  if (normalized.includes("429") || normalized.includes("quota exceeded") || normalized.includes("rate limit")) {
+    return "AI quota exceeded (429); deterministic checks were used.";
+  }
+
+  if (normalized.includes("401") || normalized.includes("403") || normalized.includes("permission denied")) {
+    return "AI authentication or permission error; deterministic checks were used.";
+  }
+
+  if (normalized.includes("timeout")) {
+    return "AI request timed out; deterministic checks were used.";
+  }
+
+  if (normalized.includes("network") || normalized.includes("fetch failed") || normalized.includes("failed to fetch")) {
+    return "AI network request failed; deterministic checks were used.";
+  }
+
+  if (sanitized.length <= 180) {
+    return sanitized;
+  }
+
+  return `${sanitized.slice(0, 177)}...`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -2408,7 +2435,8 @@ async function applyAiTypeEnhancement(input: {
       },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown AI classification error";
+    const rawMessage = error instanceof Error ? error.message : "Unknown AI classification error";
+    const message = summarizeGeminiErrorMessage(rawMessage);
     return {
       ...input.extracted,
       warnings: uniqueStrings([
@@ -2480,9 +2508,16 @@ function evaluateDeterministicRuleChecks(input: {
   const normalizedText = normalizeTextForSearch(input.ocrText);
   const missingRequiredKeywords = input.rules.requiredKeywords.filter((keyword) => !normalizedText.includes(keyword));
   const forbiddenKeywordsFound = input.rules.forbiddenKeywords.filter((keyword) => normalizedText.includes(keyword));
+  const matchedRequiredKeywordCount = input.rules.requiredKeywords.length - missingRequiredKeywords.length;
+  const missingAllRequiredKeywords =
+    input.rules.requiredKeywords.length > 0 &&
+    missingRequiredKeywords.length === input.rules.requiredKeywords.length;
 
   if (missingRequiredKeywords.length > 0) {
     notes.push(`Missing required keywords: ${missingRequiredKeywords.join(", ")}.`);
+    if (!missingAllRequiredKeywords) {
+      notes.push(`Detected ${matchedRequiredKeywordCount} of ${input.rules.requiredKeywords.length} required keywords; manual review is recommended.`);
+    }
   } else if (input.rules.requiredKeywords.length > 0) {
     notes.push("All required keywords were detected.");
   }
@@ -2501,9 +2536,27 @@ function evaluateDeterministicRuleChecks(input: {
     }
   }
 
-  if (missingRequiredKeywords.length > 0 || forbiddenKeywordsFound.length > 0) {
+  if (forbiddenKeywordsFound.length > 0) {
     return {
       status: "invalid",
+      notes,
+      missingRequiredKeywords,
+      forbiddenKeywordsFound,
+    };
+  }
+
+  if (missingAllRequiredKeywords) {
+    return {
+      status: "invalid",
+      notes: [...notes, "No required keywords were detected in OCR text."],
+      missingRequiredKeywords,
+      forbiddenKeywordsFound,
+    };
+  }
+
+  if (missingRequiredKeywords.length > 0) {
+    return {
+      status: "unclear",
       notes,
       missingRequiredKeywords,
       forbiddenKeywordsFound,
@@ -2718,7 +2771,8 @@ async function applyDocumentRuleVerification(input: {
         notes.push(`Gemini detected forbidden keywords: ${aiVerification.forbiddenKeywordsFound.join(", ")}.`);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown Gemini verification error";
+      const rawMessage = error instanceof Error ? error.message : "Unknown Gemini verification error";
+      const message = summarizeGeminiErrorMessage(rawMessage);
       notes.push(`Gemini rule verification skipped: ${message}`);
     }
   }
