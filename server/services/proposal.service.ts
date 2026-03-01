@@ -84,22 +84,24 @@ function buildProposalHtml(data: Record<string, unknown>): string {
   const selectedBank = (data.selected_bank as Record<string, unknown>) ?? {};
   const verification = (data.verification as Record<string, unknown>) ?? {};
   const repayment = (data.repayment as Record<string, unknown>) ?? {};
-  const probability = (data.probability as Record<string, unknown>) ?? {};
+  const formalRequest = (data.formal_request as Record<string, unknown>) ?? {};
   const generatedAt = String(data.generated_at ?? new Date().toISOString());
-  const missingDocs = ((verification.missing_documents as string[] | undefined) ?? [])
-    .map((doc) => `<li>${escapeHtml(doc)}</li>`)
-    .join("");
+  const availableDocs = Array.isArray(verification.available_documents)
+    ? (verification.available_documents as Array<Record<string, unknown>>)
+    : [];
+  const missingDocs = Array.isArray(verification.missing_documents)
+    ? (verification.missing_documents as string[])
+    : [];
 
-  const summaryRows = [
-    ["Applicant", String(applicant.full_name ?? "-")],
-    ["Business", String(business.business_name ?? "-")],
-    ["Loan Amount", String(request.requested_amount_formatted ?? "-")],
-    ["Purpose", String(request.purpose ?? "-")],
-    ["Tenure", String(request.tenure ?? "-")],
-    ["Selected Bank", String(selectedBank.bank_name ?? "-")],
-    ["Scheme", String(selectedBank.product_name ?? "-")],
-    ["Estimated EMI", String(repayment.estimated_emi_formatted ?? "-")],
-    ["Final Probability", `${toNumber(probability.final_probability, 0).toFixed(1)}%`],
+  const applicantRows = [
+    ["Applicant Name", String(applicant.full_name ?? "-")],
+    ["Email", String(applicant.email ?? "-")],
+    ["Phone", String(applicant.phone ?? "-")],
+    ["District", String(applicant.district ?? "-")],
+    ["Business Name", String(business.business_name ?? "-")],
+    ["Business Type", String(business.business_type ?? "-")],
+    ["Industry", String(business.industry ?? "-")],
+    ["Years Active", String(business.years_active ?? "-")],
   ]
     .map(
       ([label, value]) =>
@@ -107,52 +109,126 @@ function buildProposalHtml(data: Record<string, unknown>): string {
     )
     .join("");
 
+  const bankRows = [
+    ["Bank Name", String(selectedBank.bank_name ?? "-")],
+    ["Bank Contact Email", String(selectedBank.contact_email ?? "-")],
+    ["Bank Website", String(selectedBank.website ?? "-")],
+    ["Loan Product", String(selectedBank.product_name ?? "-")],
+    [
+      "Published Interest Range",
+      `${toNumber(selectedBank.rate_min, 0).toFixed(2)}% - ${toNumber(selectedBank.rate_max, 0).toFixed(2)}%`,
+    ],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 8px;border:1px solid #d1d5db;width:36%;font-weight:600;">${escapeHtml(label)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${escapeHtml(value)}</td></tr>`,
+    )
+    .join("");
+
+  const requestRows = [
+    ["Requested Amount", String(request.requested_amount_formatted ?? "-")],
+    ["Purpose", String(request.purpose ?? "-")],
+    ["Requested Tenure", String(request.tenure ?? "-")],
+    ["Collateral Available", Boolean(request.collateral_available) ? "Yes" : "No"],
+    ["Collateral Type", String(request.collateral_type ?? "-")],
+    ["Estimated EMI", String(repayment.estimated_emi_formatted ?? "-")],
+    ["Estimated Rate", `${toNumber(repayment.approved_rate, 0).toFixed(2)}%`],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 8px;border:1px solid #d1d5db;width:36%;font-weight:600;">${escapeHtml(label)}</td><td style="padding:6px 8px;border:1px solid #d1d5db;">${escapeHtml(value)}</td></tr>`,
+    )
+    .join("");
+
+  const availableDocsHtml = availableDocs.length > 0
+    ? `
+      <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 13px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">Document</th>
+            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">File</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${availableDocs
+            .map((doc) => {
+              return `
+                <tr>
+                  <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.display_name ?? doc.document_type ?? "-"))}</td>
+                  <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.file_name ?? "-"))}</td>
+                </tr>
+              `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+    `
+    : `<p style="margin:0 0 14px 0;">No documents are currently available in the application record.</p>`;
+
+  const missingDocsHtml = missingDocs.length > 0
+    ? `<p style="margin:0 0 14px 0;"><strong>Pending documents:</strong> ${escapeHtml(missingDocs.join(", "))}</p>`
+    : `<p style="margin:0 0 14px 0;">All currently required documents for this bank are available in the application file.</p>`;
+
   return `
 <!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Loan Proposal</title>
+    <title>Credit Facility Request Letter</title>
   </head>
-  <body style="font-family: 'Times New Roman', Georgia, serif; color: #111827; line-height: 1.5; margin: 32px;">
-    <p style="text-align:right; margin:0 0 18px 0;">Date: ${escapeHtml(formatDate(generatedAt))}</p>
-    <h2 style="margin:0 0 12px 0;">Loan Proposal Request</h2>
-    <p style="margin:0 0 12px 0;">
-      To,<br />
-      Credit Evaluation Team<br />
-      ${escapeHtml(String(selectedBank.bank_name ?? "Selected Bank"))}
-    </p>
-    <p style="margin:0 0 14px 0;">
-      Dear Sir/Madam,
-    </p>
-    <p style="margin:0 0 14px 0;">
-      I respectfully submit this proposal requesting consideration for the loan facility under
-      <strong>${escapeHtml(String(selectedBank.product_name ?? "the selected product"))}</strong>.
-      The applicant and business information, repayment estimate, and document verification summary are provided below.
-    </p>
-    <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 14px;">
-      ${summaryRows}
-    </table>
-    <h3 style="margin:16px 0 8px 0;">Document Verification Summary</h3>
-    <p style="margin:0 0 8px 0;">
-      Completeness: <strong>${toNumber(verification.completeness_score, 0).toFixed(1)}%</strong> |
-      Quality: <strong>${toNumber(verification.quality_score, 0).toFixed(1)}%</strong>
-    </p>
-    ${
-      missingDocs
-        ? `<p style="margin:0 0 6px 0;">Missing documents:</p><ul style="margin:0 0 14px 20px;">${missingDocs}</ul>`
-        : `<p style="margin:0 0 14px 0;">All required documents for the selected bank are available.</p>`
-    }
-    <p style="margin:0 0 14px 0;">
-      I confirm that the submitted information is accurate to the best of my knowledge and I am ready to provide additional clarifications if required.
-    </p>
-    <p style="margin:0 0 20px 0;">
-      Thank you for your time and consideration.
-    </p>
-    <p style="margin:0;">
-      Yours faithfully,<br />
-      ${escapeHtml(String(applicant.full_name ?? "Applicant"))}
-    </p>
+  <body style="font-family: Cambria, 'Times New Roman', Georgia, serif; color: #1e293b; line-height: 1.58; margin: 0; padding: 36px; background: #f3f6fa;">
+    <main style="max-width: 760px; margin: 0 auto; background: #ffffff; border: 1px solid #d4dde7; border-radius: 10px; padding: 34px 38px;">
+      <p style="text-align:right; margin:0 0 18px 0; color:#334155;">Date: ${escapeHtml(formatDate(generatedAt))}</p>
+      <p style="margin:0 0 12px 0;">
+        To,<br />
+        Credit Evaluation Team<br />
+        ${escapeHtml(String(selectedBank.bank_name ?? "Selected Bank"))}
+      </p>
+      <p style="margin:0 0 12px 0;">
+        Subject: <strong>${escapeHtml(String(formalRequest.subject ?? "Credit Facility Request"))}</strong>
+      </p>
+      <p style="margin:0 0 14px 0;">
+        Dear Sir/Madam,
+      </p>
+      <p style="margin:0 0 14px 0;">
+        I respectfully submit this request for consideration under
+        <strong>${escapeHtml(String(selectedBank.product_name ?? "the selected product"))}</strong>.
+        This request is submitted by the applicant below for formal credit assessment by ${escapeHtml(String(selectedBank.bank_name ?? "the selected bank"))}.
+      </p>
+      <p style="margin:0 0 14px 0;">
+        ${escapeHtml(String(formalRequest.statement ?? "The details below summarize the applicant profile, bank selection, requested facility, and currently available documents."))}
+      </p>
+
+      <h3 style="margin:18px 0 8px 0; color:#0f2a44; border-bottom:1px solid #d6dde6; padding-bottom:4px;">Applicant Details</h3>
+      <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 14px;">
+        ${applicantRows}
+      </table>
+
+      <h3 style="margin:18px 0 8px 0; color:#0f2a44; border-bottom:1px solid #d6dde6; padding-bottom:4px;">Bank & Product Details</h3>
+      <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 14px;">
+        ${bankRows}
+      </table>
+
+      <h3 style="margin:18px 0 8px 0; color:#0f2a44; border-bottom:1px solid #d6dde6; padding-bottom:4px;">Requested Facility Details</h3>
+      <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 14px;">
+        ${requestRows}
+      </table>
+
+      <h3 style="margin:18px 0 8px 0; color:#0f2a44; border-bottom:1px solid #d6dde6; padding-bottom:4px;">Available Documents</h3>
+      ${availableDocsHtml}
+      ${missingDocsHtml}
+
+      <p style="margin:0 0 14px 0;">
+        I confirm that the submitted information is accurate to the best of my knowledge and I am ready to provide additional clarifications if required.
+      </p>
+      <p style="margin:0 0 20px 0;">
+        Thank you for your time and consideration.
+      </p>
+      <p style="margin:0;">
+        Yours faithfully,<br />
+        ${escapeHtml(String(applicant.full_name ?? "Applicant"))}
+      </p>
+    </main>
   </body>
 </html>
 `.trim();
@@ -195,7 +271,7 @@ export async function generateLoanProposal(
       .maybeSingle(),
     supabaseAdmin
       .from("loan_products")
-      .select("id, bank_id, name, rate_min, rate_max, banks(name)")
+      .select("id, bank_id, name, rate_min, rate_max, banks(name, contact_email, website)")
       .eq("id", selectedProductId)
       .maybeSingle(),
     supabaseAdmin
@@ -204,7 +280,7 @@ export async function generateLoanProposal(
       .eq("product_id", selectedProductId),
     supabaseAdmin
       .from("documents")
-      .select("document_type, validation_status")
+      .select("document_type, validation_status, file_name, created_at")
       .eq("application_id", applicationId)
       .eq("user_id", userId),
     supabaseAdmin
@@ -273,12 +349,41 @@ export async function generateLoanProposal(
 
   const profile = profileResult.data ?? {};
   const product = productResult.data;
-  const requiredDocs = (requiredDocsResult.data ?? []).filter((item) => item.is_required === true);
+  const allRequiredDocs = requiredDocsResult.data ?? [];
+  const requiredDocs = allRequiredDocs.filter((item) => item.is_required === true);
   const documents = documentsResult.data ?? [];
+  const displayNameByType = new Map<string, string>(
+    allRequiredDocs.map((doc) => [String(doc.document_type).trim().toLowerCase(), String(doc.display_name)]),
+  );
   const uploadedTypes = new Set(documents.map((doc) => String(doc.document_type).trim().toLowerCase()));
   const missingDocs = requiredDocs
     .filter((doc) => !uploadedTypes.has(String(doc.document_type).trim().toLowerCase()))
     .map((doc) => String(doc.display_name));
+
+  const availableDocuments = documents
+    .map((doc) => {
+      const normalizedType = String(doc.document_type).trim().toLowerCase();
+      return {
+        document_type: normalizedType,
+        display_name: displayNameByType.get(normalizedType) ?? String(doc.document_type),
+        file_name: String(doc.file_name ?? "-"),
+        validation_status: String(doc.validation_status ?? "unclear"),
+        uploaded_at: doc.created_at ? String(doc.created_at) : null,
+      };
+    })
+    .sort((a, b) => {
+      const aTime = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
+      const bTime = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
+      return bTime - aTime;
+    });
+
+  const bankProfile = Array.isArray(product.banks)
+    ? (product.banks[0] as { name?: string; contact_email?: string | null; website?: string | null } | undefined) ?? null
+    : (product.banks as { name?: string; contact_email?: string | null; website?: string | null } | null);
+
+  const bankName = bankProfile?.name ?? "Unknown Bank";
+  const bankEmail = bankProfile?.contact_email ?? null;
+  const bankWebsite = bankProfile?.website ?? null;
 
   const validCount = documents.filter((doc) => String(doc.validation_status ?? "unclear") === "valid").length;
   const invalidCount = documents.filter((doc) => String(doc.validation_status ?? "unclear") === "invalid").length;
@@ -295,14 +400,13 @@ export async function generateLoanProposal(
       : 0,
   );
 
-  const documentCompleteness = toNumber(checksResult.data?.completeness_score, requiredDocs.length === 0
-    ? 100
-    : Number((((requiredDocs.length - missingDocs.length) / requiredDocs.length) * 100).toFixed(2)));
+  const documentCompleteness = toNumber(
+    checksResult.data?.completeness_score,
+    requiredDocs.length === 0 ? 100 : Number((((requiredDocs.length - missingDocs.length) / requiredDocs.length) * 100).toFixed(2)),
+  );
 
   const qualityDenominator = validCount + invalidCount + unclearCount;
-  const documentQuality = qualityDenominator === 0
-    ? 0
-    : Number((((validCount + unclearCount * 0.5) / qualityDenominator) * 100).toFixed(2));
+  const documentQuality = qualityDenominator === 0 ? 0 : Number((((validCount + unclearCount * 0.5) / qualityDenominator) * 100).toFixed(2));
 
   const finalProbability = toNumber(
     resultResult.data?.final_probability,
@@ -310,8 +414,44 @@ export async function generateLoanProposal(
   );
 
   const generatedAt = new Date().toISOString();
+  const nextVersion = Number(latestProposalResult.data?.proposal_version ?? 0) + 1;
+  const proposalReference = `${applicationId.slice(0, 8).toUpperCase()}-P${nextVersion}`;
+  const emailSubject = `Credit Facility Request Submission - ${String(product.name)} - ${String(profile.full_name ?? "Applicant")}`;
+  const availableDocumentLines = availableDocuments.length > 0
+    ? availableDocuments
+      .map((doc, index) => `${index + 1}. ${doc.display_name} (${doc.file_name})`)
+      .join("\n")
+    : "No documents currently available";
+  const emailBody = [
+    "Dear Credit Evaluation Team,",
+    "",
+    `Please find my credit facility request for ${String(product.name)} at ${bankName}.`,
+    "",
+    `Applicant: ${String(profile.full_name ?? "-")}`,
+    `Business: ${String(profile.business_name ?? "-")}`,
+    `Requested Amount: ${formatLkr(toNumber(application.requested_amount, 0))}`,
+    `Requested Tenure: ${toNumber(application.preferred_tenure_months, 0)} months`,
+    "",
+    "Available documents:",
+    availableDocumentLines,
+    "",
+    missingDocs.length > 0
+      ? `Pending documents: ${missingDocs.join(", ")}`
+      : "All currently required documents are available in the application.",
+    "",
+    "Kindly review and advise on the next steps.",
+    "",
+    "Regards,",
+    String(profile.full_name ?? "Applicant"),
+    profile.phone ? `Contact: ${String(profile.phone)}` : "",
+    profile.email ? `Email: ${String(profile.email)}` : "",
+  ]
+    .filter((line) => line.length > 0)
+    .join("\n");
 
   const proposalData = {
+    application_id: applicationId,
+    proposal_reference: proposalReference,
     generated_at: generatedAt,
     applicant: {
       full_name: profile.full_name ?? null,
@@ -337,22 +477,25 @@ export async function generateLoanProposal(
     },
     selected_bank: {
       bank_id: String(product.bank_id),
-      bank_name: Array.isArray(product.banks)
-        ? (product.banks[0] as { name?: string } | undefined)?.name ?? "Unknown Bank"
-        : (product.banks as { name?: string } | null)?.name ?? "Unknown Bank",
+      bank_name: bankName,
+      contact_email: bankEmail,
+      website: bankWebsite,
       product_id: String(product.id),
       product_name: String(product.name),
+      rate_min: toNumber(product.rate_min, 0),
+      rate_max: toNumber(product.rate_max, 0),
     },
     verification: {
       required_count: requiredDocs.length,
       uploaded_count: documents.length,
       missing_count: missingDocs.length,
       missing_documents: missingDocs,
-      completeness_score: documentCompleteness,
-      quality_score: documentQuality,
       valid_count: validCount,
       invalid_count: invalidCount,
       unclear_count: unclearCount,
+      completeness_score: documentCompleteness,
+      quality_score: documentQuality,
+      available_documents: availableDocuments,
     },
     repayment: {
       approved_amount: approvedAmount,
@@ -367,14 +510,18 @@ export async function generateLoanProposal(
       outcome_status: outcomeResult.data?.status ?? null,
     },
     formal_request: {
-      subject: "Loan Proposal Request",
+      subject: `Credit Facility Request - ${String(profile.full_name ?? "Applicant")} - ${String(product.name)}`,
       statement:
         "This proposal is generated from the applicant profile, selected scheme details, and latest verification checks.",
+    },
+    email_draft: {
+      to: bankEmail,
+      subject: emailSubject,
+      body: emailBody,
     },
   } satisfies Record<string, unknown>;
 
   const htmlContent = buildProposalHtml(proposalData);
-  const nextVersion = Number(latestProposalResult.data?.proposal_version ?? 0) + 1;
 
   const insertProposal = await supabaseAdmin
     .from("loan_proposals")

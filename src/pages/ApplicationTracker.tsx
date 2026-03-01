@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2, Circle, Clock3, FileSearch, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Circle, Clock3, Download, FileSearch, Mail, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -63,6 +63,18 @@ function toNumberOrNull(value: string): number | null {
     return null;
   }
   return parsed;
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function toText(value: unknown, fallback = "-"): string {
+  if (value == null) return fallback;
+  const parsed = String(value).trim();
+  return parsed.length > 0 ? parsed : fallback;
 }
 
 export default function ApplicationTracker() {
@@ -291,6 +303,14 @@ export default function ApplicationTracker() {
   const { application, documents } = dataQuery.data;
   const reEvaluation = reEvaluationQuery.data;
   const proposal = proposalQuery.data;
+  const proposalData = toRecord(proposal?.proposal_data_json);
+  const proposalApplicant = toRecord(proposalData.applicant);
+  const proposalBusiness = toRecord(proposalData.business);
+  const proposalRequest = toRecord(proposalData.request);
+  const proposalBank = toRecord(proposalData.selected_bank);
+  const proposalRepayment = toRecord(proposalData.repayment);
+  const proposalVerification = toRecord(proposalData.verification);
+  const proposalEmailDraft = toRecord(proposalData.email_draft);
   const scannedDocuments = latestScanResult?.documents ?? [];
   const documentRows = documents.map((doc) => ({
     id: doc.id,
@@ -309,13 +329,141 @@ export default function ApplicationTracker() {
     missing_required_count: reEvaluation?.documents.missing_count ?? 0,
   };
 
-  const printProposal = () => {
+  const openProposalPreview = () => {
     if (!proposal?.html_content) return;
     const win = window.open("", "_blank", "noopener,noreferrer,width=1024,height=768");
     if (!win) return;
     win.document.write(proposal.html_content);
     win.document.close();
     win.focus();
+  };
+
+  const downloadProposalPdf = async () => {
+    if (!proposal) {
+      toast({ title: "No proposal available", description: "Generate a proposal first.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ unit: "pt", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const left = 48;
+      const topStart = 52;
+      const bottom = 54;
+      const lineHeight = 16;
+      const maxTextWidth = pageWidth - left * 2;
+      let y = topStart;
+
+      const availableDocuments = Array.isArray(proposalVerification.available_documents)
+        ? (proposalVerification.available_documents as Array<Record<string, unknown>>)
+        : [];
+      const missingDocuments = Array.isArray(proposalVerification.missing_documents)
+        ? (proposalVerification.missing_documents as string[])
+        : [];
+
+      const lines: string[] = [
+        "LOAN PROPOSAL LETTER",
+        `Reference: ${toText(proposalData.proposal_reference, `P-${proposal.proposal_version}`)}`,
+        `Date: ${new Date(proposal.updated_at).toLocaleDateString("en-LK")}`,
+        "",
+        `To: ${toText(proposalBank.bank_name)}`,
+        `Bank Email: ${toText(proposalBank.contact_email)}`,
+        `Loan Product: ${toText(proposalBank.product_name)}`,
+        "",
+        "Applicant Details",
+        `Name: ${toText(proposalApplicant.full_name)}`,
+        `Email: ${toText(proposalApplicant.email)}`,
+        `Phone: ${toText(proposalApplicant.phone)}`,
+        `District: ${toText(proposalApplicant.district)}`,
+        `Business: ${toText(proposalBusiness.business_name)}`,
+        `Business Type: ${toText(proposalBusiness.business_type)}`,
+        "",
+        "Loan Request",
+        `Requested Amount: ${toText(proposalRequest.requested_amount_formatted)}`,
+        `Purpose: ${toText(proposalRequest.purpose)}`,
+        `Requested Tenure: ${toText(proposalRequest.tenure)}`,
+        `Collateral: ${toText(proposalRequest.collateral_type, "Not specified")}`,
+        `Estimated EMI: ${toText(proposalRepayment.estimated_emi_formatted)}`,
+        "",
+        "Available Documents",
+        ...(availableDocuments.length > 0
+          ? availableDocuments.map((doc, index) =>
+            `${index + 1}. ${toText(doc.display_name, toText(doc.document_type))} | ${toText(doc.file_name)} | ${toText(doc.validation_status)}`,
+          )
+          : ["No documents available"]),
+        "",
+        missingDocuments.length > 0
+          ? `Pending documents: ${missingDocuments.join(", ")}`
+          : "All currently required documents are available.",
+        "",
+        "Yours faithfully,",
+        toText(proposalApplicant.full_name, "Applicant"),
+      ];
+
+      pdf.setFont("times", "normal");
+      pdf.setFontSize(12);
+
+      for (const rawLine of lines) {
+        const wrapped = pdf.splitTextToSize(rawLine, maxTextWidth) as string[];
+        for (const line of wrapped) {
+          if (y > pageHeight - bottom) {
+            pdf.addPage();
+            y = topStart;
+          }
+          pdf.text(line, left, y);
+          y += lineHeight;
+        }
+      }
+
+      const fileName = `loan-proposal-${applicationId.slice(0, 8)}-v${proposal.proposal_version}.pdf`;
+      pdf.save(fileName);
+    } catch (error) {
+      toast({
+        title: "PDF generation failed",
+        description: error instanceof Error ? error.message : "Could not generate PDF",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openProposalEmailApp = () => {
+    if (!proposal) {
+      toast({ title: "No proposal available", description: "Generate a proposal first.", variant: "destructive" });
+      return;
+    }
+
+    const to = toText(proposalEmailDraft.to, toText(proposalBank.contact_email, ""));
+    if (!to) {
+      toast({
+        title: "Missing bank email",
+        description: "Bank contact email is not configured for this product.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const subject = toText(
+      proposalEmailDraft.subject,
+      `Loan Proposal Submission - ${toText(proposalBank.product_name)} - ${toText(proposalApplicant.full_name, "Applicant")}`,
+    );
+
+    const fallbackBody = [
+      "Dear Credit Evaluation Team,",
+      "",
+      `Please find my loan proposal for ${toText(proposalBank.product_name)}.`,
+      `Applicant: ${toText(proposalApplicant.full_name)}`,
+      `Business: ${toText(proposalBusiness.business_name)}`,
+      `Requested Amount: ${toText(proposalRequest.requested_amount_formatted)}`,
+      "",
+      "Regards,",
+      toText(proposalApplicant.full_name, "Applicant"),
+    ].join("\n");
+    const body = toText(proposalEmailDraft.body, fallbackBody);
+
+    const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = href;
   };
 
   return (
@@ -490,10 +638,20 @@ export default function ApplicationTracker() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base">Loan Proposal Generator</CardTitle>
-            <p className="text-sm text-muted-foreground">Generate a professional proposal letter for the selected bank.</p>
+            <p className="text-sm text-muted-foreground">
+              Generate a detailed professional proposal letter with applicant details, bank details, and available document list.
+            </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" disabled={!proposal?.html_content} onClick={printProposal}>Print / Export</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={!proposal?.html_content} onClick={openProposalPreview}>Preview</Button>
+            <Button variant="outline" disabled={!proposal} onClick={() => void downloadProposalPdf()}>
+              <Download className="h-4 w-4" />
+              Download PDF
+            </Button>
+            <Button variant="outline" disabled={!proposal} onClick={openProposalEmailApp}>
+              <Mail className="h-4 w-4" />
+              Send Email
+            </Button>
             <Button disabled={!selectedProductId || generateProposalMutation.isPending} onClick={() => generateProposalMutation.mutate()}>
               {generateProposalMutation.isPending ? "Generating..." : "Generate Proposal"}
             </Button>
@@ -506,6 +664,9 @@ export default function ApplicationTracker() {
                 <p className="text-xs text-muted-foreground">Version {proposal.proposal_version}</p>
                 <p className="text-xs text-muted-foreground">Updated {formatDate(proposal.updated_at)}</p>
               </div>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Email recipient: {toText(proposalEmailDraft.to, toText(proposalBank.contact_email, "Not configured"))}
+              </p>
               <div className="max-h-[360px] overflow-auto rounded border border-border/60 bg-card p-4">
                 <div dangerouslySetInnerHTML={{ __html: proposal.html_content }} />
               </div>
