@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { env } from "../config/env";
-import { internalError } from "../lib/errors";
 
 export type ChatMessage = {
   role: "user" | "model";
@@ -8,16 +7,22 @@ export type ChatMessage = {
 };
 
 export class AiService {
-  private genAI: GoogleGenerativeAI;
+  private _genAI: GoogleGenerativeAI | null = null;
   private model: string;
 
   constructor() {
-    const apiKey = env.AI_CHAT_GEMINI_API_KEY || env.DOCUMENT_AI_GEMINI_API_KEY;
-    if (!apiKey) {
-      throw internalError("Gemini API key is not configured for Chat or Document AI");
-    }
-    this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = env.AI_CHAT_MODEL;
+  }
+
+  private getGenAI(): GoogleGenerativeAI {
+    if (!this._genAI) {
+      const apiKey = env.AI_CHAT_GEMINI_API_KEY || env.DOCUMENT_AI_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Gemini API key is not configured. Set AI_CHAT_GEMINI_API_KEY or DOCUMENT_AI_GEMINI_API_KEY in your .env file.");
+      }
+      this._genAI = new GoogleGenerativeAI(apiKey);
+    }
+    return this._genAI;
   }
 
   async generateChatResponse(
@@ -26,7 +31,8 @@ export class AiService {
     userMessage: string
   ): Promise<string> {
     try {
-      const model = this.genAI.getGenerativeModel({
+      const genAI = this.getGenAI();
+      const model = genAI.getGenerativeModel({
         model: this.model,
         systemInstruction: systemPrompt,
       });
@@ -61,9 +67,12 @@ export class AiService {
       return response;
     } catch (error) {
       console.error("Gemini API Error:", error);
-      throw internalError("Failed to generate AI response", error);
+      // Re-throw with a safe message
+      const message = error instanceof Error ? error.message : "Unknown error";
+      throw new Error(`Failed to generate AI response: ${message}`);
     }
   }
 }
 
+// Lazily created on first use — does NOT throw at module load time
 export const aiService = new AiService();

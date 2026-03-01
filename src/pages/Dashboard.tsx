@@ -3,23 +3,23 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   ArrowRight,
-  Bell,
-  Building2,
-  Clock3,
+  Bot,
+  Calculator,
+  CheckCircle2,
+  Clock,
   FileText,
   GitBranch,
   Plus,
   TrendingUp,
   Upload,
+  AlertCircle,
+  XCircle,
 } from "lucide-react";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import PageHeader from "@/components/shared/PageHeader";
-import StatusBadge from "@/components/shared/StatusBadge";
 import EmptyState from "@/components/shared/EmptyState";
+import StatusBadge from "@/components/shared/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import LoanFlowChatPanel from "@/components/dashboard/LoanFlowChatPanel";
 import { apiFetch } from "@/lib/api/client";
@@ -36,6 +36,20 @@ function formatDate(value: string): string {
   });
 }
 
+function getStatusIcon(status: string) {
+  if (status === "approved") return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+  if (status === "rejected") return <XCircle className="h-4 w-4 text-red-500" />;
+  if (status === "under_review") return <Clock className="h-4 w-4 text-amber-500" />;
+  return <AlertCircle className="h-4 w-4 text-blue-500" />;
+}
+
+const quickActions = [
+  { title: "New Application", desc: "Start a new loan request", icon: Plus, path: "/apply", color: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-500/40" },
+  { title: "Upload Documents", desc: "Complete your document checklist", icon: Upload, path: "/documents", color: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-500/40" },
+  { title: "Track Application", desc: "Check bank review progress", icon: GitBranch, path: "/tracker", color: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-500/40" },
+  { title: "EMI Calculator", desc: "Estimate your repayments", icon: Calculator, path: "/calculator", color: "from-amber-500/10 to-amber-600/5 border-amber-500/20 hover:border-amber-500/40" },
+];
+
 export default function Dashboard() {
   const applicationsQuery = useQuery({
     queryKey: ["applications"],
@@ -44,132 +58,61 @@ export default function Dashboard() {
   const applications = applicationsQuery.data ?? EMPTY_APPLICATIONS;
   const isLoading = applicationsQuery.isLoading;
 
-  const summary = useMemo(() => {
-    const active = applications.filter((item) => !["approved", "rejected", "withdrawn"].includes(item.status)).length;
-    const evaluated = applications.filter((item) => item.status === "evaluated").length;
-    const approved = applications.filter((item) => item.status === "approved").length;
-    const decisionPool = applications.filter((item) => ["approved", "rejected"].includes(item.status)).length;
-    const approvalRate = decisionPool > 0 ? Math.round((approved / decisionPool) * 100) : 0;
+  const stats = useMemo(() => {
+    const active = applications.filter((a) => !["approved", "rejected", "withdrawn"].includes(a.status)).length;
+    const evaluated = applications.filter((a) => a.status === "evaluated").length;
+    const underReview = applications.filter((a) => a.status === "under_review").length;
+    const approved = applications.filter((a) => a.status === "approved").length;
+    const decisionPool = applications.filter((a) => ["approved", "rejected"].includes(a.status)).length;
+    const approvalRate = decisionPool > 0 ? Math.round((approved / decisionPool) * 100) : null;
 
     return [
-      {
-        label: "Active Applications",
-        value: String(active),
-        trend: `${applications.length} total submitted`,
-        icon: FileText,
-        iconClass: "text-primary",
-        surfaceClass: "bg-primary/10",
-      },
-      {
-        label: "Evaluated Profiles",
-        value: String(evaluated),
-        trend: "Ready for recommendations",
-        icon: Building2,
-        iconClass: "text-success",
-        surfaceClass: "bg-success/10",
-      },
-      {
-        label: "In Review",
-        value: String(applications.filter((item) => item.status === "under_review").length),
-        trend: "Awaiting lender decisions",
-        icon: Upload,
-        iconClass: "text-warning",
-        surfaceClass: "bg-warning/15",
-      },
-      {
-        label: "Approval Rate",
-        value: `${approvalRate}%`,
-        trend: "Based on final outcomes",
-        icon: TrendingUp,
-        iconClass: "text-info",
-        surfaceClass: "bg-info/10",
-      },
+      { label: "Active Applications", value: active, sub: `${applications.length} total`, icon: FileText, colorClass: "text-blue-500 bg-blue-500/10" },
+      { label: "Evaluated Profiles", value: evaluated, sub: "Ready for recommendations", icon: TrendingUp, colorClass: "text-emerald-500 bg-emerald-500/10" },
+      { label: "Under Review", value: underReview, sub: "Awaiting lender decisions", icon: Clock, colorClass: "text-amber-500 bg-amber-500/10" },
+      { label: "Approval Rate", value: approvalRate !== null ? `${approvalRate}%` : "—", sub: "Based on final outcomes", icon: CheckCircle2, colorClass: "text-violet-500 bg-violet-500/10" },
     ];
   }, [applications]);
 
-  const reminders = useMemo(() => {
-    if (applications.length === 0) {
-      return [
-        {
-          title: "No applications yet",
-          detail: "Create your first loan application to start eligibility evaluation.",
-          icon: Bell,
-          tone: "bg-info/10 text-info",
-          tag: "Info",
-        },
-      ];
-    }
-
-    const latest = applications[0];
-
-    return [
-      {
-        title: "Latest application status",
-        detail: `Application ${latest.id.slice(0, 8)} is currently ${latest.status.replace(/_/g, " ")}.`,
-        icon: Clock3,
-        tone: "bg-warning/15 text-warning",
-        tag: latest.status,
-      },
-      {
-        title: "Need recommendations?",
-        detail: "Run evaluation from results page after completing your application profile.",
-        icon: TrendingUp,
-        tone: "bg-primary/10 text-primary",
-        tag: "Action",
-      },
-    ];
-  }, [applications]);
-
-  const quickActions = [
-    { title: "New Loan Application", desc: "Start the guided form", icon: Plus, path: "/apply" },
-    { title: "Upload Documents", desc: "Complete the required checklist", icon: Upload, path: "/documents" },
-    { title: "Track Applications", desc: "Check bank review progress", icon: GitBranch, path: "/tracker" },
-    { title: "Run EMI Calculator", desc: "Estimate your monthly payment", icon: TrendingUp, path: "/calculator" },
-  ];
-  const recentApplications = useMemo(() => applications.slice(0, 3), [applications]);
+  const recentApplications = useMemo(() => applications.slice(0, 5), [applications]);
 
   return (
-    <div className="flex flex-col gap-4 px-1 md:px-2">
-      <PageHeader
-        title="Dashboard"
-        subtitle="LoanFlow 1.0 chat is your main workspace for scheme guidance and next actions."
-        className="top-0 z-0 border-none bg-transparent pb-0 pt-0 backdrop-blur-none"
-        actions={(
-          <Button asChild>
-            <Link to="/apply">
-              <Plus className="h-4 w-4" />
-              New Application
-            </Link>
-          </Button>
-        )}
-      />
+    <div className="flex flex-col gap-6 pb-10">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Welcome back. Here's your loan journey overview.</p>
+        </div>
+        <Button asChild>
+          <Link to="/apply">
+            <Plus className="h-4 w-4" />
+            New Application
+          </Link>
+        </Button>
+      </div>
 
-      <LoanFlowChatPanel />
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {summary.map((item, idx) => (
-          <Card
-            key={item.label}
-            className="border-border/70 bg-card shadow-sm transition-shadow hover:shadow-md"
-            style={{ animationDelay: `${idx * 50}ms` }}
-          >
+      {/* Stats Row */}
+      <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat, idx) => (
+          <Card key={stat.label} className="border-border/70 bg-card shadow-sm" style={{ animationDelay: `${idx * 50}ms` }}>
             <CardContent className="p-4">
               {isLoading ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-7 w-12" />
                   <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-8 w-16" />
-                  <Skeleton className="h-3 w-28" />
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{item.label}</p>
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg border border-border/70 ${item.surfaceClass}`}>
-                      <item.icon className={`h-4 w-4 ${item.iconClass}`} />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${stat.colorClass}`}>
+                      <stat.icon className="h-4 w-4" />
                     </div>
                   </div>
-                  <p className="text-2xl font-bold leading-none text-foreground">{item.value}</p>
-                  <p className="text-xs font-medium text-muted-foreground">{item.trend}</p>
+                  <p className="text-3xl font-bold text-foreground leading-none">{stat.value}</p>
+                  <p className="text-xs text-muted-foreground">{stat.sub}</p>
                 </div>
               )}
             </CardContent>
@@ -177,121 +120,103 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {applicationsQuery.isError ? (
-        <Card className="border-warning/40 bg-warning/10 shadow-sm">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-sm text-warning-foreground">
-              Could not load latest applications data.
-            </p>
-            <Button size="sm" variant="outline" onClick={() => void applicationsQuery.refetch()}>
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* Error banner */}
+      {applicationsQuery.isError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+          <p className="text-sm text-red-700 dark:text-red-400 font-medium">Could not load application data.</p>
+          <Button size="sm" variant="outline" onClick={() => void applicationsQuery.refetch()}>Retry</Button>
+        </div>
+      )}
 
-      <div className="grid gap-3 lg:grid-cols-12">
-        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-            {quickActions.map((action, idx) => (
-              <Link
-                key={action.title}
-                to={action.path}
-                className="group rounded-lg border border-border/70 bg-muted/30 p-3 transition-colors hover:border-primary/40 hover:bg-muted/45"
-                style={{ animationDelay: `${idx * 50}ms` }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">{action.title}</p>
-                    <p className="text-xs text-muted-foreground">{action.desc}</p>
-                  </div>
-                  <action.icon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-primary" />
-                </div>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Reminder Alerts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {reminders.map((reminder, idx) => (
-              <div
-                key={reminder.title}
-                className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/25 p-3 transition-shadow hover:shadow-sm"
-                style={{ animationDelay: `${idx * 50}ms` }}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 rounded-lg border border-border/70 p-2 ${reminder.tone}`}>
-                    <reminder.icon className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{reminder.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{reminder.detail}</p>
-                  </div>
-                </div>
-                <StatusBadge status={reminder.tag} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
-            <CardTitle className="text-lg">Recent Applications</CardTitle>
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/tracker">
-                Open Tracker
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {applications.length === 0 ? (
-              <EmptyState
-                title="No applications"
-                description="Create your first application to start eligibility evaluation and recommendations."
-                action={(
-                  <Button asChild>
-                    <Link to="/apply">Create Application</Link>
-                  </Button>
-                )}
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-border/50 hover:bg-transparent">
-                    <TableHead className="font-semibold text-foreground">ID</TableHead>
-                    <TableHead className="font-semibold text-foreground">Amount</TableHead>
-                    <TableHead className="font-semibold text-foreground">Status</TableHead>
-                    <TableHead className="font-semibold text-foreground">Updated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentApplications.map((app) => (
-                    <TableRow key={app.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
-                      <TableCell className="font-mono text-xs font-medium text-foreground">{app.id.slice(0, 8)}</TableCell>
-                      <TableCell className="font-medium text-foreground">{formatLKR(app.requested_amount)}</TableCell>
-                      <TableCell>
-                        <StatusBadge status={app.status} />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{formatDate(app.updated_at)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            {applications.length > recentApplications.length ? (
-              <p className="text-xs text-muted-foreground">
-                Showing latest {recentApplications.length} of {applications.length} applications.
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
+      {/* Main Layout: Chat + Actions */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* AI Chat takes 2 cols */}
+        <div className="lg:col-span-2">
+          <LoanFlowChatPanel />
+        </div>
+
+        {/* Quick Actions + Recent */}
+        <div className="flex flex-col gap-4">
+          {/* Quick Actions */}
+          <Card className="border-border/70 bg-card shadow-sm">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Bot className="h-4 w-4 text-primary" />
+                Quick Actions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 grid grid-cols-2 gap-2">
+              {quickActions.map((action) => (
+                <Link
+                  key={action.title}
+                  to={action.path}
+                  className={`group flex flex-col gap-1 rounded-xl border bg-gradient-to-br p-3 transition-all duration-200 ${action.color}`}
+                >
+                  <action.icon className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors" />
+                  <p className="text-xs font-semibold text-foreground leading-tight">{action.title}</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">{action.desc}</p>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
       </div>
+
+      {/* Recent Applications Table */}
+      <Card className="border-border/70 bg-card shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2 pt-4 px-4">
+          <CardTitle className="text-base font-semibold">Recent Applications</CardTitle>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/tracker">
+              View All
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+            </div>
+          ) : recentApplications.length === 0 ? (
+            <EmptyState
+              title="No applications yet"
+              description="Create your first loan application to get started with eligibility evaluation."
+              action={<Button asChild><Link to="/apply">Create Application</Link></Button>}
+            />
+          ) : (
+            <div className="space-y-2">
+              {recentApplications.map((app) => (
+                <Link
+                  key={app.id}
+                  to="/tracker"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3 hover:bg-muted/40 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    {getStatusIcon(app.status)}
+                    <div>
+                      <p className="text-sm font-semibold text-foreground font-mono">#{app.id.slice(0, 8)}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(app.updated_at)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">{formatLKR(app.requested_amount)}</p>
+                      <p className="text-xs text-muted-foreground">{app.preferred_tenure_months}mo tenure</p>
+                    </div>
+                    <StatusBadge status={app.status} />
+                  </div>
+                </Link>
+              ))}
+              {applications.length > recentApplications.length && (
+                <p className="text-center text-xs text-muted-foreground pt-1">
+                  Showing {recentApplications.length} of {applications.length} applications
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
