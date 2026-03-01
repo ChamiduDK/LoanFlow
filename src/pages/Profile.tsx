@@ -83,7 +83,7 @@ export default function Profile() {
 
   const updateMutation = useMutation({
     mutationFn: (data: Partial<ProfileData>) =>
-      apiFetch("/api/profile", { method: "PATCH", body: JSON.stringify(data) }),
+      apiFetch("/api/profile", { method: "PUT", body: JSON.stringify(data) }),
     onSuccess: () => {
       toast({ title: "Profile updated successfully" });
       void queryClient.invalidateQueries({ queryKey: ["me-profile"] });
