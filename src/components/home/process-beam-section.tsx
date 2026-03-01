@@ -2,7 +2,6 @@
 
 import { forwardRef, useRef, type ReactNode } from "react";
 import {
-  Bot,
   Building2,
   CalendarCheck,
   Calculator,
@@ -77,7 +76,7 @@ export default function ProcessBeamSection() {
 
   return (
     <section id="how-it-works" className="py-16 sm:py-20">
-      <div className="container px-4 xl:px-0">
+      <div className="container px-2 sm:px-4 xl:px-0">
         <div className="relative overflow-hidden rounded-2xl border border-border bg-card/95 p-5 shadow-sm sm:p-8 lg:p-12">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,hsl(var(--info)/0.12),transparent_40%)]" />
 
@@ -89,20 +88,10 @@ export default function ProcessBeamSection() {
           </div>
 
           <div
-            className="relative mt-12 hidden h-[580px] w-full items-center justify-center overflow-hidden lg:flex"
+            className="relative mt-12 hidden h-[580px] w-full items-center justify-center overflow-hidden xl:flex"
             ref={containerRef}
           >
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 blur-3xl" />
-
-            <span className="absolute left-[42%] top-[33%] hidden rounded-full border border-border bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground xl:inline-flex">
-              analyze
-            </span>
-            <span className="absolute left-[54%] top-[46%] hidden rounded-full border border-border bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground xl:inline-flex">
-              score
-            </span>
-            <span className="absolute left-[56%] top-[60%] hidden rounded-full border border-border bg-background/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground xl:inline-flex">
-              verify
-            </span>
 
             <div className="flex size-full max-w-5xl flex-row items-stretch justify-between gap-6 lg:gap-10">
               <div className="flex flex-col justify-center gap-5">
@@ -141,10 +130,17 @@ export default function ProcessBeamSection() {
                   ref={platformRef}
                   label="Loan Intelligence Platform"
                   tooltip="Central eligibility and recommendation engine"
-                  className="size-24 border-primary/35 bg-background shadow-[0_20px_40px_-24px_hsl(var(--primary)/0.55)] ring-8 ring-primary/10"
-                  labelClassName="max-w-[152px] text-xs font-semibold text-foreground"
+                  className="size-44 overflow-visible rounded-3xl border-primary/35 bg-background shadow-[0_28px_45px_-30px_hsl(var(--primary)/0.55)] ring-8 ring-primary/10"
+                  labelClassName="max-w-[180px] text-xs font-semibold text-foreground"
                 >
-                  <Bot className="h-8 w-8 text-primary" />
+                  <div className="flex h-full w-full items-center justify-center px-4 text-center">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Core Engine
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">Loan Intelligence</p>
+                    </div>
+                  </div>
                 </Circle>
               </div>
 
@@ -199,7 +195,7 @@ export default function ProcessBeamSection() {
             <AnimatedBeam containerRef={containerRef} fromRef={platformRef} toRef={trackerRef} curvature={88} delay={0.46} reverse />
           </div>
 
-          <div className="relative z-10 mt-10 space-y-6 lg:hidden">
+          <div className="relative z-10 mt-10 space-y-6 xl:hidden">
             <div className="rounded-xl border border-border bg-muted/30 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Input Signals</p>
               <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -213,10 +209,15 @@ export default function ProcessBeamSection() {
             <div className="flex justify-center">
               <Circle
                 label="Loan Intelligence Platform"
-                className="size-20 border-primary/35 bg-background ring-8 ring-primary/10"
+                className="size-24 border-primary/35 bg-background ring-8 ring-primary/10"
                 labelClassName="max-w-[170px] text-xs font-semibold text-foreground"
               >
-                <Bot className="h-7 w-7 text-primary" />
+                <div className="px-2 text-center">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Core Engine
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-foreground">Loan Intelligence</p>
+                </div>
               </Circle>
             </div>
 
@@ -231,21 +232,6 @@ export default function ProcessBeamSection() {
                   <NodeChip icon={<CalendarCheck className="h-4 w-4" />} label="Loan Tracker" />
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div className="relative z-10 mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-xl border border-border bg-muted/25 px-5 py-4">
-              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">1. Analyze</p>
-              <p className="mt-2 text-sm leading-relaxed text-foreground/90">Matches your unique SME profile and loan requirements with specific bank schemes.</p>
-            </div>
-            <div className="rounded-xl border border-border bg-muted/25 px-5 py-4">
-              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">2. Score</p>
-              <p className="mt-2 text-sm leading-relaxed text-foreground/90">Instantly evaluates EMI affordability and approval probability using our scoring engine.</p>
-            </div>
-            <div className="rounded-xl border border-border bg-muted/25 px-5 py-4 sm:col-span-2 lg:col-span-1">
-              <p className="text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground/80">3. Guide</p>
-              <p className="mt-2 text-sm leading-relaxed text-foreground/90">Our AI assistant and live tracker guide you through verification and final bank submission.</p>
             </div>
           </div>
         </div>

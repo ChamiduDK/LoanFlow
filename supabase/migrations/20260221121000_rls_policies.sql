@@ -1,4 +1,4 @@
--- Row Level Security policies for SME LoanHub Supabase schema
+-- Row Level Security policies for LoanFlow Supabase schema
 -- User-owned data is restricted to auth.uid(); reference data is public-read with admin writes.
 
 create or replace function public.is_admin(p_user_id uuid default auth.uid())

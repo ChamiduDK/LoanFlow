@@ -755,6 +755,7 @@ adminRouter.put(
           product_id: params.productId,
           accepted_formats: doc.accepted_formats ?? ["pdf", "jpg", "png"],
           is_required: doc.is_required ?? true,
+          verification_rules_json: doc.verification_rules_json ?? {},
         })),
       )
       .select("*");

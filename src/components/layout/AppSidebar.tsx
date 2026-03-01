@@ -11,7 +11,6 @@ import {
   Wallet,
   Settings,
   LogOut,
-  Building2,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -98,12 +97,9 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
       >
         <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg">
           <div className="border-b border-sidebar-border/80 p-5">
-            <Link to="/" className="flex items-center gap-3" onClick={onClose}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-sidebar-border bg-sidebar-accent text-sidebar-foreground">
-                <Building2 className="h-5 w-5" />
-              </div>
+            <Link to="/" className="block" onClick={onClose}>
               <div>
-                <span className="block text-base font-semibold text-sidebar-foreground">SME Loan Hub</span>
+                <span className="block text-base font-semibold text-sidebar-foreground">LoanFlow</span>
                 <span className="text-xs font-medium text-sidebar-foreground/60">Intelligent Lending</span>
               </div>
             </Link>

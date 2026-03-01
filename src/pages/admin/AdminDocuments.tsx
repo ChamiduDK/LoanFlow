@@ -20,6 +20,10 @@ type RequiredDocumentDraft = {
   is_required: boolean;
   notes: string;
   accepted_formats: string[];
+  verification_required_keywords: string;
+  verification_forbidden_keywords: string;
+  verification_min_text_length: string;
+  verification_ai_instructions: string;
 };
 
 type BenefitDraft = {
@@ -44,6 +48,10 @@ function createDefaultRequiredDocument(): RequiredDocumentDraft {
     is_required: true,
     notes: "",
     accepted_formats: ["pdf", "jpg", "png"],
+    verification_required_keywords: "",
+    verification_forbidden_keywords: "",
+    verification_min_text_length: "",
+    verification_ai_instructions: "",
   };
 }
 
@@ -78,6 +86,26 @@ function toNormalizedFormatArray(value: unknown): string[] {
     .filter((entry) => DOCUMENT_FORMAT_OPTIONS.includes(entry as (typeof DOCUMENT_FORMAT_OPTIONS)[number]));
 
   return formats.length > 0 ? Array.from(new Set(formats)) : ["pdf", "jpg", "png"];
+}
+
+function parseKeywordListInput(value: string): string[] {
+  return Array.from(new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0),
+  ));
+}
+
+function toKeywordCsv(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+
+  return value
+    .map((entry) => String(entry).trim())
+    .filter((entry) => entry.length > 0)
+    .join(", ");
 }
 
 export default function AdminDocuments() {
@@ -127,6 +155,18 @@ export default function AdminDocuments() {
             is_required: Boolean(doc.is_required ?? true),
             notes: doc.notes == null ? "" : String(doc.notes),
             accepted_formats: toNormalizedFormatArray(doc.accepted_formats),
+            verification_required_keywords: toKeywordCsv(
+              isRecord(doc.verification_rules_json) ? doc.verification_rules_json.required_keywords : [],
+            ),
+            verification_forbidden_keywords: toKeywordCsv(
+              isRecord(doc.verification_rules_json) ? doc.verification_rules_json.forbidden_keywords : [],
+            ),
+            verification_min_text_length: isRecord(doc.verification_rules_json) && doc.verification_rules_json.min_text_length != null
+              ? String(doc.verification_rules_json.min_text_length)
+              : "",
+            verification_ai_instructions: isRecord(doc.verification_rules_json) && doc.verification_rules_json.ai_instructions != null
+              ? String(doc.verification_rules_json.ai_instructions)
+              : "",
           }))
         : [createDefaultRequiredDocument()],
     );
@@ -171,6 +211,9 @@ export default function AdminDocuments() {
         const acceptedFormats = doc.accepted_formats
           .map((format) => format.trim().toLowerCase())
           .filter((format) => DOCUMENT_FORMAT_OPTIONS.includes(format as (typeof DOCUMENT_FORMAT_OPTIONS)[number]));
+        const requiredKeywords = parseKeywordListInput(doc.verification_required_keywords);
+        const forbiddenKeywords = parseKeywordListInput(doc.verification_forbidden_keywords);
+        const aiInstructions = doc.verification_ai_instructions.trim();
 
         if (documentType.length < 2) {
           throw new Error(`Row ${index + 1}: Document type is required`);
@@ -182,12 +225,36 @@ export default function AdminDocuments() {
           throw new Error(`Row ${index + 1}: Select at least one accepted format`);
         }
 
+        let minTextLength: number | undefined;
+        if (doc.verification_min_text_length.trim()) {
+          const parsed = Number(doc.verification_min_text_length.trim());
+          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 20000) {
+            throw new Error(`Row ${index + 1}: Min OCR chars must be between 0 and 20000`);
+          }
+          minTextLength = Math.round(parsed);
+        }
+
+        const verificationRules: Record<string, unknown> = {};
+        if (requiredKeywords.length > 0) {
+          verificationRules.required_keywords = requiredKeywords;
+        }
+        if (forbiddenKeywords.length > 0) {
+          verificationRules.forbidden_keywords = forbiddenKeywords;
+        }
+        if (minTextLength !== undefined) {
+          verificationRules.min_text_length = minTextLength;
+        }
+        if (aiInstructions.length > 0) {
+          verificationRules.ai_instructions = aiInstructions;
+        }
+
         return {
           document_type: documentType,
           display_name: displayName,
           is_required: doc.is_required,
           notes: doc.notes.trim() || null,
           accepted_formats: Array.from(new Set(acceptedFormats)),
+          verification_rules_json: verificationRules,
         };
       });
 
@@ -399,6 +466,7 @@ export default function AdminDocuments() {
                     <TableHead>Document Type Key</TableHead>
                     <TableHead>Required</TableHead>
                     <TableHead>Accepted Formats</TableHead>
+                    <TableHead>Verification Rules</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead className="w-16">Action</TableHead>
                   </TableRow>
@@ -440,6 +508,33 @@ export default function AdminDocuments() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="space-y-2">
+                          <Input
+                            value={doc.verification_required_keywords}
+                            onChange={(event) => updateRequiredDocument(index, { verification_required_keywords: event.target.value })}
+                            placeholder="Required keywords (comma separated)"
+                          />
+                          <Input
+                            value={doc.verification_forbidden_keywords}
+                            onChange={(event) => updateRequiredDocument(index, { verification_forbidden_keywords: event.target.value })}
+                            placeholder="Forbidden keywords (comma separated)"
+                          />
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <Input
+                              value={doc.verification_min_text_length}
+                              onChange={(event) => updateRequiredDocument(index, { verification_min_text_length: event.target.value })}
+                              placeholder="Min OCR chars"
+                              inputMode="numeric"
+                            />
+                            <Input
+                              value={doc.verification_ai_instructions}
+                              onChange={(event) => updateRequiredDocument(index, { verification_ai_instructions: event.target.value })}
+                              placeholder="Gemini instruction (optional)"
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <Input
                           value={doc.notes}
                           onChange={(event) => updateRequiredDocument(index, { notes: event.target.value })}
@@ -456,7 +551,7 @@ export default function AdminDocuments() {
                 </TableBody>
               </Table>
               <div className="px-4 py-3 text-xs text-muted-foreground">
-                Use lowercase `document_type` keys (for example `nic`, `bank_statement`) to match user uploads and verification rules.
+                Use lowercase `document_type` keys (for example `nic`, `bank_statement`). Add verification keywords so OCR + Gemini can auto-validate each document.
               </div>
             </CardContent>
           </Card>
