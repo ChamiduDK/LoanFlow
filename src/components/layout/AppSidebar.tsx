@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   FileText,
@@ -9,18 +9,13 @@ import {
   Upload,
   GitBranch,
   Wallet,
-  Settings,
-  LogOut,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
-import { supabaseClient } from "@/lib/supabase/client";
 
 type MePayload = {
   profile?: {
-    is_admin?: boolean;
     full_name?: string | null;
     email?: string | null;
   } | null;
@@ -43,16 +38,12 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ open, onClose }: AppSidebarProps) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const [signingOut, setSigningOut] = useState(false);
   const meQuery = useQuery({
     queryKey: ["me-profile"],
     queryFn: () => apiFetch<MePayload>("/api/me"),
     retry: false,
     staleTime: 30_000,
   });
-  const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
   const accountLabel = useMemo(() => {
     const fullName = meQuery.data?.profile?.full_name?.trim();
     if (fullName) {
@@ -98,33 +89,6 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
     // Close only when path/search changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
-
-  const handleSignOut = async () => {
-    if (signingOut) {
-      return;
-    }
-
-    setSigningOut(true);
-
-    try {
-      await apiFetch("/api/auth/signout", { method: "POST" }).catch(() => undefined);
-      const { error } = await supabaseClient.auth.signOut();
-      if (error) {
-        throw error;
-      }
-
-      onClose();
-      navigate("/login", { replace: true });
-    } catch (error) {
-      toast({
-        title: "Sign out failed",
-        description: error instanceof Error ? error.message : "Could not sign out",
-        variant: "destructive",
-      });
-    } finally {
-      setSigningOut(false);
-    }
-  };
 
   return (
     <>
@@ -194,27 +158,6 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
             </div>
           </nav>
 
-          <div className="space-y-1 border-t border-sidebar-border/80 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            {isAdmin ? (
-              <Link
-                to="/admin"
-                onClick={onClose}
-                className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/75 transition-all duration-200 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground"
-              >
-                <Settings className="h-4 w-4" />
-                Admin Panel
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              disabled={signingOut}
-              className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/75 transition-all duration-200 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <LogOut className="h-4 w-4" />
-              {signingOut ? "Signing out..." : "Sign Out"}
-            </button>
-          </div>
         </div>
       </aside>
     </>

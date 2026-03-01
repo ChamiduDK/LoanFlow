@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { Bell, ChevronRight, Menu, Plus, Search, User } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Menu, Plus, Search, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { supabaseClient } from "@/lib/supabase/client";
 
 interface TopNavProps {
   onMenuClick: () => void;
@@ -41,8 +43,10 @@ const ADMIN_QUICK_LINKS: QuickLink[] = [
 export default function TopNav({ onMenuClick }: TopNavProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
   const [searchValue, setSearchValue] = useState("");
   const [isQuickNavOpen, setIsQuickNavOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const meQuery = useQuery({
     queryKey: ["me-profile"],
@@ -84,6 +88,32 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
     navigate(path);
     setSearchValue("");
     setIsQuickNavOpen(false);
+  };
+
+  const handleSignOut = async () => {
+    if (signingOut) {
+      return;
+    }
+
+    setSigningOut(true);
+
+    try {
+      await apiFetch("/api/auth/signout", { method: "POST" }).catch(() => undefined);
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) {
+        throw error;
+      }
+
+      navigate("/login", { replace: true });
+    } catch (error) {
+      toast({
+        title: "Sign out failed",
+        description: error instanceof Error ? error.message : "Could not sign out",
+        variant: "destructive",
+      });
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -152,6 +182,36 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          {isAdmin ? (
+            <Button asChild variant="outline" className="hidden lg:inline-flex">
+              <Link to="/admin">
+                <Settings className="h-4 w-4" />
+                Admin Panel
+              </Link>
+            </Button>
+          ) : null}
+
+          <Button
+            variant="outline"
+            className="hidden md:inline-flex"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+          >
+            <LogOut className="h-4 w-4" />
+            {signingOut ? "Signing out..." : "Sign Out"}
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="sr-only">{signingOut ? "Signing out..." : "Sign Out"}</span>
+          </Button>
+
           <Button asChild className="hidden sm:inline-flex">
             <Link to="/apply">
               <Plus className="h-4 w-4" />
