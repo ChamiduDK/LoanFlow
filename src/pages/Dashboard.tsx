@@ -120,10 +120,10 @@ export default function Dashboard() {
   }, [applications]);
 
   const quickActions = [
-    { title: "New Loan Application", desc: "Start a guided multi-step form", icon: Plus, path: "/apply" },
-    { title: "Upload Documents", desc: "Complete verification checklist", icon: Upload, path: "/documents" },
-    { title: "Track Applications", desc: "See status and bank timelines", icon: GitBranch, path: "/tracker" },
-    { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/calculator" },
+    { title: "New Loan Application", desc: "Start the guided form", icon: Plus, path: "/apply" },
+    { title: "Upload Documents", desc: "Complete the required checklist", icon: Upload, path: "/documents" },
+    { title: "Track Applications", desc: "Check bank review progress", icon: GitBranch, path: "/tracker" },
+    { title: "Run EMI Calculator", desc: "Estimate your monthly payment", icon: TrendingUp, path: "/calculator" },
   ];
   const recentApplications = useMemo(() => applications.slice(0, 3), [applications]);
 
@@ -131,7 +131,7 @@ export default function Dashboard() {
     <div className="flex flex-col gap-4 px-1 md:px-2 lg:h-[calc(100vh-8.5rem)] lg:overflow-hidden">
       <PageHeader
         title="Dashboard"
-        subtitle="At-a-glance view of your SME loan progress, actions, and latest updates."
+        subtitle="See your latest loan progress and jump directly to the next action."
         className="top-0 z-0 border-none bg-transparent pb-0 pt-0 backdrop-blur-none"
         actions={(
           <Button asChild>

@@ -137,7 +137,7 @@ export default function LoanManagement() {
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
           title="Loan Management"
-          subtitle="Track repayments, monitor dues, and manage your approved facilities."
+          subtitle="Monitor repayments, upcoming dues, and approved loan balance."
         />
         <EmptyState
           title="No applications found"
@@ -169,7 +169,7 @@ export default function LoanManagement() {
         <div className="space-y-6 px-2 md:px-6">
           <PageHeader
             title="Loan Management"
-            subtitle="Track repayments, monitor dues, and manage your approved facilities."
+            subtitle="Monitor repayments, upcoming dues, and approved loan balance."
           />
           <EmptyState
             title="Repayment management is locked"
@@ -184,7 +184,7 @@ export default function LoanManagement() {
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
           title="Loan Management"
-          subtitle="Track repayments, monitor dues, and manage your approved facilities."
+          subtitle="Monitor repayments, upcoming dues, and approved loan balance."
         />
         <EmptyState
           title="Failed to load repayment data"
@@ -202,7 +202,7 @@ export default function LoanManagement() {
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
           title="Loan Management"
-          subtitle="Track repayments, monitor dues, and manage your approved facilities."
+          subtitle="Monitor repayments, upcoming dues, and approved loan balance."
         />
         <EmptyState
           title="No tracker data"
@@ -254,7 +254,7 @@ export default function LoanManagement() {
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
         title="Loan Management"
-        subtitle="Track repayments, monitor dues, and manage your approved facilities."
+        subtitle="Monitor repayments, upcoming dues, and approved loan balance."
         actions={(
           <Select
             value={applicationId}
