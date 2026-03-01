@@ -128,7 +128,7 @@ export default function Dashboard() {
   const recentApplications = useMemo(() => applications.slice(0, 3), [applications]);
 
   return (
-    <div className="flex flex-col gap-4 px-1 md:px-2 lg:h-[calc(100vh-8.5rem)] lg:overflow-hidden">
+    <div className="flex flex-col gap-4 px-1 md:px-2">
       <PageHeader
         title="Dashboard"
         subtitle="See your latest loan progress and jump directly to the next action."
@@ -187,8 +187,8 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-12">
-        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4 lg:min-h-0">
+      <div className="grid gap-3 lg:grid-cols-12">
+        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Quick Actions</CardTitle>
           </CardHeader>
@@ -211,7 +211,7 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4 lg:min-h-0">
+        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Reminder Alerts</CardTitle>
           </CardHeader>
@@ -236,7 +236,7 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4 lg:min-h-0">
+        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4">
           <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
             <CardTitle className="text-lg">Recent Applications</CardTitle>
             <Button variant="outline" size="sm" asChild>
