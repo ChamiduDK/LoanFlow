@@ -152,6 +152,9 @@ Then apply baseline seed script:
   - `POST /api/ml/activate-model/:modelId` (admin)
   - `POST /api/ml/predict`
 - Agent foundation:
+  - `GET /api/agent/chat/session`
+  - `POST /api/agent/chat/session`
+  - `POST /api/agent/chat/message`
   - `POST /api/agent/link-whatsapp`
   - `POST /api/agent/chat/webhook`
   - `GET /api/agent/context/:applicationId`

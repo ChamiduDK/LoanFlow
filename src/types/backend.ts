@@ -281,3 +281,37 @@ export type Bank = {
   code: string;
   is_active: boolean;
 };
+
+export type LoanFlowChatRole = "user" | "assistant" | "system" | "tool";
+
+export type LoanFlowChatSession = {
+  id: string;
+  user_id: string;
+  application_id: string | null;
+  status: "active" | "closed" | "archived";
+  started_at: string;
+  metadata: Record<string, unknown> | null;
+};
+
+export type LoanFlowChatMessage = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role: LoanFlowChatRole;
+  message_text: string | null;
+  message_json: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type LoanFlowChatBootstrapResponse = {
+  model: string;
+  session: LoanFlowChatSession;
+  messages: LoanFlowChatMessage[];
+};
+
+export type LoanFlowChatSendResponse = {
+  model: string;
+  session: LoanFlowChatSession;
+  user_message: LoanFlowChatMessage;
+  assistant_message: LoanFlowChatMessage;
+};
