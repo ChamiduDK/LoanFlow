@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../lib/supabase/client";
 import { aiService, type ChatMessage as AiChatMessage } from "./ai.service";
 import { env } from "../config/env";
 
-const MODEL_NAME = "LoanFlow AI (Gemini)";
+const MODEL_NAME = "LoanFlow AI";
 const WEB_CHANNEL = "web";
 const REFERENCE_CACHE_TTL_MS = 2 * 60 * 1000;
 
@@ -533,7 +533,7 @@ function composeAssistantResponse(
 ): AssistantResponse {
   const lines: string[] = [];
 
-  lines.push(`LoanFlow 1.0 reviewed ${reference.products.length} active schemes across ${reference.banks.length} banks.`);
+  lines.push(`LoanFlow AI reviewed ${reference.products.length} active schemes across ${reference.banks.length} banks.`);
 
   if (topProducts.length === 0) {
     lines.push("I could not find matching schemes right now. Please try with bank name, amount, or tenure.");
@@ -686,7 +686,7 @@ async function createSessionRow(userId: string, applicationId?: string): Promise
 
 async function createWelcomeMessage(userId: string, sessionId: string): Promise<void> {
   const welcomeText =
-    "You are connected to LoanFlow 1.0. Ask me about banks, loan schemes, eligibility rules, required documents, or benefits.";
+    "Hello! I am LoanFlow AI, a Chat Generative Pre-Trained Transformer. I can draft emails, write essays, brainstorm ideas, translate languages, summarize text, and provide human-like responses to help you with loan schemes and eligibility.";
 
   const insertResult = await supabaseAdmin.from("chat_messages").insert({
     session_id: sessionId,
@@ -869,7 +869,7 @@ STRICT RULES:
 2. If the user asks for an amount or tenure not covered by the context, explain the limitation and suggest the closest matches.
 3. Be concise but friendly. Use Sri Lankan context (LKR, local bank names).
 4. If you are unsure, advise the user to contact a LoanFlow consultant.
-5. Do not disclose internal system names like "LoanFlow 1.0" or "Gemini". Refer to yourself as LoanFlow AI.`;
+5. Do not disclose internal system names like "Gemini". Refer to yourself as LoanFlow AI.`;
 
   let responseText: string;
   let assistantMeta: any = {
