@@ -1,5 +1,11 @@
 import type { LoanApplication, Profile } from "../../../types/domain";
-import type { AzureOcrConfig, ExtractedDocument, OcrExtractor, DetectionResult } from "./ocr.types";
+import type {
+  AzureOcrConfig,
+  ExtractedDocument,
+  OcrExtractor,
+  DetectionResult,
+  StorageObjectContent,
+} from "./ocr.types";
 import {
   tokenize,
   uniqueStrings,
@@ -16,7 +22,13 @@ export class AzureExtractor implements OcrExtractor {
     private extractIssueDateFromText: (text: string, tokens: string[]) => string | null,
   ) { }
 
-  async extract(input: any): Promise<ExtractedDocument> {
+  async extract(input: {
+    storageBucket: string;
+    storagePath: string;
+    mimeType: string | null;
+    fileName: string;
+    declaredType: string;
+  }): Promise<ExtractedDocument> {
     const storageContent = await downloadStorageObjectContent({
       storageBucket: input.storageBucket,
       storagePath: input.storagePath,
@@ -28,15 +40,35 @@ export class AzureExtractor implements OcrExtractor {
     }
 
     // Azure logic placeholder - should call runAzureDocumentAnalysis
-    const azureResult = { text: "Azure extracted text", pageCount: 1, lineCount: 1, wordCount: 5, averageWordConfidence: 95, minWordConfidence: 85 };
+    const azureResult: {
+      text: string;
+      pageCount: number;
+      lineCount: number;
+      wordCount: number;
+      averageWordConfidence: number;
+      minWordConfidence: number;
+    } = { text: "Azure extracted text", pageCount: 1, lineCount: 1, wordCount: 5, averageWordConfidence: 95, minWordConfidence: 85 };
 
     return this.buildResponse(input, azureResult, storageContent, []);
   }
 
   private buildResponse(
-    input: any,
-    result: any,
-    storage: any,
+    input: {
+      storageBucket: string;
+      storagePath: string;
+      mimeType: string | null;
+      fileName: string;
+      declaredType: string;
+    },
+    result: {
+      text: string;
+      pageCount: number;
+      lineCount: number;
+      wordCount: number;
+      averageWordConfidence: number;
+      minWordConfidence: number;
+    },
+    storage: StorageObjectContent,
     warnings: string[]
   ): ExtractedDocument {
     const ocrTokens = tokenize(result.text.slice(0, 12000));

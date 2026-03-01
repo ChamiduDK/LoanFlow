@@ -127,7 +127,7 @@ export default function LoanFlowChatPanel() {
     }
 
     return null;
-  }, [chatQuery.isError, messages.length]);
+  }, [chatQuery.isError, messages.length, model]);
 
   const sendMessage = (rawMessage: string) => {
     const message = rawMessage.trim();

@@ -2,7 +2,13 @@ import { join } from "node:path";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { LoanApplication, Profile } from "../../../types/domain";
-import type { GoogleVisionOcrConfig, ExtractedDocument, OcrExtractor, DetectionResult } from "./ocr.types";
+import type {
+  GoogleVisionOcrConfig,
+  ExtractedDocument,
+  OcrExtractor,
+  DetectionResult,
+  StorageObjectContent,
+} from "./ocr.types";
 import {
   getTempExtension,
   isPdfMimeType,
@@ -25,14 +31,20 @@ export type ParsedGoogleVisionPayload = {
 
 export class GoogleVisionExtractor implements OcrExtractor {
   constructor(
-    private profile: Profile,
-    private application: LoanApplication,
-    private config: GoogleVisionOcrConfig,
-    private detectDocumentTypeFromTokens: (tokens: string[]) => DetectionResult,
-    private extractIssueDateFromText: (text: string, tokens: string[]) => string | null,
+  private profile: Profile,
+  private application: LoanApplication,
+  private config: GoogleVisionOcrConfig,
+  private detectDocumentTypeFromTokens: (tokens: string[]) => DetectionResult,
+  private extractIssueDateFromText: (text: string, tokens: string[]) => string | null,
   ) { }
 
-  async extract(input: any): Promise<ExtractedDocument> {
+  async extract(input: {
+    storageBucket: string;
+    storagePath: string;
+    mimeType: string | null;
+    fileName: string;
+    declaredType: string;
+  }): Promise<ExtractedDocument> {
     const storageContent = await downloadStorageObjectContent({
       storageBucket: input.storageBucket,
       storagePath: input.storagePath,
@@ -71,9 +83,15 @@ export class GoogleVisionExtractor implements OcrExtractor {
   }
 
   private buildResponse(
-    input: any,
+    input: {
+      storageBucket: string;
+      storagePath: string;
+      mimeType: string | null;
+      fileName: string;
+      declaredType: string;
+    },
     result: ParsedGoogleVisionPayload,
-    storage: any,
+    storage: StorageObjectContent,
     warnings: string[]
   ): ExtractedDocument {
     const ocrTokens = tokenize(result.text.slice(0, 12000));

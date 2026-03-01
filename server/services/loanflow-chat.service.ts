@@ -876,9 +876,23 @@ STRICT RULES:
 5. Do not disclose internal system names like "Gemini". Refer to yourself as LoanFlow AI.`;
 
   let responseText: string;
-  let assistantMeta: any = {
+  type AssistantMeta = {
+    model: string;
+    intents: string[];
+    matched_product_ids: string[];
+    matched_bank_ids: string[];
+    reference_generated_at: string;
+    ai_enhanced?: boolean;
+    error?: string;
+  };
+
+  const activeIntents = (Object.entries(queryContext.intents) as [string, boolean][])
+    .filter(([, active]) => active)
+    .map(([name]) => name);
+
+  const assistantMeta: AssistantMeta = {
     model: MODEL_NAME,
-    intents: queryContext.intents,
+    intents: activeIntents,
     matched_product_ids: topProducts.map(p => p.id),
     matched_bank_ids: topProducts.map(p => p.bank_id),
     reference_generated_at: reference.generated_at,
