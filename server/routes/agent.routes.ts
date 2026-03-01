@@ -2,7 +2,7 @@ import { Router } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth } from "../middleware/auth";
 import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
@@ -68,7 +68,7 @@ agentRouter.post(
   }),
 );
 
-agentRouter.use(requireAuth);
+agentRouter.use(requireAuth, requireApprovedUser);
 
 agentRouter.post(
   "/agent/link-whatsapp",

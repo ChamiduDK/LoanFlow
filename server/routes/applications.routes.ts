@@ -9,7 +9,7 @@ import {
   trackApplicationSchema,
   updateApplicationSchema,
 } from "../schemas/application";
-import { requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth } from "../middleware/auth";
 import { forbidden, internalError, notFound, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { supabaseAdmin } from "../lib/supabase/client";
@@ -22,7 +22,7 @@ import { getLoanManagementSummary } from "../services/loan-management.service";
 
 export const applicationsRouter = Router();
 
-applicationsRouter.use(requireAuth);
+applicationsRouter.use(requireAuth, requireApprovedUser);
 
 const submittedStatuses = new Set([
   "submitted",

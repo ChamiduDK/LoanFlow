@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth } from "../middleware/auth";
 import { unauthorized, badRequest } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import {
@@ -87,7 +87,7 @@ const upload = multer({
   },
 });
 
-documentsRouter.use(requireAuth);
+documentsRouter.use(requireAuth, requireApprovedUser);
 
 documentsRouter.post(
   "/applications/:id/documents/upload",

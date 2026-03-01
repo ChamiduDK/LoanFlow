@@ -71,6 +71,7 @@ create table if not exists public.profiles (
   existing_loan_obligations numeric(14, 2) check (existing_loan_obligations is null or existing_loan_obligations >= 0),
   turnover_band text,
   is_admin boolean not null default false,
+  is_approved boolean not null default false,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -347,6 +348,7 @@ create table if not exists public.audit_logs (
 );
 
 create index if not exists idx_profiles_is_admin on public.profiles (is_admin);
+create index if not exists idx_profiles_is_approved on public.profiles (is_approved);
 create index if not exists idx_banks_active on public.banks (is_active);
 create index if not exists idx_loan_products_bank_active on public.loan_products (bank_id, is_active);
 create index if not exists idx_loan_products_slug on public.loan_products (slug);

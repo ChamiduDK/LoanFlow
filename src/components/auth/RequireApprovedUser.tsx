@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Navigate, Outlet } from "react-router-dom";
-import RouteFallback from "./RouteFallback";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { apiFetch } from "@/lib/api/client";
 import { useAuthSession } from "@/hooks/useAuthSession";
+import RouteFallback from "./RouteFallback";
 import { resolvePostAuthPath } from "@/lib/auth";
 
 type MePayload = {
@@ -12,7 +12,8 @@ type MePayload = {
   } | null;
 };
 
-export default function RequireGuest() {
+export default function RequireApprovedUser() {
+  const location = useLocation();
   const sessionQuery = useAuthSession();
   const meQuery = useQuery({
     queryKey: ["me-profile"],
@@ -23,12 +24,26 @@ export default function RequireGuest() {
   });
 
   if (sessionQuery.isLoading || (sessionQuery.data && meQuery.isLoading)) {
-    return <RouteFallback message="Checking your session..." />;
+    return <RouteFallback message="Checking your access..." />;
   }
 
-  if (sessionQuery.data) {
-    const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
-    const isApproved = Boolean(meQuery.data?.profile?.is_approved);
+  if (!sessionQuery.data) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
+  }
+
+  if (meQuery.isError) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
+  const isApproved = Boolean(meQuery.data?.profile?.is_approved);
+  if (!isAdmin && !isApproved) {
     return <Navigate to={resolvePostAuthPath(undefined, { isAdmin, isApproved })} replace />;
   }
 

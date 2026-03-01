@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth } from "../middleware/auth";
 import { unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { outcomeParamsSchema, upsertOutcomeSchema } from "../schemas/outcome";
@@ -9,7 +9,7 @@ import { getOutcome, upsertOutcome } from "../services/outcome.service";
 
 export const outcomeRouter = Router();
 
-outcomeRouter.use(requireAuth);
+outcomeRouter.use(requireAuth, requireApprovedUser);
 
 outcomeRouter.post(
   "/applications/:id/outcome",

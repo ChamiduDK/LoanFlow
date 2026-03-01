@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth } from "../middleware/auth";
 import { unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { createInstallmentSchema, trackerParamsSchema } from "../schemas/outcome";
@@ -12,7 +12,7 @@ import { reEvaluateTrackedApplication } from "../services/tracker-evaluation.ser
 
 export const trackerRouter = Router();
 
-trackerRouter.use(requireAuth);
+trackerRouter.use(requireAuth, requireApprovedUser);
 
 trackerRouter.get(
   "/applications/:id/tracker",

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
 import { sendSuccess } from "../lib/response";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireApprovedUser, requireAuth, requireAdmin } from "../middleware/auth";
 import { unauthorized } from "../lib/errors";
 import { activateMlModelParamsSchema, predictMlSchema, trainMlSchema } from "../schemas/ml";
 import { predictApprovalProbability } from "../services/ml/prediction.service";
@@ -10,7 +10,7 @@ import { activateMlModel, listMlModels, trainMlApprovalModel } from "../services
 
 export const mlRouter = Router();
 
-mlRouter.use(requireAuth);
+mlRouter.use(requireAuth, requireApprovedUser);
 
 mlRouter.post(
   "/ml/predict",
