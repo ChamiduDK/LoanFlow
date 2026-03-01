@@ -14,6 +14,7 @@ import {
   Bell,
   ChevronRight,
   Bot,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api/client";
@@ -29,7 +30,8 @@ const navItems = [
   {
     group: "Main",
     items: [
-      { label: "Dashboard", description: "Overview & AI Chat", icon: LayoutDashboard, path: "/dashboard" },
+      { label: "Dashboard", description: "Overview & quick actions", icon: LayoutDashboard, path: "/dashboard" },
+      { label: "AI Chat", description: "Ask LoanFlow AI anything", icon: MessageSquare, path: "/chat" },
       { label: "Loan Application", description: "Create or update your request", icon: FileText, path: "/apply" },
       { label: "Loan Results", description: "View ranked lender matches", icon: Search, path: "/results" },
     ],

@@ -18,6 +18,7 @@ const Login = lazy(() => import("./pages/Login"));
 const SignUp = lazy(() => import("./pages/SignUp"));
 const ApprovalPending = lazy(() => import("./pages/ApprovalPending"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AiChat = lazy(() => import("./pages/AiChat"));
 const LoanApplication = lazy(() => import("./pages/LoanApplication"));
 const LoanResults = lazy(() => import("./pages/LoanResults"));
 const EMICalculator = lazy(() => import("./pages/EMICalculator"));
@@ -70,6 +71,7 @@ function AppRoutes() {
           <Route element={<RequireApprovedUser />}>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/chat" element={<AiChat />} />
               <Route path="/apply" element={<LoanApplication />} />
               <Route path="/results" element={<LoanResults />} />
               <Route path="/calculator" element={<EMICalculator />} />
