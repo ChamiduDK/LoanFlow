@@ -125,12 +125,14 @@ export default function Dashboard() {
     { title: "Track Applications", desc: "See status and bank timelines", icon: GitBranch, path: "/tracker" },
     { title: "Run EMI Calculator", desc: "Estimate monthly repayment", icon: TrendingUp, path: "/calculator" },
   ];
+  const recentApplications = useMemo(() => applications.slice(0, 3), [applications]);
 
   return (
-    <div className="space-y-6 px-2 md:px-6">
+    <div className="flex flex-col gap-4 px-1 md:px-2 lg:h-[calc(100vh-8.5rem)] lg:overflow-hidden">
       <PageHeader
         title="Dashboard"
-        subtitle="Live view of your SME loan pipeline and recommendation readiness."
+        subtitle="At-a-glance view of your SME loan progress, actions, and latest updates."
+        className="top-0 z-0 border-none bg-transparent pb-0 pt-0 backdrop-blur-none"
         actions={(
           <Button asChild>
             <Link to="/apply">
@@ -141,14 +143,14 @@ export default function Dashboard() {
         )}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item, idx) => (
           <Card
             key={item.label}
             className="border-border/70 bg-card shadow-sm transition-shadow hover:shadow-md"
             style={{ animationDelay: `${idx * 50}ms` }}
           >
-            <CardContent className="p-5">
+            <CardContent className="p-4">
               {isLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-3 w-24" />
@@ -156,14 +158,14 @@ export default function Dashboard() {
                   <Skeleton className="h-3 w-28" />
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 ${item.surfaceClass}`}>
-                      <item.icon className={`h-5 w-5 ${item.iconClass}`} />
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{item.label}</p>
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg border border-border/70 ${item.surfaceClass}`}>
+                      <item.icon className={`h-4 w-4 ${item.iconClass}`} />
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground">{item.value}</p>
+                  <p className="text-2xl font-bold leading-none text-foreground">{item.value}</p>
                   <p className="text-xs font-medium text-muted-foreground">{item.trend}</p>
                 </div>
               )}
@@ -185,17 +187,17 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="border-border/70 bg-card shadow-sm xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-12">
+        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4 lg:min-h-0">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3">
+          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             {quickActions.map((action, idx) => (
               <Link
                 key={action.title}
                 to={action.path}
-                className="group rounded-lg border border-border/70 bg-muted/30 p-4 transition-colors hover:border-primary/40 hover:bg-muted/45"
+                className="group rounded-lg border border-border/70 bg-muted/30 p-3 transition-colors hover:border-primary/40 hover:bg-muted/45"
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -209,15 +211,15 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-        <Card className="border-border/70 bg-card shadow-sm xl:col-span-3">
-          <CardHeader>
-            <CardTitle>Reminder Alerts</CardTitle>
+        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4 lg:min-h-0">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Reminder Alerts</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2">
             {reminders.map((reminder, idx) => (
               <div
                 key={reminder.title}
-                className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/25 p-4 transition-shadow hover:shadow-sm"
+                className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/25 p-3 transition-shadow hover:shadow-sm"
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
                 <div className="flex items-start gap-3">
@@ -234,24 +236,18 @@ export default function Dashboard() {
             ))}
           </CardContent>
         </Card>
-      </div>
-
-      <Card className="border-border/70 bg-card shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/50 pb-4">
-          <div>
-            <CardTitle>Recent Applications</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Track status and submission updates for your applications.</p>
-          </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/tracker">
-              Open Tracker
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          {applications.length === 0 ? (
-            <div className="p-6">
+        <Card className="border-border/70 bg-card shadow-sm lg:col-span-4 lg:min-h-0">
+          <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+            <CardTitle className="text-lg">Recent Applications</CardTitle>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/tracker">
+                Open Tracker
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {applications.length === 0 ? (
               <EmptyState
                 title="No applications"
                 description="Create your first application to start eligibility evaluation and recommendations."
@@ -261,49 +257,38 @@ export default function Dashboard() {
                   </Button>
                 )}
               />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-border/50 hover:bg-transparent">
-                  <TableHead className="font-semibold text-foreground">Application ID</TableHead>
-                  <TableHead className="font-semibold text-foreground">Requested Amount</TableHead>
-                  <TableHead className="font-semibold text-foreground">Purpose</TableHead>
-                  <TableHead className="font-semibold text-foreground">Status</TableHead>
-                  <TableHead className="font-semibold text-foreground">Updated</TableHead>
-                  <TableHead className="font-semibold text-foreground">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {applications.map((app) => (
-                  <TableRow key={app.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs font-medium text-foreground">{app.id.slice(0, 8)}</TableCell>
-                    <TableCell className="font-medium text-foreground">{formatLKR(app.requested_amount)}</TableCell>
-                    <TableCell className="font-medium text-foreground">{app.purpose}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={app.status} />
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDate(app.updated_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" asChild>
-                          <Link to={`/results?applicationId=${app.id}`}>Results</Link>
-                        </Button>
-                        <Button size="sm" variant="outline" asChild>
-                          <Link to={`/tracker?applicationId=${app.id}`}>Tracker</Link>
-                        </Button>
-                        <Button size="sm" variant="outline" asChild>
-                          <Link to={`/documents?applicationId=${app.id}`}>Documents</Link>
-                        </Button>
-                      </div>
-                    </TableCell>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/50 hover:bg-transparent">
+                    <TableHead className="font-semibold text-foreground">ID</TableHead>
+                    <TableHead className="font-semibold text-foreground">Amount</TableHead>
+                    <TableHead className="font-semibold text-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-foreground">Updated</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {recentApplications.map((app) => (
+                    <TableRow key={app.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                      <TableCell className="font-mono text-xs font-medium text-foreground">{app.id.slice(0, 8)}</TableCell>
+                      <TableCell className="font-medium text-foreground">{formatLKR(app.requested_amount)}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={app.status} />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{formatDate(app.updated_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            {applications.length > recentApplications.length ? (
+              <p className="text-xs text-muted-foreground">
+                Showing latest {recentApplications.length} of {applications.length} applications.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
