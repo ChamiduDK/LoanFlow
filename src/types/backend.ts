@@ -177,6 +177,7 @@ export type DocumentScanResponse = {
   application_id: string;
   product_id: string | null;
   scanned_count: number;
+  ai_discrepancy_summary?: string;
   summary: {
     total_documents: number;
     valid_count: number;
@@ -187,13 +188,48 @@ export type DocumentScanResponse = {
   documents: Array<{
     document_id: string;
     document_type: string;
+    expected_document_type?: string;
     file_name: string;
     detected_doc_type: string | null;
     validation_status: "valid" | "invalid" | "unclear";
+    final_verification_status?: "Verified" | "Needs Review" | "Rejected";
     confidence_score: number;
     notes: string[];
     extracted_fields: Record<string, unknown>;
     ocr_preview: string | null;
+    discrepancy_report?: {
+      ocr_extracted_values: Record<string, unknown>;
+      expected_values: Record<string, unknown>;
+      detected_differences: Array<{
+        code: string;
+        field: string;
+        extracted_value: unknown;
+        expected_value: unknown;
+        difference: string;
+        severity: "minor" | "critical";
+        confidence_score: number;
+        source: "ocr" | "rule" | "cross_document" | "system_record" | "ai";
+      }>;
+      missing_fields: string[];
+      confidence_scores: {
+        ocr_confidence: number;
+        type_detection_confidence: number;
+        overall_verification_confidence: number;
+      };
+      type_comparison: {
+        expected_document_type: string;
+        detected_document_type: string | null;
+        matched: boolean;
+      };
+    };
+    ai_discrepancy_summary?: {
+      summary: string;
+      significance: "none" | "minor" | "critical";
+      minor_discrepancies: number;
+      critical_discrepancies: number;
+      recommended_status: "Verified" | "Needs Review" | "Rejected";
+      source: "rule_engine" | "gemini";
+    };
     scanned: boolean;
   }>;
 };
