@@ -21,7 +21,6 @@ import {
 import EmptyState from "@/components/shared/EmptyState";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import LoanFlowChatPanel from "@/components/dashboard/LoanFlowChatPanel";
 import { apiFetch } from "@/lib/api/client";
 import type { LoanApplication } from "@/types/backend";
 import { formatLKR } from "@/lib/currency";
@@ -44,6 +43,7 @@ function getStatusIcon(status: string) {
 }
 
 const quickActions = [
+  { title: "AI Chat", desc: "Ask LoanFlow AI anything", icon: Bot, path: "/chat", color: "from-primary/10 to-primary/5 border-primary/20 hover:border-primary/40" },
   { title: "New Application", desc: "Start a new loan request", icon: Plus, path: "/apply", color: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-500/40" },
   { title: "Upload Documents", desc: "Complete your document checklist", icon: Upload, path: "/documents", color: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-500/40" },
   { title: "Track Application", desc: "Check bank review progress", icon: GitBranch, path: "/tracker", color: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-500/40" },
@@ -128,39 +128,28 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Main Layout: Chat + Actions */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* AI Chat takes 2 cols */}
-        <div className="lg:col-span-2">
-          <LoanFlowChatPanel />
-        </div>
-
-        {/* Quick Actions + Recent */}
-        <div className="flex flex-col gap-4">
-          {/* Quick Actions */}
-          <Card className="border-border/70 bg-card shadow-sm">
-            <CardHeader className="pb-2 pt-4 px-4">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Bot className="h-4 w-4 text-primary" />
-                Quick Actions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 grid grid-cols-2 gap-2">
-              {quickActions.map((action) => (
-                <Link
-                  key={action.title}
-                  to={action.path}
-                  className={`group flex flex-col gap-1 rounded-xl border bg-gradient-to-br p-3 transition-all duration-200 ${action.color}`}
-                >
-                  <action.icon className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors" />
-                  <p className="text-xs font-semibold text-foreground leading-tight">{action.title}</p>
-                  <p className="text-[10px] text-muted-foreground leading-tight">{action.desc}</p>
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Quick Actions — full width grid */}
+      <Card className="border-border/70 bg-card shadow-sm">
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Bot className="h-4 w-4 text-primary" />
+            Quick Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {quickActions.map((action) => (
+            <Link
+              key={action.title}
+              to={action.path}
+              className={`group flex flex-col gap-1.5 rounded-xl border bg-gradient-to-br p-3 transition-all duration-200 ${action.color}`}
+            >
+              <action.icon className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors" />
+              <p className="text-xs font-semibold text-foreground leading-tight">{action.title}</p>
+              <p className="text-[10px] text-muted-foreground leading-tight">{action.desc}</p>
+            </Link>
+          ))}
+        </CardContent>
+      </Card>
 
       {/* Recent Applications Table */}
       <Card className="border-border/70 bg-card shadow-sm">
