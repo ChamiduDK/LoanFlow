@@ -70,6 +70,34 @@ const adminApplicationDecisionBodySchema = z.object({
   }
 });
 
+type ProfileRecord = Record<string, unknown>;
+
+function hasApprovalFlag(profile: ProfileRecord): boolean {
+  return Object.prototype.hasOwnProperty.call(profile, "is_approved");
+}
+
+function toAdminUserProfile(profile: ProfileRecord): {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  phone: string | null;
+  is_admin: boolean;
+  is_approved: boolean;
+  created_at: string;
+  updated_at: string;
+} {
+  return {
+    id: String(profile.id),
+    email: typeof profile.email === "string" ? profile.email : null,
+    full_name: typeof profile.full_name === "string" ? profile.full_name : null,
+    phone: typeof profile.phone === "string" ? profile.phone : null,
+    is_admin: Boolean(profile.is_admin),
+    is_approved: hasApprovalFlag(profile) ? Boolean(profile.is_approved) : true,
+    created_at: String(profile.created_at ?? ""),
+    updated_at: String(profile.updated_at ?? ""),
+  };
+}
+
 export const adminRouter = Router();
 
 adminRouter.use(requireAuth, requireAdmin);
@@ -77,7 +105,7 @@ adminRouter.use(requireAuth, requireAdmin);
 adminRouter.get(
   "/admin/overview",
   asyncHandler(async (_req, res) => {
-    const [banksCount, productsCount, applicationsCount, underReviewCount, outcomesCount, auditLogsResult] = await Promise.all([
+    const [banksCount, productsCount, applicationsCount, underReviewCount, outcomesCount, profilesResult, auditLogsResult] = await Promise.all([
       supabaseAdmin.from("banks").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("loan_products").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("loan_applications").select("*", { count: "exact", head: true }),
@@ -86,6 +114,7 @@ adminRouter.get(
         .select("*", { count: "exact", head: true })
         .eq("status", "under_review"),
       supabaseAdmin.from("outcomes").select("*", { count: "exact", head: true }).eq("status", "approved"),
+      supabaseAdmin.from("profiles").select("*"),
       supabaseAdmin
         .from("audit_logs")
         .select("id, actor_user_id, action, entity_type, entity_id, payload_summary, created_at")
@@ -99,6 +128,7 @@ adminRouter.get(
       applicationsCount.error ||
       underReviewCount.error ||
       outcomesCount.error ||
+      profilesResult.error ||
       auditLogsResult.error
     ) {
       throw internalError("Failed to load admin overview", {
@@ -107,9 +137,23 @@ adminRouter.get(
         applicationsCount: applicationsCount.error,
         underReviewCount: underReviewCount.error,
         outcomesCount: outcomesCount.error,
+        profiles: profilesResult.error,
         auditLogs: auditLogsResult.error,
       });
     }
+
+    const pendingUserApprovals = (profilesResult.data ?? []).reduce((count, row) => {
+      const profile = row as ProfileRecord;
+      if (profile.is_admin === true) {
+        return count;
+      }
+
+      if (!hasApprovalFlag(profile)) {
+        return count;
+      }
+
+      return profile.is_approved === false ? count + 1 : count;
+    }, 0);
 
     sendSuccess(res, {
       metrics: {
@@ -118,6 +162,7 @@ adminRouter.get(
         total_applications: applicationsCount.count ?? 0,
         under_review_applications: underReviewCount.count ?? 0,
         approved_outcomes: outcomesCount.count ?? 0,
+        pending_user_approvals: pendingUserApprovals,
       },
       recent_activity: auditLogsResult.data ?? [],
     });
@@ -159,7 +204,7 @@ adminRouter.get(
     const [profilesResult, applicationsResult] = await Promise.all([
       supabaseAdmin
         .from("profiles")
-        .select("id, email, full_name, phone, is_admin, is_approved, created_at, updated_at")
+        .select("*")
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("loan_applications")
@@ -185,11 +230,14 @@ adminRouter.get(
       countsByUser.set(key, current);
     }
 
-    const users = (profilesResult.data ?? []).map((profile) => ({
-      ...profile,
-      applications_total: countsByUser.get(String(profile.id))?.total ?? 0,
-      applications_active: countsByUser.get(String(profile.id))?.active ?? 0,
-    }));
+    const users = (profilesResult.data ?? []).map((row) => {
+      const profile = toAdminUserProfile(row as ProfileRecord);
+      return {
+        ...profile,
+        applications_total: countsByUser.get(String(profile.id))?.total ?? 0,
+        applications_active: countsByUser.get(String(profile.id))?.active ?? 0,
+      };
+    });
 
     sendSuccess(res, users);
   }),
@@ -204,7 +252,7 @@ adminRouter.put(
 
     const profileResult = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, is_admin, is_approved, updated_at")
+      .select("*")
       .eq("id", params.id)
       .maybeSingle();
 
@@ -216,12 +264,14 @@ adminRouter.put(
       throw notFound("User profile not found");
     }
 
-    if (profileResult.data.is_admin === payload.is_admin) {
-      sendSuccess(res, profileResult.data);
+    const currentProfile = toAdminUserProfile(profileResult.data as ProfileRecord);
+
+    if (currentProfile.is_admin === payload.is_admin) {
+      sendSuccess(res, currentProfile);
       return;
     }
 
-    if (profileResult.data.is_admin && !payload.is_admin) {
+    if (currentProfile.is_admin && !payload.is_admin) {
       if (actorUserId && actorUserId === params.id) {
         throw badRequest("You cannot remove your own admin role");
       }
@@ -244,7 +294,7 @@ adminRouter.put(
       .from("profiles")
       .update({ is_admin: payload.is_admin })
       .eq("id", params.id)
-      .select("id, email, full_name, is_admin, is_approved, updated_at")
+      .select("*")
       .maybeSingle();
 
     if (updateResult.error) {
@@ -264,7 +314,7 @@ adminRouter.put(
       ipAddress: req.ip,
     });
 
-    sendSuccess(res, updateResult.data);
+    sendSuccess(res, toAdminUserProfile(updateResult.data as ProfileRecord));
   }),
 );
 
@@ -273,15 +323,35 @@ adminRouter.put(
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(userRoleParamsSchema, req.params);
     const payload = parseWithSchema(userApprovalBodySchema, req.body);
+    const existingProfileResult = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", params.id)
+      .maybeSingle();
+
+    if (existingProfileResult.error) {
+      throw internalError("Failed to load user profile", existingProfileResult.error);
+    }
+
+    if (!existingProfileResult.data) {
+      throw notFound("User profile not found");
+    }
+
+    if (!hasApprovalFlag(existingProfileResult.data as ProfileRecord)) {
+      throw badRequest("User approval requires database migration 20260301130000_user_approval_access.sql");
+    }
 
     const updateResult = await supabaseAdmin
       .from("profiles")
       .update({ is_approved: payload.is_approved })
       .eq("id", params.id)
-      .select("id, email, full_name, is_admin, is_approved, updated_at")
+      .select("*")
       .maybeSingle();
 
     if (updateResult.error) {
+      if (String(updateResult.error.message).toLowerCase().includes("is_approved")) {
+        throw badRequest("User approval requires database migration 20260301130000_user_approval_access.sql");
+      }
       throw internalError("Failed to update user approval", updateResult.error);
     }
 
@@ -298,7 +368,7 @@ adminRouter.put(
       ipAddress: req.ip,
     });
 
-    sendSuccess(res, updateResult.data);
+    sendSuccess(res, toAdminUserProfile(updateResult.data as ProfileRecord));
   }),
 );
 

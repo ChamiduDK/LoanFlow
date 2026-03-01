@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { ShieldCheck, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
-import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
+import { normalizeEmail, resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase/client";
 
 type MePayload = {
@@ -50,19 +50,16 @@ export default function Login() {
       });
 
       const state = location.state as { from?: string } | null;
-      let isAdmin = false;
-      let isApproved = false;
+      let access = { isAdmin: false, isApproved: true };
 
       try {
         const me = await apiFetch<MePayload>("/api/me");
-        isAdmin = Boolean(me.profile?.is_admin);
-        isApproved = Boolean(me.profile?.is_approved);
+        access = resolveAccessState(me.profile);
       } catch {
-        isAdmin = false;
-        isApproved = false;
+        access = { isAdmin: false, isApproved: true };
       }
 
-      navigate(resolvePostAuthPath(state?.from, { isAdmin, isApproved }), { replace: true });
+      navigate(resolvePostAuthPath(state?.from, access), { replace: true });
     } finally {
       setSubmitting(false);
     }

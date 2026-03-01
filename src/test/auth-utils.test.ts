@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
+import { normalizeEmail, resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 
 describe("auth utils", () => {
   it("normalizes email casing and trims whitespace", () => {
@@ -20,5 +20,13 @@ describe("auth utils", () => {
 
   it("routes pending regular users to approval page by default", () => {
     expect(resolvePostAuthPath(undefined, { isAdmin: false, isApproved: false })).toBe("/approval-pending");
+  });
+
+  it("treats missing approval flag as approved for backward compatibility", () => {
+    expect(resolveAccessState({ is_admin: false })).toEqual({ isAdmin: false, isApproved: true });
+  });
+
+  it("respects explicit pending approval flag", () => {
+    expect(resolveAccessState({ is_admin: false, is_approved: false })).toEqual({ isAdmin: false, isApproved: false });
   });
 });

@@ -25,6 +25,8 @@ import { apiFetch } from "@/lib/api/client";
 import type { LoanApplication } from "@/types/backend";
 import { formatLKR } from "@/lib/currency";
 
+const EMPTY_APPLICATIONS: LoanApplication[] = [];
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString("en-LK", {
     year: "numeric",
@@ -34,10 +36,12 @@ function formatDate(value: string): string {
 }
 
 export default function Dashboard() {
-  const { data: applications = [], isLoading } = useQuery({
+  const applicationsQuery = useQuery({
     queryKey: ["applications"],
     queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
   });
+  const applications = applicationsQuery.data ?? EMPTY_APPLICATIONS;
+  const isLoading = applicationsQuery.isLoading;
 
   const summary = useMemo(() => {
     const active = applications.filter((item) => !["approved", "rejected", "withdrawn"].includes(item.status)).length;
@@ -167,6 +171,19 @@ export default function Dashboard() {
           </Card>
         ))}
       </div>
+
+      {applicationsQuery.isError ? (
+        <Card className="border-warning/40 bg-warning/10 shadow-sm">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <p className="text-sm text-warning-foreground">
+              Could not load latest applications data.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => void applicationsQuery.refetch()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card className="border-border/70 bg-card shadow-sm xl:col-span-2">
