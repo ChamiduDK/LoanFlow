@@ -39,6 +39,9 @@ const envSchema = z.object({
   DOCUMENT_AI_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
   DOCUMENT_AI_MIN_OCR_CHARS: z.coerce.number().int().min(40).default(120),
   DOCUMENT_AI_MAX_TEXT_CHARS: z.coerce.number().int().min(500).max(20000).default(6000),
+  AI_CHAT_PROVIDER: z.enum(["disabled", "gemini"]).default("gemini"),
+  AI_CHAT_GEMINI_API_KEY: z.string().min(20).optional(),
+  AI_CHAT_MODEL: z.string().min(3).default("gemini-1.5-flash"),
 });
 
 const parsed = envSchema.safeParse(process.env);

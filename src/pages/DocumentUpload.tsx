@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, apiUpload } from "@/lib/api/client";
 import type { DocumentChecklistResponse, DocumentRow, LoanApplication } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
@@ -69,6 +69,9 @@ export default function DocumentUpload() {
 
   const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
   const [selectedDocumentType, setSelectedDocumentType] = useState<string>("");
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   const applicationsQuery = useQuery({
     queryKey: ["applications"],
     queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
@@ -110,6 +113,10 @@ export default function DocumentUpload() {
 
   const uploadMutation = useMutation({
     mutationFn: async ({ file, documentType }: { file: File; documentType: string }) => {
+      if (file.size > MAX_FILE_SIZE) {
+        throw new Error("File size exceeds 10MB limit. Please compress the file and try again.");
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("document_type", documentType);
@@ -117,9 +124,9 @@ export default function DocumentUpload() {
         formData.append("product_id", selectedApplication.selected_product_id);
       }
 
-      return apiFetch(`/api/applications/${applicationId}/documents/upload`, {
-        method: "POST",
-        body: formData,
+      setUploadProgress(0);
+      return apiUpload(`/api/applications/${applicationId}/documents/upload`, formData, (progress) => {
+        setUploadProgress(progress);
       });
     },
     onSuccess: () => {
@@ -127,10 +134,12 @@ export default function DocumentUpload() {
         title: "Document uploaded",
         description: "Checklist was refreshed.",
       });
+      setUploadProgress(0);
       void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
       void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
     },
     onError: (error) => {
+      setUploadProgress(0);
       toast({
         title: "Upload failed",
         description: error instanceof Error ? error.message : "Could not upload document",
@@ -377,6 +386,15 @@ export default function DocumentUpload() {
                     disabled={uploadMutation.isPending || !selectedDocumentType}
                   />
                 </div>
+                {uploadMutation.isPending && uploadProgress > 0 && (
+                  <div className="mx-auto mt-4 max-w-sm space-y-1">
+                    <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <span>Uploading...</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <Progress value={uploadProgress} className="h-1" />
+                  </div>
+                )}
                 <p className="mt-3 text-xs text-muted-foreground">Supported: PDF, JPG, PNG up to 10MB</p>
               </div>
             </CardContent>

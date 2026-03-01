@@ -3,6 +3,7 @@ import multer from "multer";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
 import { requireApprovedUser, requireAuth } from "../middleware/auth";
+import { uploadRateLimiter } from "../middleware/rate-limiter";
 import { unauthorized, badRequest } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import {
@@ -91,6 +92,7 @@ documentsRouter.use(requireAuth, requireApprovedUser);
 
 documentsRouter.post(
   "/applications/:id/documents/upload",
+  uploadRateLimiter,
   upload.single("file"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);

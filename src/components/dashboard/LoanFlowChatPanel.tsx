@@ -123,7 +123,7 @@ export default function LoanFlowChatPanel() {
       return "Could not load chat history.";
     }
     if (messages.length === 0) {
-      return "Start a conversation with LoanFlow 1.0.";
+      return `Start a conversation with ${model}.`;
     }
 
     return null;

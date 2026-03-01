@@ -7,6 +7,7 @@ import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
+import { authRateLimiter } from "../middleware/rate-limiter";
 
 export const authRouter = Router();
 
@@ -32,6 +33,7 @@ function applySessionCookies(res: Response, session: { access_token: string; ref
 
 authRouter.post(
   "/auth/signup",
+  authRateLimiter,
   asyncHandler(async (req, res) => {
     const payload = parseWithSchema(signUpSchema, req.body);
 
@@ -79,6 +81,7 @@ authRouter.post(
 
 authRouter.post(
   "/auth/signin",
+  authRateLimiter,
   asyncHandler(async (req, res) => {
     const payload = parseWithSchema(signInSchema, req.body);
 

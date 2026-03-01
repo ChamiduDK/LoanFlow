@@ -72,16 +72,22 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (!response.ok) {
-    const errorFromEnvelope =
-      payload && typeof payload === "object" && "error" in payload
-        ? (payload as ApiEnvelope<T>).error
-        : undefined;
-    const message =
-      errorFromEnvelope?.message ??
-      (rawText.length === 0 ? `Request failed with status ${response.status}` : `Request failed (${response.status})`);
-    throw new ApiRequestError(message, {
+    let errorMessage = `Request failed with status ${response.status}`;
+    let errorCode: string | undefined;
+
+    if (payload && typeof payload === "object") {
+      if ("error" in payload) {
+        const err = (payload as ApiEnvelope<T>).error;
+        errorMessage = err?.message ?? errorMessage;
+        errorCode = err?.code;
+      } else if ("message" in payload && typeof payload.message === "string") {
+        errorMessage = payload.message;
+      }
+    }
+
+    throw new ApiRequestError(errorMessage, {
       status: response.status,
-      code: errorFromEnvelope?.code,
+      code: errorCode,
     });
   }
 
@@ -102,4 +108,78 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   return payload as T;
+}
+
+export type UploadProgressHandler = (progress: number) => void;
+
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  onProgress?: UploadProgressHandler,
+): Promise<T> {
+  const { data } = await supabaseClient.auth.getSession();
+  const token = data.session?.access_token;
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", resolveApiUrl(path));
+
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.withCredentials = true;
+
+    if (onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      const contentType = xhr.getResponseHeader("content-type") ?? "";
+      let payload: any = null;
+
+      if (xhr.responseText) {
+        try {
+          payload = JSON.parse(xhr.responseText);
+        } catch {
+          payload = xhr.responseText;
+        }
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (payload && typeof payload === "object" && "success" in payload) {
+          if (payload.success) {
+            resolve(payload.data as T);
+          } else {
+            reject(new ApiRequestError(payload.error?.message ?? "Upload failed", {
+              status: xhr.status,
+              code: payload.error?.code,
+            }));
+          }
+        } else {
+          resolve(payload as T);
+        }
+      } else {
+        let message = `Upload failed with status ${xhr.status}`;
+        let code: string | undefined;
+
+        if (payload && typeof payload === "object" && payload.error) {
+          message = payload.error.message ?? message;
+          code = payload.error.code;
+        }
+
+        reject(new ApiRequestError(message, { status: xhr.status, code }));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onabort = () => reject(new Error("Upload aborted"));
+
+    xhr.send(formData);
+  });
 }

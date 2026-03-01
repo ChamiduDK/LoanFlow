@@ -9,6 +9,10 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof ApiError) {
     const shouldHideDetails = isProduction && error.status >= 500;
 
+    if (error.status >= 400) {
+      console.warn(`[ApiError] ${error.status} ${error.code || "UNKNOWN"}: ${error.message}`, error.details || "");
+    }
+
     sendError(
       res,
       {
