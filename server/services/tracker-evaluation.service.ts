@@ -216,21 +216,8 @@ export async function reEvaluateTrackedApplication(
   const completenessScore = toNumber(checksByScheme.completeness_score, 0);
   const missingDocs = ((checksByScheme.missing_docs as string[] | undefined) ?? []).map((item) => String(item));
 
-  const latestDocByType = new Map<string, { validation_status: ValidationStatus }>();
-  for (const row of uploadedDocs) {
-    const rowProductId = row.product_id ? String(row.product_id) : null;
-    if (rowProductId && rowProductId !== selectedProductId) {
-      continue;
-    }
-
-    const key = String(row.document_type).trim().toLowerCase();
-    if (!latestDocByType.has(key)) {
-      const status = String(row.validation_status ?? "unclear").toLowerCase();
-      latestDocByType.set(key, {
-        validation_status: status === "valid" || status === "invalid" ? status : "unclear",
-      });
-    }
-  }
+  const checklist = (checksByScheme.checklist as Array<Record<string, any>> | undefined) ?? [];
+  const checklistMap = new Map(checklist.map((item) => [String(item.document_type).trim().toLowerCase(), item]));
 
   const validationNotes: TrackerReEvaluationResult["documents"]["validation_notes"] = [];
   let qualityAccumulator = 0;
@@ -240,9 +227,9 @@ export async function reEvaluateTrackedApplication(
 
   for (const required of requiredDocs) {
     const key = String(required.document_type).trim().toLowerCase();
-    const uploaded = latestDocByType.get(key);
+    const item = checklistMap.get(key);
 
-    if (!uploaded) {
+    if (!item || !item.uploaded) {
       validationNotes.push({
         document_type: String(required.document_type),
         display_name: String(required.display_name),
@@ -255,7 +242,23 @@ export async function reEvaluateTrackedApplication(
     }
 
     qualityItemCount += 1;
-    if (uploaded.validation_status === "valid") {
+
+    // If it's declared available, we treat it as valid for scoring
+    if (item.is_available) {
+      qualityAccumulator += 1;
+      validationNotes.push({
+        document_type: String(required.document_type),
+        display_name: String(required.display_name),
+        note: "Document declared available via Quick Checklist",
+        status: "valid",
+      });
+      continue;
+    }
+
+    // Otherwise, check the validation status of the uploaded file
+    const valStatus = String(item.latest_validation_status ?? "unclear").toLowerCase();
+
+    if (valStatus === "valid") {
       qualityAccumulator += 1;
       validationNotes.push({
         document_type: String(required.document_type),
@@ -263,7 +266,7 @@ export async function reEvaluateTrackedApplication(
         note: "Document appears valid for this requirement",
         status: "valid",
       });
-    } else if (uploaded.validation_status === "invalid") {
+    } else if (valStatus === "invalid") {
       invalidCount += 1;
       validationNotes.push({
         document_type: String(required.document_type),
