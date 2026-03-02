@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2, Circle, Clock3, FileSearch, Mail, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Circle, Clock3, FileSearch, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -92,6 +92,9 @@ export default function ApplicationTracker() {
     approved_rate: "",
     approved_tenure_months: "",
   });
+  // Proposal editor state
+  const [isEditingProposal, setIsEditingProposal] = useState(false);
+  const [editedHtml, setEditedHtml] = useState<string | null>(null);
 
   const applicationsQuery = useQuery({
     queryKey: ["applications"],
@@ -329,17 +332,11 @@ export default function ApplicationTracker() {
     missing_required_count: reEvaluation?.documents.missing_count ?? 0,
   };
 
-  const openProposalPreview = () => {
-    if (!proposal?.html_content) return;
-    const win = window.open("", "_blank", "noopener,noreferrer,width=1024,height=768");
-    if (!win) return;
-    win.document.write(proposal.html_content);
-    win.document.close();
-    win.focus();
-  };
+
 
   const downloadProposalPdf = () => {
-    if (!proposal?.html_content) {
+    const htmlToUse = editedHtml ?? proposal?.html_content;
+    if (!htmlToUse) {
       toast({ title: "No proposal available", description: "Generate a proposal first.", variant: "destructive" });
       return;
     }
@@ -349,7 +346,7 @@ export default function ApplicationTracker() {
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Loan Proposal - v${proposal.proposal_version}</title>
+  <title>Loan Proposal - v${proposal?.proposal_version ?? 1}</title>
   <style>
     @media print {
       @page { margin: 0.5in; size: A4; }
@@ -358,7 +355,7 @@ export default function ApplicationTracker() {
   </style>
 </head>
 <body>
-${proposal.html_content}
+${htmlToUse}
 </body>
 </html>`;
 
@@ -615,8 +612,42 @@ ${proposal.html_content}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" disabled={!proposal?.html_content} onClick={openProposalPreview}>Preview</Button>
-            <Button variant="outline" disabled={!proposal?.html_content} onClick={downloadProposalPdf}>
+            {/* Edit / Save / Cancel controls */}
+            {!isEditingProposal ? (
+              <Button
+                variant="outline"
+                disabled={!proposal?.html_content}
+                onClick={() => {
+                  setEditedHtml(proposal?.html_content ?? null);
+                  setIsEditingProposal(true);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+                Edit Letter
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditingProposal(false);
+                    setEditedHtml(null);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsEditingProposal(false);
+                    toast({ title: "Letter updated", description: "Your edits are saved. Print or Send Email to use them." });
+                  }}
+                >
+                  Save Changes
+                </Button>
+              </>
+            )}
+            <Button variant="outline" disabled={!(editedHtml ?? proposal?.html_content)} onClick={downloadProposalPdf}>
               <Printer className="h-4 w-4" />
               Print / Save PDF
             </Button>
@@ -630,22 +661,34 @@ ${proposal.html_content}
           </div>
         </CardHeader>
         <CardContent>
-          {proposalQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading proposal preview...</p> : proposal?.html_content ? (
+          {proposalQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading proposal preview...</p> : (proposal?.html_content || editedHtml) ? (
             <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">Version {proposal.proposal_version}</p>
-                <p className="text-xs text-muted-foreground">Updated {formatDate(proposal.updated_at)}</p>
+                <p className="text-xs text-muted-foreground">Version {proposal?.proposal_version}</p>
+                <p className="text-xs text-muted-foreground">Updated {formatDate(proposal?.updated_at ?? "")}</p>
               </div>
-              <p className="mb-2 text-xs text-muted-foreground">
+              <p className="mb-3 text-xs text-muted-foreground">
                 Email recipient: {toText(proposalEmailDraft.to, toText(proposalBank.contact_email, "Not configured"))}
               </p>
-              {/* Render inside an iframe to isolate the proposal's hardcoded light-mode colours from the app theme */}
-              <iframe
-                title="Proposal Preview"
-                srcDoc={proposal.html_content}
-                className="h-[400px] w-full rounded border border-border/60 bg-white"
-                sandbox="allow-same-origin"
-              />
+              {isEditingProposal ? (
+                <>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">Edit the letter HTML below. Changes apply to Print/PDF and Send Email.</p>
+                  <textarea
+                    className="h-[420px] w-full rounded border border-border bg-background p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={editedHtml ?? ""}
+                    onChange={(e) => setEditedHtml(e.target.value)}
+                    spellCheck={false}
+                  />
+                </>
+              ) : (
+                /* Render inside an iframe to isolate the proposal's hardcoded light-mode colours from the app theme */
+                <iframe
+                  title="Proposal Preview"
+                  srcDoc={editedHtml ?? proposal?.html_content ?? ""}
+                  className="h-[420px] w-full rounded border border-border/60 bg-white"
+                  sandbox="allow-same-origin"
+                />
+              )}
             </div>
           ) : <p className="text-sm text-muted-foreground">No proposal generated yet for this application.</p>}
         </CardContent>
