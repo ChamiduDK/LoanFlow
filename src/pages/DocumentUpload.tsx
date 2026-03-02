@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -148,6 +149,28 @@ export default function DocumentUpload() {
     },
   });
 
+  const availabilityMutation = useMutation({
+    mutationFn: async ({ documentType, isAvailable }: { documentType: string; isAvailable: boolean }) => {
+      return apiFetch(`/api/applications/${applicationId}/documents/availability`, {
+        method: "POST",
+        body: JSON.stringify({
+          availabilities: [{ document_type: documentType, is_available: isAvailable }],
+        }),
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
+      void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update availability",
+        description: error instanceof Error ? error.message : "Could not update status",
+        variant: "destructive",
+      });
+    },
+  });
+
   const checklistRows = useMemo(() => {
     const latestUploadedByType = new Map<string, DocumentRow>();
     for (const row of documentsQuery.data ?? []) {
@@ -241,6 +264,7 @@ export default function DocumentUpload() {
         name: item.name,
         required: item.required,
         uploaded: requiredMissingCount === 0 && (item.requiredCount > 0 ? true : hasUploadedRecord),
+        isAvailable: item.latestStatus === "verified" || checklistQuery.data?.by_scheme.some(s => s.checklist.some(i => i.document_type === item.document_type && i.is_available)),
         status,
         fileName: latestDoc?.file_name ?? null,
         signedUrl: latestDoc?.signed_url ?? null,
@@ -420,6 +444,17 @@ export default function DocumentUpload() {
                     )}
                   >
                     <div className="flex items-center gap-3">
+                      <Checkbox
+                        id={`available-${doc.document_type}`}
+                        checked={doc.isAvailable || status === "verified" || status === "uploaded"}
+                        disabled={status === "verified" || status === "uploaded" || availabilityMutation.isPending}
+                        onCheckedChange={(checked) => {
+                          availabilityMutation.mutate({
+                            documentType: doc.document_type,
+                            isAvailable: checked === true,
+                          });
+                        }}
+                      />
                       <div className="rounded-lg bg-muted/60 p-2">
                         <Icon className={cn("h-4 w-4",
                           status === "verified" && "text-success",

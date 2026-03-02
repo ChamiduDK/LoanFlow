@@ -18,6 +18,7 @@ type ChecklistItem = {
   display_name: string;
   required: boolean;
   uploaded: boolean;
+  is_available: boolean;
   has_uploaded_record: boolean;
   latest_document_id: string | null;
   latest_status: string | null;
@@ -256,7 +257,7 @@ export async function checkDocumentCompleteness(
     targetProductIds = [ownedApplication.selected_product_id];
   }
 
-  const [uploadedDocsResult, productsResult] = await Promise.all([
+  const [uploadedDocsResult, productsResult, availabilityResult] = await Promise.all([
     supabaseAdmin
       .from("documents")
       .select("id, document_type, product_id, status, validation_status, created_at")
@@ -265,11 +266,16 @@ export async function checkDocumentCompleteness(
       .order("created_at", { ascending: false }),
     targetProductIds.length > 0
       ? supabaseAdmin
-          .from("loan_products")
-          .select("id, name, bank_id, banks(name)")
-          .in("id", targetProductIds)
-          .eq("is_active", true)
+        .from("loan_products")
+        .select("id, name, bank_id, banks(name)")
+        .in("id", targetProductIds)
+        .eq("is_active", true)
       : supabaseAdmin.from("loan_products").select("id, name, bank_id, banks(name)").eq("is_active", true),
+    supabaseAdmin
+      .from("document_availability")
+      .select("document_type, is_available")
+      .eq("application_id", applicationId)
+      .eq("user_id", userId),
   ]);
 
   if (uploadedDocsResult.error) {
@@ -278,6 +284,10 @@ export async function checkDocumentCompleteness(
 
   if (productsResult.error) {
     throw internalError("Failed to load loan products", productsResult.error);
+  }
+
+  if (availabilityResult.error) {
+    throw internalError("Failed to load document availability", availabilityResult.error);
   }
 
   const products = productsResult.data ?? [];
@@ -308,6 +318,10 @@ export async function checkDocumentCompleteness(
 
   const requiredDocs = requiredResult.data ?? [];
   const uploadedDocs = uploadedDocsResult.data ?? [];
+  const availabilities = availabilityResult.data ?? [];
+  const availabilityMap = new Map(
+    availabilities.map((item) => [String(item.document_type).trim().toLowerCase(), Boolean(item.is_available)]),
+  );
 
   const checks: Array<Record<string, unknown>> = [];
   const upsertRows: Array<Record<string, unknown>> = [];
@@ -346,17 +360,20 @@ export async function checkDocumentCompleteness(
     }
 
     const checklist: ChecklistItem[] = perProduct.map((doc) => {
-      const latestDoc = latestDocByType.get(normalizeDocumentType(doc.document_type));
+      const normalizedType = normalizeDocumentType(doc.document_type);
+      const latestDoc = latestDocByType.get(normalizedType);
+      const isAvailable = availabilityMap.get(normalizedType) ?? false;
       const hasUploadedRecord = Boolean(latestDoc);
       const workflowStatus = latestDoc?.status ?? null;
       const validationStatus = latestDoc?.validation_status ?? null;
-      const uploaded = hasUploadedRecord && workflowStatus !== "rejected" && validationStatus !== "invalid";
+      const uploaded = (hasUploadedRecord && workflowStatus !== "rejected" && validationStatus !== "invalid") || isAvailable;
 
       return {
         document_type: String(doc.document_type),
         display_name: String(doc.display_name),
         required: Boolean(doc.is_required),
         uploaded,
+        is_available: isAvailable,
         has_uploaded_record: hasUploadedRecord,
         latest_document_id: latestDoc?.id ?? null,
         latest_status: workflowStatus,
@@ -455,4 +472,40 @@ export async function detectDocumentType(_storagePath: string): Promise<string |
 
 export async function validateDocumentRecency(_storagePath: string, _maxAgeDays: number): Promise<boolean> {
   return true;
+}
+
+export async function updateDocumentAvailability(
+  userId: string,
+  applicationId: string,
+  availabilities: Array<{ document_type: string; is_available: boolean }>,
+): Promise<void> {
+  await assertApplicationOwnership(userId, applicationId);
+
+  const upsertRows = availabilities.map((item) => ({
+    application_id: applicationId,
+    user_id: userId,
+    document_type: item.document_type.trim().toLowerCase(),
+    is_available: item.is_available,
+    updated_at: new Date().toISOString(),
+  }));
+
+  if (upsertRows.length === 0) return;
+
+  const { error } = await supabaseAdmin.from("document_availability").upsert(upsertRows, {
+    onConflict: "application_id, document_type",
+  });
+
+  if (error) {
+    throw internalError("Failed to update document availability", error);
+  }
+
+  await logAudit({
+    actorUserId: userId,
+    action: "document.availability.updated",
+    entityType: "loan_applications",
+    entityId: applicationId,
+    payloadSummary: {
+      count: availabilities.length,
+    },
+  });
 }

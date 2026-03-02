@@ -11,11 +11,13 @@ import {
   documentCheckBodySchema,
   documentScanBodySchema,
   documentUploadBodySchema,
+  bulkDocumentAvailabilitySchema,
 } from "../schemas/document";
 import {
   checkDocumentCompleteness,
   listDocumentsForApplication,
   uploadDocumentForApplication,
+  updateDocumentAvailability,
 } from "../services/document.service";
 import { scanApplicationDocuments as scanDocumentsForApplication } from "../services/document-scan.service";
 
@@ -192,5 +194,22 @@ documentsRouter.post(
     });
 
     sendSuccess(res, scanResult);
+  }),
+);
+
+documentsRouter.post(
+  "/applications/:id/documents/availability",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
+    const payload = parseWithSchema(bulkDocumentAvailabilitySchema, req.body ?? {});
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    await updateDocumentAvailability(userId, params.id, payload.availabilities);
+
+    sendSuccess(res, { success: true });
   }),
 );
