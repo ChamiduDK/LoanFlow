@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2, Circle, Clock3, Download, FileSearch, Mail, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Circle, Clock3, FileSearch, Mail, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -338,94 +338,66 @@ export default function ApplicationTracker() {
     win.focus();
   };
 
-  const downloadProposalPdf = async () => {
-    if (!proposal) {
+  const downloadProposalPdf = () => {
+    if (!proposal?.html_content) {
       toast({ title: "No proposal available", description: "Generate a proposal first.", variant: "destructive" });
       return;
     }
 
-    try {
-      const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ unit: "pt", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const left = 48;
-      const topStart = 52;
-      const bottom = 54;
-      const lineHeight = 16;
-      const maxTextWidth = pageWidth - left * 2;
-      let y = topStart;
-
-      const availableDocuments = Array.isArray(proposalVerification.available_documents)
-        ? (proposalVerification.available_documents as Array<Record<string, unknown>>)
-        : [];
-      const missingDocuments = Array.isArray(proposalVerification.missing_documents)
-        ? (proposalVerification.missing_documents as string[])
-        : [];
-
-      const lines: string[] = [
-        "LOAN PROPOSAL LETTER",
-        `Reference: ${toText(proposalData.proposal_reference, `P-${proposal.proposal_version}`)}`,
-        `Date: ${new Date(proposal.updated_at).toLocaleDateString("en-LK")}`,
-        "",
-        `To: ${toText(proposalBank.bank_name)}`,
-        `Bank Email: ${toText(proposalBank.contact_email)}`,
-        `Loan Product: ${toText(proposalBank.product_name)}`,
-        "",
-        "Applicant Details",
-        `Name: ${toText(proposalApplicant.full_name)}`,
-        `Email: ${toText(proposalApplicant.email)}`,
-        `Phone: ${toText(proposalApplicant.phone)}`,
-        `District: ${toText(proposalApplicant.district)}`,
-        `Business: ${toText(proposalBusiness.business_name)}`,
-        `Business Type: ${toText(proposalBusiness.business_type)}`,
-        "",
-        "Loan Request",
-        `Requested Amount: ${toText(proposalRequest.requested_amount_formatted)}`,
-        `Purpose: ${toText(proposalRequest.purpose)}`,
-        `Requested Tenure: ${toText(proposalRequest.tenure)}`,
-        `Collateral: ${toText(proposalRequest.collateral_type, "Not specified")}`,
-        `Estimated EMI: ${toText(proposalRepayment.estimated_emi_formatted)}`,
-        "",
-        "Available Documents",
-        ...(availableDocuments.length > 0
-          ? availableDocuments.map((doc, index) =>
-            `${index + 1}. ${toText(doc.display_name, toText(doc.document_type))} | ${toText(doc.file_name)} | ${toText(doc.validation_status)}`,
-          )
-          : ["No documents available"]),
-        "",
-        missingDocuments.length > 0
-          ? `Pending documents: ${missingDocuments.join(", ")}`
-          : "All currently required documents are available.",
-        "",
-        "Yours faithfully,",
-        toText(proposalApplicant.full_name, "Applicant"),
-      ];
-
-      pdf.setFont("times", "normal");
-      pdf.setFontSize(12);
-
-      for (const rawLine of lines) {
-        const wrapped = pdf.splitTextToSize(rawLine, maxTextWidth) as string[];
-        for (const line of wrapped) {
-          if (y > pageHeight - bottom) {
-            pdf.addPage();
-            y = topStart;
-          }
-          pdf.text(line, left, y);
-          y += lineHeight;
-        }
-      }
-
-      const fileName = `loan-proposal-${applicationId.slice(0, 8)}-v${proposal.proposal_version}.pdf`;
-      pdf.save(fileName);
-    } catch (error) {
-      toast({
-        title: "PDF generation failed",
-        description: error instanceof Error ? error.message : "Could not generate PDF",
-        variant: "destructive",
-      });
+    // Build a print-ready HTML page with @media print rules to hide browser chrome
+    const printHtml = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Loan Proposal - v${proposal.proposal_version}</title>
+  <style>
+    @media print {
+      @page { margin: 0.5in; size: A4; }
+      body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
     }
+  </style>
+</head>
+<body>
+${proposal.html_content}
+</body>
+</html>`;
+
+    // Use a hidden iframe so it doesn't disrupt the current page
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.inset = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentDocument ?? iframe.contentWindow?.document;
+    if (!iframeDoc) {
+      document.body.removeChild(iframe);
+      toast({ title: "PDF generation failed", description: "Could not access print frame.", variant: "destructive" });
+      return;
+    }
+
+    iframeDoc.open();
+    iframeDoc.write(printHtml);
+    iframeDoc.close();
+
+    // Wait for content to render before printing
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } finally {
+        // Clean up after a delay to allow the print dialogue to open
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 2000);
+      }
+    };
   };
 
   const openProposalEmailApp = () => {
@@ -644,9 +616,9 @@ export default function ApplicationTracker() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={!proposal?.html_content} onClick={openProposalPreview}>Preview</Button>
-            <Button variant="outline" disabled={!proposal} onClick={() => void downloadProposalPdf()}>
-              <Download className="h-4 w-4" />
-              Download PDF
+            <Button variant="outline" disabled={!proposal?.html_content} onClick={downloadProposalPdf}>
+              <Printer className="h-4 w-4" />
+              Print / Save PDF
             </Button>
             <Button variant="outline" disabled={!proposal} onClick={openProposalEmailApp}>
               <Mail className="h-4 w-4" />
@@ -659,7 +631,7 @@ export default function ApplicationTracker() {
         </CardHeader>
         <CardContent>
           {proposalQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading proposal preview...</p> : proposal?.html_content ? (
-            <div className="rounded-lg border border-border/70 bg-background p-3">
+            <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">Version {proposal.proposal_version}</p>
                 <p className="text-xs text-muted-foreground">Updated {formatDate(proposal.updated_at)}</p>
@@ -667,9 +639,13 @@ export default function ApplicationTracker() {
               <p className="mb-2 text-xs text-muted-foreground">
                 Email recipient: {toText(proposalEmailDraft.to, toText(proposalBank.contact_email, "Not configured"))}
               </p>
-              <div className="max-h-[360px] overflow-auto rounded border border-border/60 bg-card p-4">
-                <div dangerouslySetInnerHTML={{ __html: proposal.html_content }} />
-              </div>
+              {/* Render inside an iframe to isolate the proposal's hardcoded light-mode colours from the app theme */}
+              <iframe
+                title="Proposal Preview"
+                srcDoc={proposal.html_content}
+                className="h-[400px] w-full rounded border border-border/60 bg-white"
+                sandbox="allow-same-origin"
+              />
             </div>
           ) : <p className="text-sm text-muted-foreground">No proposal generated yet for this application.</p>}
         </CardContent>
