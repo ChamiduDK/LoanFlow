@@ -352,3 +352,16 @@ export type LoanFlowChatSendResponse = {
   user_message: LoanFlowChatMessage;
   assistant_message: LoanFlowChatMessage;
 };
+
+export type ChatIntent = "policy" | "lookup" | "prediction" | "unknown";
+
+export type ChatResponse = {
+  text: string;
+  intent: ChatIntent;
+  data?: {
+    sources?: Array<{ filename: string }>;
+    decision?: string;
+    approval_probability?: number;
+    top_reasons?: string[];
+  };
+};
