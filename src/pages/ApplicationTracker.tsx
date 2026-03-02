@@ -406,36 +406,112 @@ ${htmlToUse}
       return;
     }
 
-    const to = toText(proposalEmailDraft.to, toText(proposalBank.contact_email, ""));
+    // Use edited field values if user has customised the letter, otherwise fall back to raw proposal data
+    const f = editedFields;
+
+    const to = f?.bankEmail || toText(proposalEmailDraft.to, toText(proposalBank.contact_email, ""));
     if (!to) {
       toast({
         title: "Missing bank email",
-        description: "Bank contact email is not configured for this product.",
+        description: "Bank contact email is not configured for this product. Please edit the letter and add the bank email.",
         variant: "destructive",
       });
       return;
     }
 
-    const subject = toText(
-      proposalEmailDraft.subject,
-      `Loan Proposal Submission - ${toText(proposalBank.product_name)} - ${toText(proposalApplicant.full_name, "Applicant")}`,
-    );
+    const applicantName = f?.fullName || toText(proposalApplicant.full_name, "Applicant");
+    const businessName  = f?.businessName || toText(proposalBusiness.business_name, "-");
+    const bankName      = f?.bankName || toText(proposalBank.bank_name, "the Bank");
+    const productName   = f?.productName || toText(proposalBank.product_name, "the selected product");
+    const subject       = f?.subject
+      || toText(proposalEmailDraft.subject, `Credit Facility Request - ${productName} - ${applicantName}`);
 
-    const fallbackBody = [
-      "Dear Credit Evaluation Team,",
-      "",
-      `Please find my loan proposal for ${toText(proposalBank.product_name)}.`,
-      `Applicant: ${toText(proposalApplicant.full_name)}`,
-      `Business: ${toText(proposalBusiness.business_name)}`,
-      `Requested Amount: ${toText(proposalRequest.requested_amount_formatted)}`,
-      "",
-      "Regards,",
-      toText(proposalApplicant.full_name, "Applicant"),
+    // Build a full, well-formatted email body with all proposal details
+    const sep = "─".repeat(52);
+
+    const availableDocs = f?.availableDocs
+      ?? (Array.isArray(proposalVerification.available_documents)
+        ? (proposalVerification.available_documents as Array<Record<string, unknown>>).map(
+            (d) => String(d.display_name ?? d.document_type ?? "-"),
+          )
+        : []);
+
+    const missingDocs = f?.missingDocs
+      ?? (Array.isArray(proposalVerification.missing_documents)
+        ? (proposalVerification.missing_documents as string[]).map(String)
+        : []);
+
+    const docLines =
+      availableDocs.length > 0
+        ? availableDocs.map((d, i) => `  ${i + 1}. ${d}`).join("\n")
+        : "  No documents currently available.";
+
+    const missingLine =
+      missingDocs.length > 0
+        ? `\nPending / Missing Documents:\n${missingDocs.map((d) => `  • ${d}`).join("\n")}`
+        : "\nAll currently required documents are available.";
+
+    const openingStatement = f?.openingStatement
+      || toText(
+          (proposalData.formal_request as Record<string, unknown> | undefined)?.statement,
+          "This proposal is submitted for formal credit assessment at your institution.",
+        );
+
+    const body = [
+      `Dear Credit Evaluation Team,`,
+      `${bankName}`,
+      ``,
+      openingStatement,
+      ``,
+      sep,
+      `APPLICANT DETAILS`,
+      sep,
+      `Name              : ${f?.fullName || toText(proposalApplicant.full_name)}`,
+      `Email             : ${f?.email || toText(proposalApplicant.email)}`,
+      `Phone             : ${f?.phone || toText(proposalApplicant.phone)}`,
+      `District          : ${f?.district || toText(proposalApplicant.district)}`,
+      ``,
+      `BUSINESS DETAILS`,
+      sep,
+      `Business Name     : ${f?.businessName || toText(proposalBusiness.business_name)}`,
+      `Business Type     : ${f?.businessType || toText(proposalBusiness.business_type)}`,
+      `Industry          : ${f?.industry || toText(proposalBusiness.industry)}`,
+      `Years Active      : ${f?.yearsActive || toText(proposalBusiness.years_active)}`,
+      ``,
+      `BANK & PRODUCT`,
+      sep,
+      `Bank Name         : ${bankName}`,
+      `Loan Product      : ${productName}`,
+      `Bank Email        : ${to}`,
+      `Interest Range    : ${f?.rateRange || toText(proposalBank.rate_range)}`,
+      ``,
+      `LOAN REQUEST`,
+      sep,
+      `Requested Amount  : ${f?.requestedAmount || toText(proposalRequest.requested_amount_formatted)}`,
+      `Purpose           : ${f?.purpose || toText(proposalRequest.purpose)}`,
+      `Tenure            : ${f?.tenure || toText(proposalRequest.tenure)}`,
+      `Collateral        : ${f?.collateralType || toText(proposalRequest.collateral_type, "Not specified")}`,
+      `Estimated EMI     : ${f?.estimatedEmi || toText(proposalRepayment.estimated_emi_formatted)}`,
+      `Estimated Rate    : ${f?.estimatedRate || toText(proposalRepayment.approved_rate ? `${Number(proposalRepayment.approved_rate).toFixed(2)}%` : "")}`,
+      ``,
+      `AVAILABLE DOCUMENTS`,
+      sep,
+      docLines,
+      missingLine,
+      ``,
+      sep,
+      `I confirm that the submitted information is accurate to the best of my knowledge.`,
+      `I am ready to provide additional clarifications if required.`,
+      ``,
+      `Thank you for your time and consideration.`,
+      ``,
+      `Yours faithfully,`,
+      applicantName,
     ].join("\n");
-    const body = toText(proposalEmailDraft.body, fallbackBody);
 
+    // Use window.open so the main app page stays open
     const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = href;
+    window.open(href, "_blank");
   };
 
   return (
