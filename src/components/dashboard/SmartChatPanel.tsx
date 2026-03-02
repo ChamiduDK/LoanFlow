@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import "@/components/ui/AnimatedChatInput.css";
+import "@/components/ui/AnimatedChatContainer.css";
 import { Badge } from "@/components/ui/badge";
+import { AnimatedSendButton } from "@/components/ui/AnimatedSendButton";
 import { apiFetch } from "@/lib/api/client";
 import type { ChatResponse, ChatIntent } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
@@ -74,22 +77,23 @@ export default function SmartChatPanel() {
   };
 
   return (
-    <div className="flex flex-col h-[600px] border rounded-xl bg-card shadow-lg overflow-hidden">
-      <div className="p-4 border-b bg-muted/30 flex items-center gap-2">
-        <Bot className="h-5 w-5 text-primary" />
-        <h3 className="font-semibold text-lg">LoanFlow Smart Assistant</h3>
-        <Badge variant="outline" className="ml-auto">Active</Badge>
-      </div>
+    <div className="animated-chat-container">
+      <div className="animated-chat-inner flex flex-col h-full">
+        <div className="p-4 border-b border-white/5 flex items-center gap-2 text-white">
+          <Bot className="h-5 w-5 text-primary" />
+          <h3 className="font-semibold text-lg">LoanFlow Smart Assistant</h3>
+          <Badge variant="outline" className="ml-auto border-white/20 text-white/70">Active</Badge>
+        </div>
 
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.length === 0 && (
-            <div className="text-center py-10 text-muted-foreground">
-              <Bot className="h-12 w-12 mx-auto mb-4 opacity-20" />
-              <p>Hello! I can help you with loan policies, application status, or assessments.</p>
+            <div className="text-center py-10">
+              <Bot className="h-12 w-12 mx-auto mb-4 opacity-40 text-white" />
+              <p className="text-white/80">Hello! I can help you with loan policies, application status, or assessments.</p>
               <div className="flex flex-wrap justify-center gap-2 mt-4">
                 {["What are the eligibility rules?", "Predict my loan approval", "Show my application status"].map((q) => (
-                  <Button key={q} variant="outline" size="sm" onClick={() => setInput(q)}>
+                  <Button key={q} variant="outline" size="sm" onClick={() => setInput(q)} className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white">
                     {q}
                   </Button>
                 ))}
@@ -100,11 +104,11 @@ export default function SmartChatPanel() {
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`flex gap-3 max-w-[85%] ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted border"}`}>
+                <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-white/10 border border-white/10 text-white"}`}>
                   {m.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
                 <div className="space-y-2">
-                  <div className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted/50 border"}`}>
+                  <div className={`px-4 py-2 text-sm ${m.role === "user" ? "animated-user-message-card" : "animated-chat-message-card"}`}>
                     <p className="whitespace-pre-wrap">{m.content}</p>
                   </div>
 
@@ -124,10 +128,10 @@ export default function SmartChatPanel() {
           {isLoading && (
             <div className="flex justify-start">
               <div className="flex gap-3 max-w-[85%]">
-                <div className="h-8 w-8 rounded-full bg-muted border flex items-center justify-center shrink-0">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <div className="h-8 w-8 rounded-full bg-white/10 border border-white/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
                 </div>
-                <div className="rounded-2xl px-4 py-2 bg-muted/50 border text-sm italic text-muted-foreground">
+                <div className="rounded-2xl px-4 py-2 bg-white/10 border border-white/5 text-sm italic text-white/70">
                   Thinking...
                 </div>
               </div>
@@ -138,26 +142,28 @@ export default function SmartChatPanel() {
       </ScrollArea>
 
       <div className="p-4 border-t bg-muted/10">
-        <div className="flex gap-2 items-end">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your question here..."
-            className="resize-none min-h-[44px] max-h-[200px]"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-          />
-          <Button size="icon" onClick={handleSend} disabled={!input.trim() || isLoading}>
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="flex gap-3 items-end p-1">
+          <label className="animated-input-wrapper">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask anything..."
+              className="animated-input-textarea min-h-[48px] max-h-[200px] text-white placeholder:text-white/50"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+            <div className="animated-input-shortcut">↵ Enter</div>
+          </label>
+          <AnimatedSendButton className="mb-0.5" onClick={handleSend} disabled={!input.trim() || isLoading} />
         </div>
-        <p className="text-[10px] text-muted-foreground mt-2 text-center uppercase tracking-widest font-medium">
+        <p className="text-[10px] text-muted-foreground mt-2 text-center uppercase tracking-widest font-medium opacity-50">
           Powered by Gemini AI & SME Prediction Engine
         </p>
+      </div>
       </div>
     </div>
   );
@@ -168,7 +174,7 @@ function PredictionCard({ data }: { data: any }) {
   const isRejected = data.decision === "Reject";
 
   return (
-    <Card className="border-primary/20 bg-primary/5 overflow-hidden">
+    <Card className="animated-chat-message-card border-none overflow-hidden mt-2">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

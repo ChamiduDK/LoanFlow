@@ -1,0 +1,69 @@
+.animated-chat-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 600px;
+  position: relative;
+  background: linear-gradient(to bottom right,
+      #7e7e7e,
+      #363636,
+      #363636,
+      #363636,
+      #363636);
+  border-radius: 16px;
+  padding: 1.5px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+}
+
+.animated-chat-container::after {
+  position: absolute;
+  content: "";
+  top: -10px;
+  left: -10px;
+  background: radial-gradient(ellipse at center,
+      #ffffff,
+      rgba(255, 255, 255, 0.3),
+      rgba(255, 255, 255, 0.1),
+      rgba(0, 0, 0, 0),
+      rgba(0, 0, 0, 0),
+      rgba(0, 0, 0, 0),
+      rgba(0, 0, 0, 0));
+  width: 30px;
+  height: 30px;
+  filter: blur(1px);
+  pointer-events: none;
+}
+
+.animated-chat-inner {
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(0, 0, 0, 0.5);
+  /* matches user snippet chat bg */
+  border-radius: 15px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* User's "card" styling adapted for message bubbles */
+.animated-chat-message-card {
+  border-radius: 20px;
+  background: #212121;
+  box-shadow:
+    5px 5px 15px rgb(25, 25, 25),
+    -5px -5px 15px rgb(60, 60, 60);
+  color: #fff;
+  padding: 12px 16px;
+  transition: all 0.3s ease;
+}
+
+.animated-user-message-card {
+  border-radius: 20px;
+  background: #2a2a2a;
+  box-shadow:
+    inset 2px 2px 5px rgb(25, 25, 25),
+    inset -2px -2px 5px rgb(60, 60, 60);
+  color: #fff;
+  padding: 12px 16px;
+}

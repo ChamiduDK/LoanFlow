@@ -2,7 +2,7 @@
   /* Adapted from user snippet + image: Blue/Cyan fading into deep Pink/Red */
   background:
     linear-gradient(to bottom, transparent 0%, transparent 40%, rgba(0, 0, 0, 0) 100%),
-    linear-gradient(to right bottom, #1066d6, #0ed2da, #d91c7a, #f23b3b);
+    linear-gradient(to right bottom, #f23b3b, #d91c7a, #3b82f6, #020617);
   background-size: 200% 200%;
   animation: liquidGradient 15s ease infinite alternate;
 }
