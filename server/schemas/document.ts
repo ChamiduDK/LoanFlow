@@ -19,3 +19,12 @@ export const documentScanBodySchema = z.object({
   product_id: uuidSchema.optional(),
   force_rescan: z.boolean().optional(),
 });
+
+export const documentAvailabilitySchema = z.object({
+  document_type: z.string().min(2).max(120),
+  is_available: z.boolean(),
+});
+
+export const bulkDocumentAvailabilitySchema = z.object({
+  availabilities: z.array(documentAvailabilitySchema),
+});

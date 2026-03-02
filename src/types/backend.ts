@@ -286,6 +286,7 @@ export type DocumentChecklistResponse = {
       display_name: string;
       required: boolean;
       uploaded: boolean;
+      is_available?: boolean;
       has_uploaded_record?: boolean;
       latest_document_id?: string | null;
       latest_status?: string | null;
