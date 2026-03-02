@@ -54,7 +54,7 @@ Copy `.env.example` to `.env` and configure:
 - Optional AI-assisted document verification with Gemini (runs after OCR):
   - `DOCUMENT_AI_PROVIDER` (`disabled` or `gemini`)
   - `DOCUMENT_AI_GEMINI_API_KEY` (required when provider is `gemini`)
-  - `DOCUMENT_AI_GEMINI_MODEL` (default `gemini-2.0-flash-lite`)
+  - `DOCUMENT_AI_GEMINI_MODEL` (default `gemini-2.5-flash`)
   - `DOCUMENT_AI_TIMEOUT_MS` (default `20000`)
   - `DOCUMENT_AI_MIN_OCR_CHARS` (default `120`)
   - `DOCUMENT_AI_MAX_TEXT_CHARS` (default `6000`)

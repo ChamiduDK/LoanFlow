@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { env } from "../config/env";
 
 export type ChatMessage = {
@@ -7,20 +7,20 @@ export type ChatMessage = {
 };
 
 export class AiService {
-  private _genAI: GoogleGenerativeAI | null = null;
+  private _genAI: GoogleGenAI | null = null;
   private model: string;
 
   constructor() {
-    this.model = env.AI_CHAT_MODEL;
+    this.model = env.AI_CHAT_MODEL || "gemini-2.5-flash";
   }
 
-  private getGenAI(): GoogleGenerativeAI {
+  private getGenAI(): GoogleGenAI {
     if (!this._genAI) {
       const apiKey = env.AI_CHAT_GEMINI_API_KEY || env.DOCUMENT_AI_GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error("Gemini API key is not configured. Set AI_CHAT_GEMINI_API_KEY or DOCUMENT_AI_GEMINI_API_KEY in your .env file.");
       }
-      this._genAI = new GoogleGenerativeAI(apiKey);
+      this._genAI = new GoogleGenAI({ apiKey });
     }
     return this._genAI;
   }
@@ -32,29 +32,50 @@ export class AiService {
     tools: any[]
   ): Promise<{ text: string; toolCalls?: any[] }> {
     return this.withRetry(async () => {
-      const genAI = this.getGenAI();
-      const model = genAI.getGenerativeModel({
-        model: this.model,
-        systemInstruction: systemPrompt,
-        tools: tools.length > 0 ? [{ functionDeclarations: tools }] : undefined,
-      });
+      const ai = this.getGenAI();
+      const parts = [{ text: userMessage }];
 
-      const chatSession = model.startChat({
-        history: history,
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2048,
+      const contents = [
+        {
+          role: "user",
+          parts: [{ text: systemPrompt }]
         },
+        ...history,
+        {
+          role: "user",
+          parts: parts
+        }
+      ] as any[];
+
+      const config: any = {
+        temperature: 0.1,
+      };
+
+      if (tools && tools.length > 0) {
+        config.tools = [{ functionDeclarations: tools }];
+      }
+
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: contents,
+        config: config
       });
 
-      const result = await chatSession.sendMessage(userMessage);
-      const response = result.response;
-      const text = response.text() || "";
-      const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
+      const text = response.text;
+
+      // Note: The new SDK still nests tool calls inside candidates[0].content.parts
+      // or exposes a helper. If functionCall exists, return it.
+      let toolCall = undefined;
+      if (response.candidates && response.candidates.length > 0) {
+        const part = response.candidates[0].content?.parts?.find(p => p.functionCall);
+        if (part) {
+          toolCall = part.functionCall;
+        }
+      }
 
       return {
-        text,
-        toolCalls: call ? [call.functionCall] : undefined
+        text: text || "",
+        toolCalls: toolCall ? [toolCall] : undefined
       };
     });
   }
@@ -77,19 +98,19 @@ export class AiService {
     }
   }
 
-
   async embedContent(text: string): Promise<number[]> {
     return this.withRetry(async () => {
-      const genAI = this.getGenAI();
-      const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
-      const result = await model.embedContent(text);
-      return result.embedding.values;
+      const ai = this.getGenAI();
+      const result = await ai.models.embedContent({
+        model: "text-embedding-004",
+        contents: text
+      });
+      // @google/genai returns result.embeddings[0].values
+      // Assuming a single input string, the result has an embeddings array
+      return result.embeddings?.[0]?.values || [];
     });
   }
 
-
-
 }
-
 // Lazily created on first use — does NOT throw at module load time
 export const aiService = new AiService();
