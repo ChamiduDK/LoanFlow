@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2, Circle, Clock3, FileSearch, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload, X } from "lucide-react";
+import { CheckCircle2, Circle, Clock3, FileSearch, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
@@ -28,6 +28,8 @@ import EmptyState from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatLKR } from "@/lib/currency";
 import { useToast } from "@/hooks/use-toast";
+import ProposalEditor, { fieldsFromProposalData } from "@/components/tracker/ProposalEditor";
+import type { ProposalFields } from "@/components/tracker/ProposalEditor";
 
 type OutcomeStatus = "applied" | "under_review" | "approved" | "rejected";
 
@@ -95,6 +97,7 @@ export default function ApplicationTracker() {
   // Proposal editor state
   const [isEditingProposal, setIsEditingProposal] = useState(false);
   const [editedHtml, setEditedHtml] = useState<string | null>(null);
+  const [editedFields, setEditedFields] = useState<ProposalFields | null>(null);
 
   const applicationsQuery = useQuery({
     queryKey: ["applications"],
@@ -611,57 +614,52 @@ ${htmlToUse}
               Generate a detailed professional proposal letter with applicant details, bank details, and available document list.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {/* Edit / Save / Cancel controls */}
-            {!isEditingProposal ? (
+          {!isEditingProposal && (
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 disabled={!proposal?.html_content}
                 onClick={() => {
-                  setEditedHtml(proposal?.html_content ?? null);
+                  const initial = fieldsFromProposalData(proposalData);
+                  setEditedFields(initial);
                   setIsEditingProposal(true);
                 }}
               >
                 <Pencil className="h-4 w-4" />
                 Edit Letter
               </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsEditingProposal(false);
-                    setEditedHtml(null);
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    setIsEditingProposal(false);
-                    toast({ title: "Letter updated", description: "Your edits are saved. Print or Send Email to use them." });
-                  }}
-                >
-                  Save Changes
-                </Button>
-              </>
-            )}
-            <Button variant="outline" disabled={!(editedHtml ?? proposal?.html_content)} onClick={downloadProposalPdf}>
-              <Printer className="h-4 w-4" />
-              Print / Save PDF
-            </Button>
-            <Button variant="outline" disabled={!proposal} onClick={openProposalEmailApp}>
-              <Mail className="h-4 w-4" />
-              Send Email
-            </Button>
-            <Button disabled={!selectedProductId || generateProposalMutation.isPending} onClick={() => generateProposalMutation.mutate()}>
-              {generateProposalMutation.isPending ? "Generating..." : "Generate Proposal"}
-            </Button>
-          </div>
+              <Button variant="outline" disabled={!(editedHtml ?? proposal?.html_content)} onClick={downloadProposalPdf}>
+                <Printer className="h-4 w-4" />
+                Print / Save PDF
+              </Button>
+              <Button variant="outline" disabled={!proposal} onClick={openProposalEmailApp}>
+                <Mail className="h-4 w-4" />
+                Send Email
+              </Button>
+              <Button disabled={!selectedProductId || generateProposalMutation.isPending} onClick={() => generateProposalMutation.mutate()}>
+                {generateProposalMutation.isPending ? "Generating..." : "Generate Proposal"}
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
-          {proposalQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading proposal preview...</p> : (proposal?.html_content || editedHtml) ? (
+          {proposalQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading proposal preview...</p>
+          ) : isEditingProposal && editedFields ? (
+            <ProposalEditor
+              initialFields={editedFields}
+              onSave={(html, fields) => {
+                setEditedHtml(html);
+                setEditedFields(fields);
+                setIsEditingProposal(false);
+                toast({ title: "Letter updated", description: "Your edits are applied. Use Print/PDF or Send Email." });
+              }}
+              onCancel={() => {
+                setIsEditingProposal(false);
+                // Keep any previously saved edits; just exit edit mode
+              }}
+            />
+          ) : (proposal?.html_content || editedHtml) ? (
             <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">Version {proposal?.proposal_version}</p>
@@ -670,27 +668,17 @@ ${htmlToUse}
               <p className="mb-3 text-xs text-muted-foreground">
                 Email recipient: {toText(proposalEmailDraft.to, toText(proposalBank.contact_email, "Not configured"))}
               </p>
-              {isEditingProposal ? (
-                <>
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">Edit the letter HTML below. Changes apply to Print/PDF and Send Email.</p>
-                  <textarea
-                    className="h-[420px] w-full rounded border border-border bg-background p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={editedHtml ?? ""}
-                    onChange={(e) => setEditedHtml(e.target.value)}
-                    spellCheck={false}
-                  />
-                </>
-              ) : (
-                /* Render inside an iframe to isolate the proposal's hardcoded light-mode colours from the app theme */
-                <iframe
-                  title="Proposal Preview"
-                  srcDoc={editedHtml ?? proposal?.html_content ?? ""}
-                  className="h-[420px] w-full rounded border border-border/60 bg-white"
-                  sandbox="allow-same-origin"
-                />
-              )}
+              {/* Render inside an iframe to isolate the proposal's hardcoded light-mode colours from the app theme */}
+              <iframe
+                title="Proposal Preview"
+                srcDoc={editedHtml ?? proposal?.html_content ?? ""}
+                className="h-[420px] w-full rounded border border-border/60 bg-white"
+                sandbox="allow-same-origin"
+              />
             </div>
-          ) : <p className="text-sm text-muted-foreground">No proposal generated yet for this application.</p>}
+          ) : (
+            <p className="text-sm text-muted-foreground">No proposal generated yet for this application.</p>
+          )}
         </CardContent>
       </Card>
 
