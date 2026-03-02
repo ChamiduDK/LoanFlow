@@ -17,20 +17,31 @@ function normalizeWeightData(weightData: tf.io.WeightData | null | undefined): A
     return new ArrayBuffer(0);
   }
 
-  if (!Array.isArray(weightData)) {
+  if (ArrayBuffer.isView(weightData)) {
+    return (weightData.buffer as any).slice(
+      weightData.byteOffset,
+      weightData.byteOffset + weightData.byteLength
+    ) as ArrayBuffer;
+  }
+
+  if (weightData instanceof ArrayBuffer) {
     return weightData;
   }
 
-  const totalBytes = weightData.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const merged = new Uint8Array(totalBytes);
-  let offset = 0;
+  if (Array.isArray(weightData)) {
+    const totalBytes = weightData.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
 
-  for (const chunk of weightData) {
-    merged.set(new Uint8Array(chunk), offset);
-    offset += chunk.byteLength;
+    for (const chunk of weightData) {
+      merged.set(new Uint8Array(chunk), offset);
+      offset += chunk.byteLength;
+    }
+
+    return merged.buffer;
   }
 
-  return merged.buffer;
+  return new ArrayBuffer(0);
 }
 
 export function getMlAssetsRoot(): string {

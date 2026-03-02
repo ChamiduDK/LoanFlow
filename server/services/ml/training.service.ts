@@ -71,16 +71,14 @@ function splitDataset(inputs: number[][], labels: number[], validationSplit: num
 
 function createModel(inputSize: number): tf.Sequential {
   const model = tf.sequential();
-  model.add(tf.layers.dense({ units: 128, activation: "relu", inputShape: [inputSize] }));
-  model.add(tf.layers.dropout({ rate: 0.25 }));
-  model.add(tf.layers.dense({ units: 64, activation: "relu" }));
+  model.add(tf.layers.dense({ units: 64, activation: "relu", inputShape: [inputSize], kernelInitializer: "heNormal" }));
   model.add(tf.layers.dropout({ rate: 0.2 }));
-  model.add(tf.layers.dense({ units: 32, activation: "relu" }));
-  model.add(tf.layers.dropout({ rate: 0.15 }));
+  model.add(tf.layers.dense({ units: 32, activation: "relu", kernelInitializer: "heNormal" }));
+  model.add(tf.layers.dropout({ rate: 0.1 }));
   model.add(tf.layers.dense({ units: 1, activation: "sigmoid" }));
 
   model.compile({
-    optimizer: tf.train.adam(0.001),
+    optimizer: tf.train.adam(0.0005),
     loss: "binaryCrossentropy",
     metrics: ["accuracy"],
   });

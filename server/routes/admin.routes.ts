@@ -105,7 +105,7 @@ adminRouter.use(requireAuth, requireAdmin);
 adminRouter.get(
   "/admin/overview",
   asyncHandler(async (_req, res) => {
-    const [banksCount, productsCount, applicationsCount, underReviewCount, outcomesCount, profilesResult, auditLogsResult] = await Promise.all([
+    const [banksCount, productsCount, applicationsCount, underReviewCount, outcomesCount, profilesResult, auditLogsResult, mlModelResult] = await Promise.all([
       supabaseAdmin.from("banks").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("loan_products").select("*", { count: "exact", head: true }),
       supabaseAdmin.from("loan_applications").select("*", { count: "exact", head: true }),
@@ -120,6 +120,11 @@ adminRouter.get(
         .select("id, actor_user_id, action, entity_type, entity_id, payload_summary, created_at")
         .order("created_at", { ascending: false })
         .limit(8),
+      supabaseAdmin
+        .from("ml_models")
+        .select("version, metrics_json")
+        .eq("is_active", true)
+        .maybeSingle(),
     ]);
 
     if (
@@ -129,7 +134,8 @@ adminRouter.get(
       underReviewCount.error ||
       outcomesCount.error ||
       profilesResult.error ||
-      auditLogsResult.error
+      auditLogsResult.error ||
+      mlModelResult.error
     ) {
       throw internalError("Failed to load admin overview", {
         banksCount: banksCount.error,
@@ -139,8 +145,12 @@ adminRouter.get(
         outcomesCount: outcomesCount.error,
         profiles: profilesResult.error,
         auditLogs: auditLogsResult.error,
+        mlModel: mlModelResult.error,
       });
     }
+
+    const activeMlVersion = mlModelResult.data?.version ?? null;
+    const activeMlAccuracy = (mlModelResult.data?.metrics_json as Record<string, any>)?.accuracy ?? null;
 
     const pendingUserApprovals = (profilesResult.data ?? []).reduce((count, row) => {
       const profile = row as ProfileRecord;
@@ -163,6 +173,8 @@ adminRouter.get(
         under_review_applications: underReviewCount.count ?? 0,
         approved_outcomes: outcomesCount.count ?? 0,
         pending_user_approvals: pendingUserApprovals,
+        active_ml_version: activeMlVersion,
+        active_ml_accuracy: activeMlAccuracy,
       },
       recent_activity: auditLogsResult.data ?? [],
     });
@@ -395,15 +407,15 @@ adminRouter.get(
     const [profilesResult, outcomesResult] = await Promise.all([
       userIds.length > 0
         ? supabaseAdmin
-            .from("profiles")
-            .select("id, email, full_name")
-            .in("id", userIds)
+          .from("profiles")
+          .select("id, email, full_name")
+          .in("id", userIds)
         : Promise.resolve({ data: [], error: null }),
       appIds.length > 0
         ? supabaseAdmin
-            .from("outcomes")
-            .select("id, application_id, status, approved_amount, approved_rate, approved_tenure_months, decision_date, applied_date")
-            .in("application_id", appIds)
+          .from("outcomes")
+          .select("id, application_id, status, approved_amount, approved_rate, approved_tenure_months, decision_date, applied_date")
+          .in("application_id", appIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
 

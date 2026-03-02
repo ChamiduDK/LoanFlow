@@ -11,6 +11,7 @@ import {
   Shield,
   Users,
   ScrollText,
+  Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ const adminNav = [
   { label: "Applications", icon: FolderCheck, path: "/admin/applications" },
   { label: "Users", icon: Users, path: "/admin/users" },
   { label: "Audit Logs", icon: ScrollText, path: "/admin/audit-logs" },
+  { label: "ML Models", icon: Cpu, path: "/admin/ml" },
 ];
 
 export default function AdminLayout() {
