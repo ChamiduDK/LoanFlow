@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -9,7 +8,6 @@ import {
   Upload,
   GitBranch,
   Wallet,
-  Sparkles,
   User,
   Bell,
   ChevronRight,
@@ -17,14 +15,6 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { apiFetch } from "@/lib/api/client";
-
-type MePayload = {
-  profile?: {
-    full_name?: string | null;
-    email?: string | null;
-  } | null;
-};
 
 const navItems = [
   {
@@ -61,25 +51,7 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ open, onClose }: AppSidebarProps) {
   const location = useLocation();
-  const meQuery = useQuery({
-    queryKey: ["me-profile"],
-    queryFn: () => apiFetch<MePayload>("/api/me"),
-    retry: false,
-    staleTime: 30_000,
-  });
 
-  const profile = meQuery.data?.profile;
-  const accountLabel = useMemo(() => {
-    return profile?.full_name?.trim() || profile?.email || "My Account";
-  }, [profile]);
-
-  const initials = useMemo(() => {
-    const name = profile?.full_name?.trim();
-    if (name) {
-      return name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
-    }
-    return (profile?.email?.[0] ?? "U").toUpperCase();
-  }, [profile]);
 
   useEffect(() => {
     if (!open) return;
@@ -121,7 +93,7 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
       >
         <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
           {/* Brand */}
-          <div className="border-b border-sidebar-border/60 px-5 pb-4 pt-5">
+          <div className="border-b border-sidebar-border/60 px-5 pb-5 pt-5">
             <Link to="/" className="flex items-center gap-2.5 group" onClick={onClose}>
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
                 <Bot className="h-4 w-4" />
@@ -131,26 +103,6 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
                 <span className="block text-[10px] font-medium text-sidebar-foreground/50 leading-none mt-0.5">AI-Powered Lending</span>
               </div>
             </Link>
-
-            {/* User Card */}
-            <div className="mt-4 flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar-accent/50 px-3 py-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-sidebar-primary-foreground text-sm font-bold">
-                {initials}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-sidebar-foreground">{accountLabel}</p>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] text-sidebar-foreground/50 font-medium">Active</span>
-                </div>
-              </div>
-            </div>
-
-            {/* AI Badge */}
-            <div className="mt-2.5 flex items-center gap-1.5 rounded-lg border border-sidebar-border bg-sidebar-accent/40 px-2.5 py-1.5">
-              <Sparkles className="h-3 w-3 text-amber-400" />
-              <span className="text-[11px] font-medium text-sidebar-foreground/70">Gemini AI · Real-time matching</span>
-            </div>
           </div>
 
           {/* Nav */}
