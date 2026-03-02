@@ -15,3 +15,25 @@ export function toSlug(value: string): string {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 }
+export function maskPii(value: string | null | undefined, type: "nic" | "account" | "phone" | "email"): string {
+  if (!value) return "N/A";
+
+  switch (type) {
+    case "email": {
+      const [local, domain] = value.split("@");
+      if (!domain) return "****";
+      return `${local.slice(0, 2)}***@${domain}`;
+    }
+    case "phone": {
+      return `${value.slice(0, 3)}****${value.slice(-3)}`;
+    }
+    case "nic": {
+      return `${value.slice(0, 2)}****${value.slice(-2)}`;
+    }
+    case "account": {
+      return `****${value.slice(-4)}`;
+    }
+    default:
+      return "****";
+  }
+}

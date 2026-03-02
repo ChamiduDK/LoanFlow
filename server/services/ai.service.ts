@@ -25,53 +25,44 @@ export class AiService {
     return this._genAI;
   }
 
-  async generateChatResponse(
+  async generateChatResponseWithTools(
     systemPrompt: string,
     history: ChatMessage[],
-    userMessage: string
-  ): Promise<string> {
+    userMessage: string,
+    tools: any[]
+  ): Promise<{ text: string; toolCalls?: any[] }> {
     try {
       const genAI = this.getGenAI();
       const model = genAI.getGenerativeModel({
         model: this.model,
         systemInstruction: systemPrompt,
+        tools: tools.length > 0 ? [{ functionDeclarations: tools }] : undefined,
       });
 
       const chatSession = model.startChat({
         history: history,
         generationConfig: {
-          temperature: 0.7,
-          topP: 0.95,
-          topK: 40,
+          temperature: 0.1, // Lower temperature for more consistent tool calling
           maxOutputTokens: 2048,
         },
-        safetySettings: [
-          {
-            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-          },
-          {
-            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-          },
-        ],
       });
 
       const result = await chatSession.sendMessage(userMessage);
-      const response = result.response.text();
+      const response = result.response;
+      const text = response.text() || "";
+      const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
 
-      if (!response) {
-        throw new Error("Empty response from Gemini API");
-      }
-
-      return response;
+      return {
+        text,
+        toolCalls: call ? [call.functionCall] : undefined
+      };
     } catch (error) {
       console.error("Gemini API Error:", error);
-      // Re-throw with a safe message
       const message = error instanceof Error ? error.message : "Unknown error";
       throw new Error(`Failed to generate AI response: ${message}`);
     }
   }
+
 }
 
 // Lazily created on first use — does NOT throw at module load time
