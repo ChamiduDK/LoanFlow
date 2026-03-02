@@ -146,20 +146,18 @@ function buildProposalHtml(data: Record<string, unknown>): string {
         <thead>
           <tr>
             <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">Document</th>
-            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">File</th>
           </tr>
         </thead>
         <tbody>
           ${availableDocs
-            .map((doc) => {
-              return `
+      .map((doc) => {
+        return `
                 <tr>
                   <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.display_name ?? doc.document_type ?? "-"))}</td>
-                  <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.file_name ?? "-"))}</td>
                 </tr>
               `;
-            })
-            .join("")}
+      })
+      .join("")}
         </tbody>
       </table>
     `
