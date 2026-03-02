@@ -18,6 +18,7 @@ import { trackerRouter } from "./routes/tracker.routes";
 import { calculatorRouter } from "./routes/calculator.routes";
 import { agentRouter } from "./routes/agent.routes";
 import { mlRouter } from "./routes/ml.routes";
+import { chatbotRouter } from "./routes/chatbot.routes";
 
 const app = express();
 
@@ -82,6 +83,7 @@ app.use("/api", trackerRouter);
 app.use("/api", calculatorRouter);
 app.use("/api", agentRouter);
 app.use("/api", mlRouter);
+app.use("/api", chatbotRouter);
 
 app.use(errorHandler);
 
