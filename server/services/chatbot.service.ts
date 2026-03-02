@@ -83,8 +83,9 @@ Guidelines:
 
       if (toolName === "searchPolicy") {
         intent = "policy";
-        const content = await this.searchPolicy(args.query);
-        const ragPrompt = `The user asked: "${message}"\n\nI found the following in our policy docs:\n${content}\n\nPlease answer the user's question based on this policy content.`;
+        const { context, sources } = await this.searchPolicy(args.query);
+        finalData = { sources };
+        const ragPrompt = `The user asked: "${message}"\n\nI found the following in our policy docs:\n${context}\n\nPlease answer the user's question based on this policy content.`;
         const ragResult = await aiService.generateChatResponseWithTools(systemPrompt, [], ragPrompt, []);
         responseText = ragResult.text;
       } else if (toolName === "lookupData") {
@@ -124,15 +125,18 @@ Guidelines:
     };
   }
 
-  private async searchPolicy(query: string): Promise<string> {
+  private async searchPolicy(query: string): Promise<{ context: string; sources: Array<{ filename: string }> }> {
     try {
       const chunks = await knowledgeService.retrieveRelevant(query, 3);
-      if (chunks.length === 0) return "No relevant policy documents found.";
+      if (chunks.length === 0) return { context: "No relevant policy documents found.", sources: [] };
 
-      return chunks.map(c => `--- Source: ${c.filename} ---\n${c.content}`).join("\n\n");
+      const context = chunks.map(c => `--- Source: ${c.filename} ---\n${c.content}`).join("\n\n");
+      const sources = chunks.map(c => ({ filename: c.filename }));
+
+      return { context, sources };
     } catch (error) {
       console.error("Policy search error", error);
-      return "Error searching policy documents.";
+      return { context: "Error searching policy documents.", sources: [] };
     }
   }
 

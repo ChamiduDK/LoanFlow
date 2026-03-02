@@ -1,4 +1,4 @@
-import LoanFlowChatPanel from "@/components/dashboard/LoanFlowChatPanel";
+import SmartChatPanel from "@/components/dashboard/SmartChatPanel";
 import { Bot, Info, AlertTriangle, Zap } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -42,8 +42,9 @@ export default function AiChat() {
 
       {/* Full-height chat panel */}
       <div className="flex-1 mt-2">
-        <LoanFlowChatPanel />
+        <SmartChatPanel />
       </div>
     </div>
   );
 }
+
