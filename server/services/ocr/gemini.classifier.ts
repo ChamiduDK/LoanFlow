@@ -1,6 +1,6 @@
 import type { GeminiDocClassifierConfig, AiTypeClassification } from "./ocr.types";
 import { normalizeText } from "./ocr.utils";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -75,7 +75,7 @@ function matchCandidate(rawType: string, candidates: string[]): string | null {
 }
 
 export class GeminiClassifier {
-  constructor(private config: GeminiDocClassifierConfig) {}
+  constructor(private config: GeminiDocClassifierConfig) { }
 
   private heuristicClassify(input: {
     fileName: string;
@@ -194,25 +194,29 @@ export class GeminiClassifier {
     }
 
     try {
-      const genAI = new GoogleGenerativeAI(this.config.apiKey);
-      const model = genAI.getGenerativeModel({
-        model: this.config.model,
-      });
+      const ai = new GoogleGenAI({ apiKey: this.config.apiKey });
 
       const truncatedText = input.ocrText.slice(0, this.config.maxTextChars);
-      const prompt = [
+      const systemPrompt = [
         "Classify document type from OCR text.",
         "Return strict JSON only, without markdown:",
         '{"detected_type": string | null, "confidence_score": number, "reason": string}',
         `Declared type: ${input.declaredType}`,
         `File name: ${input.fileName}`,
-        `Candidate types: ${candidates.join(", ")}`,
-        "OCR text:",
-        truncatedText,
+        `Candidate types: ${candidates.join(", ")}`
       ].join("\n");
 
-      const result = await withTimeout(model.generateContent(prompt), this.config.timeoutMs);
-      const raw = result.response.text();
+      const responsePromise = ai.models.generateContent({
+        model: this.config.model,
+        contents: truncatedText,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json"
+        }
+      });
+
+      const result = await withTimeout(responsePromise, this.config.timeoutMs);
+      const raw = result.text || "";
       const parsed = extractJsonObject(raw);
       if (!parsed) {
         return {

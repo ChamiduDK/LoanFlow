@@ -1,0 +1,7 @@
+﻿[dotenv@17.3.1] injecting env (31) from .env -- tip: ΓÜÖ∩╕Å  enable debug logging with { debug: true }
+Full Error Output:
+{
+  "status": 404,
+  "statusText": "Not Found"
+}
+Message: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent: [404 Not Found] models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
