@@ -7,12 +7,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle,
   CheckCircle2,
+  Circle,
+  ClipboardCheck,
   Clock3,
   FileCheck2,
   FileText,
+  FilePlus,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -24,11 +28,12 @@ import type { DocumentChecklistResponse, DocumentRow, LoanApplication } from "@/
 import { useToast } from "@/hooks/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
 
-type DocStatus = "uploaded" | "missing" | "needs_review" | "verified" | "processing" | "rejected";
+type DocStatus = "uploaded" | "missing" | "needs_review" | "verified" | "processing" | "rejected" | "available";
 type ValidationStatus = "valid" | "invalid" | "unclear";
 
 const statusConfig: Record<DocStatus, { icon: typeof CheckCircle2 }> = {
   verified: { icon: CheckCircle2 },
+  available: { icon: ClipboardCheck },
   uploaded: { icon: FileCheck2 },
   processing: { icon: Clock3 },
   needs_review: { icon: Clock3 },
@@ -39,6 +44,7 @@ const statusConfig: Record<DocStatus, { icon: typeof CheckCircle2 }> = {
 function normalizeStatus(value: string): DocStatus {
   const lowered = value.toLowerCase();
   if (lowered === "verified") return "verified";
+  if (lowered === "available") return "available";
   if (lowered === "uploaded") return "uploaded";
   if (lowered === "processing") return "processing";
   if (lowered === "needs_review") return "needs_review";
@@ -55,11 +61,13 @@ function normalizeValidationStatus(value: string | null | undefined): Validation
   return "unclear";
 }
 
-function deriveDocStatus(workflowStatus: string | null | undefined, validationStatus: string | null | undefined): DocStatus {
+function deriveDocStatus(workflowStatus: string | null | undefined, validationStatus: string | null | undefined, isAvailable?: boolean): DocStatus {
   const normalizedValidation = normalizeValidationStatus(validationStatus);
   if (normalizedValidation === "valid") return "verified";
   if (normalizedValidation === "invalid") return "rejected";
-  return normalizeStatus(workflowStatus ?? "");
+  const st = normalizeStatus(workflowStatus ?? "");
+  if (st === "missing" && isAvailable) return "available";
+  return st;
 }
 
 export default function DocumentUpload() {
@@ -71,6 +79,7 @@ export default function DocumentUpload() {
   const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
   const [selectedDocumentType, setSelectedDocumentType] = useState<string>("");
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [pendingAvailability, setPendingAvailability] = useState<Record<string, boolean>>({});
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
   const applicationsQuery = useQuery({
@@ -150,17 +159,17 @@ export default function DocumentUpload() {
   });
 
   const availabilityMutation = useMutation({
-    mutationFn: async ({ documentType, isAvailable }: { documentType: string; isAvailable: boolean }) => {
+    mutationFn: async (availabilities: Array<{ document_type: string; is_available: boolean }>) => {
       return apiFetch(`/api/applications/${applicationId}/documents/availability`, {
         method: "POST",
-        body: JSON.stringify({
-          availabilities: [{ document_type: documentType, is_available: isAvailable }],
-        }),
+        body: JSON.stringify({ availabilities }),
       });
     },
     onSuccess: () => {
+      toast({ title: "Availability updated", description: "Your changes have been saved." });
       void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
       void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
+      setPendingAvailability({});
     },
     onError: (error) => {
       toast({
@@ -190,6 +199,7 @@ export default function DocumentUpload() {
       hasRejectedSignal: boolean;
       latestStatus: string | null;
       latestValidationStatus: string | null;
+      isAvailable: boolean;
     }>();
 
     for (const scheme of checklistQuery.data?.by_scheme ?? []) {
@@ -205,6 +215,7 @@ export default function DocumentUpload() {
           hasRejectedSignal: false,
           latestStatus: null,
           latestValidationStatus: null,
+          isAvailable: false,
         };
 
         existing.name = existing.name || item.display_name;
@@ -222,6 +233,7 @@ export default function DocumentUpload() {
           item.latest_validation_status === "invalid";
         existing.latestStatus = existing.latestStatus ?? item.latest_status ?? null;
         existing.latestValidationStatus = existing.latestValidationStatus ?? item.latest_validation_status ?? null;
+        existing.isAvailable = existing.isAvailable || Boolean(item.is_available);
 
         aggregated.set(key, existing);
       }
@@ -240,6 +252,7 @@ export default function DocumentUpload() {
           hasRejectedSignal: row.validation_status === "invalid" || normalizeStatus(row.status) === "rejected",
           latestStatus: row.status,
           latestValidationStatus: row.validation_status ?? null,
+          isAvailable: false,
         });
       }
     }
@@ -256,15 +269,15 @@ export default function DocumentUpload() {
         normalizeStatus(effectiveWorkflowStatus ?? "") === "rejected";
 
       const status = requiredMissingCount > 0
-        ? (hasRejectedSignal || hasUploadedRecord ? "rejected" : "missing")
-        : deriveDocStatus(effectiveWorkflowStatus, effectiveValidationStatus);
+        ? (hasRejectedSignal || hasUploadedRecord ? "rejected" : (item.isAvailable ? "available" : "missing"))
+        : deriveDocStatus(effectiveWorkflowStatus, effectiveValidationStatus, item.isAvailable);
 
       return {
         document_type: item.document_type,
         name: item.name,
         required: item.required,
         uploaded: requiredMissingCount === 0 && (item.requiredCount > 0 ? true : hasUploadedRecord),
-        isAvailable: item.latestStatus === "verified" || checklistQuery.data?.by_scheme.some(s => s.checklist.some(i => i.document_type === item.document_type && i.is_available)),
+        isAvailable: item.isAvailable || item.latestStatus === "verified" || pendingAvailability[item.document_type] === true || checklistQuery.data?.by_scheme.some(s => s.checklist.some(i => i.document_type === item.document_type && i.is_available)),
         status,
         fileName: latestDoc?.file_name ?? null,
         signedUrl: latestDoc?.signed_url ?? null,
@@ -359,179 +372,336 @@ export default function DocumentUpload() {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-3">
-        <div className="space-y-4 xl:col-span-2">
-          <Card>
-            <CardContent className="p-6">
-              <div className="subtle-grid rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-10 text-center">
-                <Upload className="mx-auto h-10 w-10 text-primary" />
-                <p className="mt-3 text-base font-semibold text-foreground">Upload document files</p>
-                <p className="mt-1 text-sm text-muted-foreground">Select the document type first, then choose the matching file.</p>
-                <div className="mx-auto mt-4 max-w-sm space-y-3">
-                  <Select value={selectedDocumentType} onValueChange={setSelectedDocumentType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select document type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {checklistRows.map((doc) => (
-                        <SelectItem key={doc.document_type} value={doc.document_type}>{doc.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedDocumentType ? (
-                    <p className="rounded-md border border-border/70 bg-background px-3 py-2 text-left text-xs text-muted-foreground">
-                      Selected type:{" "}
-                      <span className="font-semibold text-foreground">
-                        {checklistRows.find((item) => item.document_type === selectedDocumentType)?.name ?? selectedDocumentType}
-                      </span>
-                    </p>
-                  ) : null}
-                  <input
-                    type="file"
-                    className="block w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
-                    accept=".pdf,.png,.jpg,.jpeg"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) {
-                        return;
-                      }
-                      if (!selectedDocumentType) {
-                        toast({
-                          title: "Select a document type first",
-                          description: "Choose the matching requirement before uploading the file.",
-                          variant: "destructive",
-                        });
-                        event.currentTarget.value = "";
-                        return;
-                      }
-                      uploadMutation.mutate({ file, documentType: selectedDocumentType });
-                      event.currentTarget.value = "";
-                    }}
-                    disabled={uploadMutation.isPending || !selectedDocumentType}
-                  />
-                </div>
-                {uploadMutation.isPending && uploadProgress > 0 && (
-                  <div className="mx-auto mt-4 max-w-sm space-y-1">
-                    <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <span>Uploading...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                    <Progress value={uploadProgress} className="h-1" />
-                  </div>
-                )}
-                <p className="mt-3 text-xs text-muted-foreground">Supported: PDF, JPG, PNG up to 10MB</p>
-              </div>
-            </CardContent>
-          </Card>
+      <Tabs defaultValue="upload" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+          <TabsTrigger value="upload" className="flex items-center gap-2">
+            <FilePlus className="h-4 w-4" />
+            Upload Center
+          </TabsTrigger>
+          <TabsTrigger value="checklist" className="flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4" />
+            Quick Checklist
+          </TabsTrigger>
+        </TabsList>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Uploaded Documents</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {checklistRows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No document checklist found for this application yet.</p>
-              ) : checklistRows.map((doc) => {
-                const status = doc.status;
-                const config = statusConfig[status];
-                const Icon = config.icon;
-                return (
-                  <div
-                    key={doc.document_type}
-                    className={cn(
-                      "flex items-center justify-between rounded-xl border border-border/70 p-4",
-                      status === "missing" && "border-destructive/25 bg-destructive/5",
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Checkbox
-                        id={`available-${doc.document_type}`}
-                        checked={doc.isAvailable || status === "verified" || status === "uploaded"}
-                        disabled={status === "verified" || status === "uploaded" || availabilityMutation.isPending}
-                        onCheckedChange={(checked) => {
-                          availabilityMutation.mutate({
-                            documentType: doc.document_type,
-                            isAvailable: checked === true,
-                          });
-                        }}
-                      />
-                      <div className="rounded-lg bg-muted/60 p-2">
-                        <Icon className={cn("h-4 w-4",
-                          status === "verified" && "text-success",
-                          status === "uploaded" && "text-primary",
-                          (status === "needs_review" || status === "processing") && "text-warning",
-                          status === "missing" && "text-destructive",
-                          status === "rejected" && "text-destructive",
-                        )} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{doc.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {doc.required ? "Required document" : "Optional document"}
-                          {doc.fileName ? ` - ${doc.fileName}` : ""}
+        <TabsContent value="upload" className="mt-6">
+          <div className="grid gap-6 md:grid-cols-1 xl:grid-cols-3">
+            <div className="space-y-4 xl:col-span-2">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="subtle-grid rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-10 text-center">
+                    <Upload className="mx-auto h-10 w-10 text-primary" />
+                    <p className="mt-3 text-base font-semibold text-foreground">Upload document files</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Select the document type first, then choose the matching file.</p>
+                    <div className="mx-auto mt-4 max-w-sm space-y-3">
+                      <Select value={selectedDocumentType} onValueChange={setSelectedDocumentType}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select document type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {checklistRows.map((doc) => (
+                            <SelectItem key={doc.document_type} value={doc.document_type}>{doc.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedDocumentType ? (
+                        <p className="rounded-md border border-border/70 bg-background px-3 py-2 text-left text-xs text-muted-foreground">
+                          Selected type:{" "}
+                          <span className="font-semibold text-foreground">
+                            {checklistRows.find((item) => item.document_type === selectedDocumentType)?.name ?? selectedDocumentType}
+                          </span>
                         </p>
+                      ) : null}
+                      <input
+                        type="file"
+                        className="block w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) {
+                            return;
+                          }
+                          if (!selectedDocumentType) {
+                            toast({
+                              title: "Select a document type first",
+                              description: "Choose the matching requirement before uploading the file.",
+                              variant: "destructive",
+                            });
+                            event.currentTarget.value = "";
+                            return;
+                          }
+                          uploadMutation.mutate({ file, documentType: selectedDocumentType });
+                          event.currentTarget.value = "";
+                        }}
+                        disabled={uploadMutation.isPending || !selectedDocumentType}
+                      />
+                    </div>
+                    {uploadMutation.isPending && uploadProgress > 0 && (
+                      <div className="mx-auto mt-4 max-w-sm space-y-1">
+                        <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <span>Uploading...</span>
+                          <span>{uploadProgress}%</span>
+                        </div>
+                        <Progress value={uploadProgress} className="h-1" />
+                      </div>
+                    )}
+                    <p className="mt-3 text-xs text-muted-foreground">Supported: PDF, JPG, PNG up to 10MB</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Verification Status</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {checklistRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No document checklist found for this application yet.</p>
+                  ) : checklistRows.map((doc) => {
+                    const status = doc.status;
+                    const alreadySaved = doc.isAvailable || status === "verified" || status === "uploaded";
+                    const isPending = pendingAvailability[doc.document_type] !== undefined;
+                    const currentVal = isPending ? pendingAvailability[doc.document_type] : alreadySaved;
+                    const isDisabled = status === "verified" || status === "uploaded" || availabilityMutation.isPending;
+                    
+                    const config = statusConfig[status];
+                    const Icon = config.icon;
+                    return (
+                      <div
+                        key={doc.document_type}
+                        className={cn(
+                          "flex items-center justify-between rounded-xl border border-border/70 p-4 transition-all duration-200",
+                          status === "missing" && "border-destructive/25 bg-destructive/5",
+                          status === "available" && "border-info/25 bg-info/5",
+                          isPending && "border-primary/40 bg-primary/5 shadow-sm",
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            id={`available-${doc.document_type}`}
+                            checked={currentVal}
+                            disabled={isDisabled}
+                            onCheckedChange={(checked) => {
+                              setPendingAvailability(prev => {
+                                const next = { ...prev };
+                                const newVal = checked === true;
+                                if (newVal === alreadySaved) delete next[doc.document_type];
+                                else next[doc.document_type] = newVal;
+                                return next;
+                              });
+                            }}
+                          />
+                          <div className="rounded-lg bg-muted/60 p-2">
+                            <Icon className={cn("h-4 w-4",
+                              status === "verified" && "text-success",
+                              status === "available" && "text-info",
+                              status === "uploaded" && "text-primary",
+                              (status === "needs_review" || status === "processing") && "text-warning",
+                              status === "missing" && "text-destructive",
+                              status === "rejected" && "text-destructive",
+                            )} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{doc.name}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              {doc.required ? "Required" : "Optional"}
+                              {doc.fileName ? ` • ${doc.fileName}` : ""}
+                              {isPending && <span className="text-primary font-medium ml-1">• Pending Save</span>}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {doc.signedUrl ? (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={doc.signedUrl} target="_blank" rel="noreferrer">Preview</a>
+                            </Button>
+                          ) : null}
+                          <StatusBadge status={status} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-4">
+              <Alert variant={missingRequired > 0 ? "warning" : "success"}>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>{missingRequired > 0 ? "Action Required" : "All Required Files Uploaded"}</AlertTitle>
+                <AlertDescription>
+                  {missingRequired > 0
+                    ? "Required documents are still missing for one or more lender schemes."
+                    : "Required document set is complete and ready for review."}
+                </AlertDescription>
+              </Alert>
+
+              {(checklistQuery.data?.by_scheme ?? []).map((scheme) => (
+                <Card key={scheme.product_id}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{scheme.bank_name ?? "Bank"} Checklist</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Progress value={scheme.completeness_score} />
+                    {scheme.checklist.map((item) => (
+                      <div key={`${scheme.product_id}-${item.document_type}`} className="flex items-center gap-2 text-sm">
+                        {item.uploaded ? (
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        )}
+                        <span className={item.uploaded ? "text-foreground" : "text-muted-foreground"}>{item.display_name}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Verification Notes</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                    <p className="text-xs text-muted-foreground">System</p>
+                    <p className="mt-1 text-sm text-foreground">Document checks are generated directly from lender-required document definitions.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="checklist" className="mt-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>Requirement Checklist</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Tick the documents you have available. You can upload them later.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right mr-4">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Completeness</p>
+                  <p className="text-xl font-bold text-primary leading-none mt-1">{completeness}%</p>
+                </div>
+                {Object.keys(pendingAvailability).length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPendingAvailability({})}
+                    disabled={availabilityMutation.isPending}
+                    className="text-muted-foreground"
+                  >
+                    Undo All
+                  </Button>
+                )}
+                <Button 
+                  onClick={() => {
+                    const updates = Object.entries(pendingAvailability).map(([type, val]) => ({
+                      document_type: type,
+                      is_available: val
+                    }));
+                    if (updates.length > 0) {
+                      availabilityMutation.mutate(updates);
+                    }
+                  }} 
+                  disabled={Object.keys(pendingAvailability).length === 0 || availabilityMutation.isPending}
+                  className="bg-primary hover:bg-primary/90 min-w-[120px]"
+                >
+                  {availabilityMutation.isPending ? "Saving..." : `Save ${Object.keys(pendingAvailability).length} Changes`}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1">
+                {checklistRows.map((doc) => {
+                  const alreadySaved = doc.isAvailable || doc.status === "verified" || doc.status === "uploaded";
+                  const isPending = pendingAvailability[doc.document_type] !== undefined;
+                  const currentVal = isPending ? pendingAvailability[doc.document_type] : alreadySaved;
+                  const isDisabled = doc.status === "verified" || doc.status === "uploaded" || availabilityMutation.isPending;
+                  
+                  return (
+                    <div 
+                      key={doc.document_type}
+                      className={cn(
+                        "group flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-muted/30",
+                        currentVal && !isDisabled && "bg-primary/5",
+                        isDisabled && "opacity-70"
+                      )}
+                    >
+                      <div className="flex items-center gap-4">
+                        <Checkbox
+                          id={`quick-${doc.document_type}`}
+                          checked={currentVal}
+                          disabled={isDisabled}
+                          onCheckedChange={(checked) => {
+                            setPendingAvailability(prev => {
+                              const next = { ...prev };
+                              const newVal = checked === true;
+                              // Only track if it's different from what we already have (approximate check)
+                              if (newVal === alreadySaved) {
+                                delete next[doc.document_type];
+                              } else {
+                                next[doc.document_type] = newVal;
+                              }
+                              return next;
+                            });
+                          }}
+                          className="h-5 w-5 border-2"
+                        />
+                        <div>
+                          <label 
+                            htmlFor={`quick-${doc.document_type}`}
+                            className={cn(
+                              "text-sm font-semibold cursor-pointer",
+                              currentVal && "text-primary"
+                            )}
+                          >
+                            {doc.name}
+                          </label>
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                            {doc.required ? (
+                              <span className="text-destructive font-medium">Required</span>
+                            ) : (
+                              <span>Optional</span>
+                            )}
+                            {isPending && (
+                              <>
+                                <span>•</span>
+                                <span className="text-primary font-medium">Modified (Pending Save)</span>
+                              </>
+                            )}
+                            {!isPending && (
+                              <>
+                                <span>•</span>
+                                <span>{doc.status.replace("_", " ")}</span>
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        {doc.status === "verified" && (
+                          <CheckCircle2 className="h-5 w-5 text-success" />
+                        )}
+                        {(doc.status === "available" || (currentVal && !alreadySaved)) && (
+                          <ClipboardCheck className={cn("h-5 w-5", currentVal && !alreadySaved ? "text-primary animate-pulse" : "text-info")} />
+                        )}
+                        {!currentVal && (
+                          <Circle className="h-5 w-5 text-muted-foreground/30" />
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {doc.signedUrl ? (
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={doc.signedUrl} target="_blank" rel="noreferrer">Preview</a>
-                        </Button>
-                      ) : null}
-                      <StatusBadge status={status} />
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          <Alert variant={missingRequired > 0 ? "warning" : "success"}>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>{missingRequired > 0 ? "Action Required" : "All Required Files Uploaded"}</AlertTitle>
-            <AlertDescription>
-              {missingRequired > 0
-                ? "Required documents are still missing for one or more lender schemes."
-                : "Required document set is complete and ready for review."}
-            </AlertDescription>
-          </Alert>
-
-          {(checklistQuery.data?.by_scheme ?? []).map((scheme) => (
-            <Card key={scheme.product_id}>
-              <CardHeader>
-                <CardTitle className="text-base">{scheme.bank_name ?? "Bank"} Checklist</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Progress value={scheme.completeness_score} />
-                {scheme.checklist.map((item) => (
-                  <div key={`${scheme.product_id}-${item.document_type}`} className="flex items-center gap-2 text-sm">
-                    {item.uploaded ? (
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-destructive" />
-                    )}
-                    <span className={item.uploaded ? "text-foreground" : "text-muted-foreground"}>{item.display_name}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Verification Notes</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">System</p>
-                <p className="mt-1 text-sm text-foreground">Document checks are generated directly from lender-required document definitions.</p>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

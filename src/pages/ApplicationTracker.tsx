@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2, Circle, Clock3, FileSearch, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Circle, ClipboardCheck, Clock3, FileSearch, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { apiFetch } from "@/lib/api/client";
 import type {
+  DocumentChecklistResponse,
   DocumentRow,
   DocumentScanResponse,
   LoanApplication,
@@ -123,14 +124,18 @@ export default function ApplicationTracker() {
     queryKey: ["tracker-page", applicationId],
     enabled: Boolean(applicationId),
     queryFn: async () => {
-      const [application, outcome, documents, tracker] = await Promise.all([
+      const [application, outcome, documents, tracker, checklist] = await Promise.all([
         apiFetch<LoanApplication>(`/api/applications/${applicationId}`),
         apiFetch<OutcomeRecord | null>(`/api/applications/${applicationId}/outcome`),
         apiFetch<DocumentRow[]>(`/api/applications/${applicationId}/documents`),
         apiFetch<TrackerSummary>(`/api/applications/${applicationId}/tracker`),
+        apiFetch<DocumentChecklistResponse>(`/api/applications/${applicationId}/documents/check`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
       ]);
 
-      return { application, outcome, documents, tracker };
+      return { application, outcome, documents, tracker, checklist };
     },
   });
 
@@ -306,7 +311,7 @@ export default function ApplicationTracker() {
     );
   }
 
-  const { application, documents } = dataQuery.data;
+  const { application, documents, checklist, tracker } = dataQuery.data;
   const reEvaluation = reEvaluationQuery.data;
   const proposal = proposalQuery.data;
   const proposalData = toRecord(proposal?.proposal_data_json);
@@ -326,6 +331,9 @@ export default function ApplicationTracker() {
     detected_doc_type: doc.detected_doc_type ?? null,
     ocr_preview: doc.ocr_preview ?? null,
   }));
+
+  const allChecklistItems = checklist.by_scheme.flatMap(s => s.checklist);
+  const uniqueAvailableDocs = new Set(allChecklistItems.filter(i => i.is_available).map(i => i.document_type));
 
   const documentSummary = latestScanResult?.summary ?? {
     total_documents: documentRows.length,
@@ -606,60 +614,106 @@ ${htmlToUse}
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base">Document Scan & Verification</CardTitle>
-            <p className="text-sm text-muted-foreground">Scan uploaded documents, detect type mismatches, and update validation status.</p>
-          </div>
-          <Button disabled={scanMutation.isPending || documents.length === 0} onClick={() => scanMutation.mutate()}>
-            <FileSearch className="h-4 w-4" />
-            {scanMutation.isPending ? "Scanning..." : "Scan Documents"}
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {documents.length === 0 ? (
-            <EmptyState title="No uploaded documents" description="Upload documents first to run tracker verification." action={<Button variant="outline" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}><Upload className="h-4 w-4" />Upload Documents</Button>} />
-          ) : (
-            <>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Total</p><p className="mt-1 text-lg font-semibold">{documentSummary.total_documents}</p></div>
-                <div className="rounded-lg border border-success/30 bg-success/10 p-3"><p className="label-xs">Valid</p><p className="mt-1 text-lg font-semibold text-success">{documentSummary.valid_count}</p></div>
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3"><p className="label-xs">Invalid</p><p className="mt-1 text-lg font-semibold text-destructive">{documentSummary.invalid_count}</p></div>
-                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3"><p className="label-xs">Unclear</p><p className="mt-1 text-lg font-semibold text-warning-foreground">{documentSummary.unclear_count}</p></div>
-                <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Missing Required</p><p className="mt-1 text-lg font-semibold">{documentSummary.missing_required_count}</p></div>
+      {checklist.by_scheme.some(s => s.checklist.some(i => i.is_available)) ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Document Availability Summary</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Requirements fulfilled via Quick Checklist. AI Scan & Verification is bypassed for Declared Available documents.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Declared Available</p>
+                <p className="mt-1 text-2xl font-bold text-primary">
+                  {uniqueAvailableDocs.size}
+                </p>
               </div>
-
-              {reEvaluation?.documents.missing_docs.length ? (
-                <Alert variant="warning">
-                  <ShieldCheck className="h-4 w-4" />
-                  <AlertTitle>Missing bank-required documents</AlertTitle>
-                  <AlertDescription>{reEvaluation.documents.missing_docs.join(", ")}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              <div className="space-y-3">
-                {(scannedDocuments.length > 0 ? scannedDocuments : documentRows).map((doc) => (
-                  <div key={("document_id" in doc ? doc.document_id : doc.id)} className="rounded-lg border border-border/70 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{"file_name" in doc ? doc.file_name : doc.file_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Type: {"document_type" in doc ? doc.document_type : doc.document_type}
-                          {("detected_doc_type" in doc && doc.detected_doc_type) ? ` | Detected: ${doc.detected_doc_type}` : ""}
-                        </p>
-                      </div>
-                      <StatusBadge status={(("validation_status" in doc ? doc.validation_status : "unclear") ?? "unclear") as string} />
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Verification Path</p>
+                <p className="mt-1 text-lg font-bold text-foreground">Manual Declaration</p>
+              </div>
+              <div className="rounded-lg border border-success/20 bg-success/5 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Completeness Impact</p>
+                <p className="mt-1 text-2xl font-bold text-success">Positive</p>
+              </div>
+            </div>
+            {documents.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold mb-3">Other Uploaded Files ({documents.length})</h4>
+                <div className="space-y-2">
+                  {documents.slice(0, 3).map(doc => (
+                    <div key={doc.id} className="text-xs flex items-center justify-between p-2 border rounded-md">
+                      <span>{doc.file_name}</span>
+                      <StatusBadge status={doc.validation_status ?? "unclear"} />
                     </div>
-                    {"ocr_preview" in doc && doc.ocr_preview ? <p className="mt-2 text-xs text-muted-foreground">{doc.ocr_preview}</p> : null}
-                    {"notes" in doc && Array.isArray(doc.notes) && doc.notes.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{doc.notes.join(" ")}</p> : null}
-                  </div>
-                ))}
+                  ))}
+                  {documents.length > 3 && <p className="text-[10px] text-muted-foreground">And {documents.length - 3} more...</p>}
+                </div>
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Document Scan & Verification</CardTitle>
+              <p className="text-sm text-muted-foreground">Scan uploaded documents, detect type mismatches, and update validation status.</p>
+            </div>
+            <Button disabled={scanMutation.isPending || documents.length === 0} onClick={() => scanMutation.mutate()}>
+              <FileSearch className="h-4 w-4" />
+              {scanMutation.isPending ? "Scanning..." : "Scan Documents"}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {documents.length === 0 ? (
+              <EmptyState title="No uploaded documents" description="Upload documents first to run tracker verification." action={<Button variant="outline" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}><Upload className="h-4 w-4" />Upload Documents</Button>} />
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Total</p><p className="mt-1 text-lg font-semibold">{documentSummary.total_documents}</p></div>
+                  <div className="rounded-lg border border-success/30 bg-success/10 p-3"><p className="label-xs">Valid</p><p className="mt-1 text-lg font-semibold text-success">{documentSummary.valid_count}</p></div>
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3"><p className="label-xs">Invalid</p><p className="mt-1 text-lg font-semibold text-destructive">{documentSummary.invalid_count}</p></div>
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-3"><p className="label-xs">Unclear</p><p className="mt-1 text-lg font-semibold text-warning-foreground">{documentSummary.unclear_count}</p></div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Missing Required</p><p className="mt-1 text-lg font-semibold">{documentSummary.missing_required_count}</p></div>
+                </div>
+
+                {reEvaluation?.documents.missing_docs.length ? (
+                  <Alert variant="warning">
+                    <ShieldCheck className="h-4 w-4" />
+                    <AlertTitle>Missing bank-required documents</AlertTitle>
+                    <AlertDescription>{reEvaluation.documents.missing_docs.join(", ")}</AlertDescription>
+                  </Alert>
+                ) : null}
+
+                <div className="space-y-3">
+                  {(scannedDocuments.length > 0 ? scannedDocuments : documentRows).map((doc) => (
+                    <div key={("document_id" in doc ? doc.document_id : doc.id)} className="rounded-lg border border-border/70 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{"file_name" in doc ? doc.file_name : doc.file_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Type: {"document_type" in doc ? doc.document_type : doc.document_type}
+                            {("detected_doc_type" in doc && doc.detected_doc_type) ? ` | Detected: ${doc.detected_doc_type}` : ""}
+                          </p>
+                        </div>
+                        <StatusBadge status={(("validation_status" in doc ? doc.validation_status : "unclear") ?? "unclear") as string} />
+                      </div>
+                      {"ocr_preview" in doc && doc.ocr_preview ? <p className="mt-2 text-xs text-muted-foreground">{doc.ocr_preview}</p> : null}
+                      {"notes" in doc && Array.isArray(doc.notes) && doc.notes.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{doc.notes.join(" ")}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle className="text-base">Final Approval Probability</CardTitle></CardHeader>
