@@ -509,9 +509,14 @@ ${htmlToUse}
       applicantName,
     ].join("\n");
 
-    // Use window.open so the main app page stays open
-    const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(href, "_blank");
+    // Create a hidden anchor and click it — the only reliable cross-browser way to
+    // open a mailto: link without popup blockers interfering or navigating away
+    const a = document.createElement("a");
+    a.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); }, 500);
   };
 
   return (
