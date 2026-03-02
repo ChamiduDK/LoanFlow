@@ -6,6 +6,8 @@ export type AdminOverview = {
     under_review_applications: number;
     approved_outcomes: number;
     pending_user_approvals: number;
+    active_ml_version: string | null;
+    active_ml_accuracy: number | null;
   };
   recent_activity: AdminAuditLog[];
 };

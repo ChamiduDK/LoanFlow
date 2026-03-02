@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Banknote, CheckCircle2, FileText, GitBranch, UserCheck } from "lucide-react";
+import { Activity, Award, Banknote, CheckCircle2, Cpu, FileText, GitBranch, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -63,13 +63,22 @@ export default function AdminOverview() {
       surface: "bg-success/10",
     },
     {
-      label: "Pending User Approvals",
-      value: metrics?.pending_user_approvals ?? 0,
-      icon: UserCheck,
-      tone: "text-warning",
-      surface: "bg-warning/15",
+      label: "Active ML Model",
+      value: metrics?.active_ml_version ? "Deployed" : "Fallback",
+      icon: Cpu,
+      tone: "text-primary",
+      surface: "bg-primary/10",
+    },
+    {
+      label: "ML Accuracy",
+      value: metrics?.active_ml_accuracy ? `${(metrics.active_ml_accuracy * 100).toFixed(1)}%` : "N/A",
+      icon: Award,
+      tone: "text-success",
+      surface: "bg-success/10",
     },
   ], [
+    metrics?.active_ml_accuracy,
+    metrics?.active_ml_version,
     metrics?.approved_outcomes,
     metrics?.pending_user_approvals,
     metrics?.total_applications,

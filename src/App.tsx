@@ -35,6 +35,7 @@ const AdminDocuments = lazy(() => import("./pages/admin/AdminDocuments"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
 const AdminAuditLogs = lazy(() => import("./pages/admin/AdminAuditLogs"));
 const AdminApplications = lazy(() => import("./pages/admin/AdminApplications"));
+const AdminML = lazy(() => import("./pages/admin/AdminML"));
 const AppLayout = lazy(() => import("./components/layout/AppLayout"));
 const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -93,6 +94,7 @@ function AppRoutes() {
             <Route path="/admin/documents" element={<AdminDocuments />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/applications" element={<AdminApplications />} />
+            <Route path="/admin/ml" element={<AdminML />} />
             <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
           </Route>
         </Route>
