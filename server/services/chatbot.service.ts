@@ -19,7 +19,35 @@ export type ChatResponse = {
 };
 
 export class ChatbotService {
-  async handleChat(userId: string, userRole: string, message: string, ipAddress?: string): Promise<ChatResponse> {
+  async handleChat(userId: string, userRole: string, message: string, ipAddress?: string, sessionId?: string): Promise<ChatResponse> {
+    // If no sessionId provided, try to find an active one or create a new one
+    let targetSessionId = sessionId;
+    if (!targetSessionId) {
+      const { data: session } = await supabaseAdmin
+        .from("chat_sessions")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (session) {
+        targetSessionId = session.id;
+      } else {
+        const { data: newSession } = await this.createSession(userId);
+        targetSessionId = newSession.id;
+      }
+    }
+
+    // Save User message
+    await supabaseAdmin.from("chat_messages").insert({
+      session_id: targetSessionId,
+      user_id: userId,
+      role: "user",
+      message_text: message
+    });
+
     const tools = [
       {
         name: "searchPolicy",
@@ -118,12 +146,64 @@ Guidelines:
       ipAddress
     });
 
-    return {
+    const response: ChatResponse = {
       text: responseText,
       intent,
       data: finalData
     };
+
+    // Save AI message
+    await supabaseAdmin.from("chat_messages").insert({
+      session_id: targetSessionId,
+      user_id: userId,
+      role: "assistant",
+      message_text: responseText,
+      message_json: {
+        intent,
+        data: finalData
+      }
+    });
+
+    return response;
   }
+
+  async getUserSessions(userId: string) {
+    return supabaseAdmin
+      .from("chat_sessions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("started_at", { ascending: false });
+  }
+
+  async getSessionMessages(userId: string, sessionId: string) {
+    return supabaseAdmin
+      .from("chat_messages")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+  }
+
+  async createSession(userId: string) {
+    return supabaseAdmin
+      .from("chat_sessions")
+      .insert({
+        user_id: userId,
+        status: "active",
+        metadata: { channel: "web" }
+      })
+      .select()
+      .single();
+  }
+
+  async deleteSession(userId: string, sessionId: string) {
+    return supabaseAdmin
+      .from("chat_sessions")
+      .delete()
+      .eq("id", sessionId)
+      .eq("user_id", userId);
+  }
+
 
   private async searchPolicy(query: string): Promise<{ context: string; sources: Array<{ filename: string }> }> {
     try {

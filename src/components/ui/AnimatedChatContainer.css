@@ -2,18 +2,18 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 600px;
+  height: 100%;
   position: relative;
   background: linear-gradient(to bottom right,
-      #7e7e7e,
-      #363636,
-      #363636,
-      #363636,
-      #363636);
+      hsl(var(--sidebar-border)),
+      hsl(var(--sidebar-background)),
+      hsl(var(--sidebar-background)),
+      hsl(var(--sidebar-background)),
+      hsl(var(--sidebar-background)));
   border-radius: 16px;
   padding: 1.5px;
   overflow: hidden;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-xl);
 }
 
 .animated-chat-container::after {
@@ -22,12 +22,8 @@
   top: -10px;
   left: -10px;
   background: radial-gradient(ellipse at center,
-      #ffffff,
-      rgba(255, 255, 255, 0.3),
+      hsl(var(--sidebar-primary) / 0.4),
       rgba(255, 255, 255, 0.1),
-      rgba(0, 0, 0, 0),
-      rgba(0, 0, 0, 0),
-      rgba(0, 0, 0, 0),
       rgba(0, 0, 0, 0));
   width: 30px;
   height: 30px;
@@ -38,32 +34,37 @@
 .animated-chat-inner {
   display: flex;
   flex-direction: column;
-  background-color: rgba(0, 0, 0, 0.5);
-  /* matches user snippet chat bg */
+  background-color: hsl(var(--sidebar-background) / 0.95);
   border-radius: 15px;
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
 
-/* User's "card" styling adapted for message bubbles */
+/* Theme-compliant message bubbles */
 .animated-chat-message-card {
-  border-radius: 20px;
-  background: #212121;
-  box-shadow:
-    5px 5px 15px rgb(25, 25, 25),
-    -5px -5px 15px rgb(60, 60, 60);
-  color: #fff;
-  padding: 12px 16px;
+  border-radius: 16px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border) / 0.5);
+  box-shadow: var(--shadow-sm);
+  color: hsl(var(--foreground));
+  padding: 10px 14px;
   transition: all 0.3s ease;
+  font-size: 0.875rem;
 }
 
 .animated-user-message-card {
-  border-radius: 20px;
-  background: #2a2a2a;
-  box-shadow:
-    inset 2px 2px 5px rgb(25, 25, 25),
-    inset -2px -2px 5px rgb(60, 60, 60);
-  color: #fff;
-  padding: 12px 16px;
+  border-radius: 16px;
+  background: hsl(var(--sidebar-primary));
+  color: hsl(var(--sidebar-primary-foreground));
+  box-shadow: var(--shadow-sm);
+  padding: 10px 14px;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  .animated-chat-container {
+    border-radius: 0;
+    padding: 0;
+  }
 }

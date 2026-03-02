@@ -70,9 +70,9 @@ function AppRoutes() {
           <Route path="/approval-pending" element={<ApprovalPending />} />
 
           <Route element={<RequireApprovedUser />}>
+            <Route path="/chat" element={<AiChat />} />
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/chat" element={<AiChat />} />
               <Route path="/apply" element={<LoanApplication />} />
               <Route path="/results" element={<LoanResults />} />
               <Route path="/calculator" element={<EMICalculator />} />

@@ -21,12 +21,43 @@ type Message = {
   timestamp: Date;
 };
 
-export default function SmartChatPanel() {
+interface SmartChatPanelProps {
+  activeSessionId?: string | null;
+}
+
+export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Load history when sessionId changes
+  useEffect(() => {
+    if (activeSessionId) {
+      const fetchHistory = async () => {
+        try {
+          setIsLoading(true);
+          const history = await apiFetch<any[]>(`/api/chat/sessions/${activeSessionId}`);
+          setMessages(history.map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.message_text || "",
+            intent: m.message_json?.intent,
+            data: m.message_json?.data,
+            timestamp: new Date(m.created_at)
+          })));
+        } catch (error) {
+          toast({ title: "Error", description: "Failed to load chat history", variant: "destructive" });
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchHistory();
+    } else {
+      setMessages([]); // Reset for new chat
+    }
+  }, [activeSessionId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -52,7 +83,10 @@ export default function SmartChatPanel() {
     try {
       const response = await apiFetch<ChatResponse>("/api/chat", {
         method: "POST",
-        body: JSON.stringify({ message: currentInput }),
+        body: JSON.stringify({ 
+          message: currentInput,
+          sessionId: activeSessionId 
+        }),
       });
 
       const assistantMessage: Message = {
@@ -142,8 +176,8 @@ export default function SmartChatPanel() {
       </ScrollArea>
 
       <div className="p-4 border-t bg-muted/10">
-        <div className="flex gap-3 items-end p-1">
-          <label className="animated-input-wrapper">
+        <div className="flex gap-3 items-center p-1 w-full relative">
+          <div className="animated-input-container">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -157,7 +191,7 @@ export default function SmartChatPanel() {
               }}
             />
             <div className="animated-input-shortcut">↵ Enter</div>
-          </label>
+          </div>
           <AnimatedSendButton className="mb-0.5" onClick={handleSend} disabled={!input.trim() || isLoading} />
         </div>
         <p className="text-[10px] text-muted-foreground mt-2 text-center uppercase tracking-widest font-medium opacity-50">
@@ -193,7 +227,7 @@ function PredictionCard({ data }: { data: any }) {
           </div>
           <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
             <div 
-              className={`h-full transition-all duration-500 ${isApproved ? "bg-green-500" : isRejected ? "bg-red-500" : "bg-yellow-500"}`}
+              className={`h-full transition-all duration-500 ${isApproved ? "bg-success" : isRejected ? "bg-destructive" : "bg-warning"}`}
               style={{ width: `${data.approval_probability * 100}%` }}
             />
           </div>
