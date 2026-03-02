@@ -5,6 +5,7 @@ import { AnimatedBackground } from "@/components/ui/AnimatedBackground";
 import { ChatSidebar } from "@/components/dashboard/ChatSidebar";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import logo from "@/assets/logo.png";
 
 export default function AiChat() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -29,10 +30,7 @@ export default function AiChat() {
               Back
             </Button>
             <div className="h-8 w-[1px] bg-white/10 mx-1" />
-            <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-3 drop-shadow-md">
-              <Bot className="h-6 w-6 md:h-7 md:h-7 text-white" />
-              LoanFlow AI
-            </h1>
+            <img src={logo} alt="LoanFlow Logo" className="h-8 md:h-10 w-auto drop-shadow-lg" />
           </div>
           <div className="flex items-center gap-2">
             <Button 

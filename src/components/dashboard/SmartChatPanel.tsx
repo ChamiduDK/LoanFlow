@@ -11,6 +11,7 @@ import { AnimatedSendButton } from "@/components/ui/AnimatedSendButton";
 import { apiFetch } from "@/lib/api/client";
 import type { ChatResponse, ChatIntent } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
+import logo from "@/assets/logo.png";
 
 type Message = {
   id: string;
@@ -123,7 +124,7 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
         <div className="space-y-4">
           {messages.length === 0 && (
             <div className="text-center py-10">
-              <Bot className="h-12 w-12 mx-auto mb-4 opacity-40 text-white" />
+              <img src={logo} alt="LoanFlow Logo" className="h-16 w-auto mx-auto mb-6 drop-shadow-lg opacity-80" />
               <p className="text-white/80">Hello! I can help you with loan policies, application status, or assessments.</p>
               <div className="flex flex-wrap justify-center gap-2 mt-4">
                 {["What are the eligibility rules?", "Predict my loan approval", "Show my application status"].map((q) => (
