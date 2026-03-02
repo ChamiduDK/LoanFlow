@@ -145,8 +145,7 @@ function buildProposalHtml(data: Record<string, unknown>): string {
       <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 13px;">
         <thead>
           <tr>
-            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;width:60%;">Document</th>
-            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">Status / File</th>
+            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">Document</th>
           </tr>
         </thead>
         <tbody>
@@ -155,7 +154,6 @@ function buildProposalHtml(data: Record<string, unknown>): string {
         return `
                 <tr>
                   <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.display_name ?? doc.document_type ?? "-"))}</td>
-                  <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.file_name ?? "-"))}</td>
                 </tr>
               `;
       })
@@ -463,7 +461,7 @@ export async function generateLoanProposal(
   const emailSubject = `Credit Facility Request Submission - ${String(product.name)} - ${String(profile.full_name ?? "Applicant")}`;
   const availableDocumentLines = availableDocuments.length > 0
     ? availableDocuments
-      .map((doc, index) => `${index + 1}. ${doc.display_name} (${doc.file_name})`)
+      .map((doc, index) => `${index + 1}. ${doc.display_name}`)
       .join("\n")
     : "No documents currently available";
   const emailBody = [
