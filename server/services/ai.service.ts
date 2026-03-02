@@ -63,6 +63,19 @@ export class AiService {
     }
   }
 
+  async embedContent(text: string): Promise<number[]> {
+    try {
+      const genAI = this.getGenAI();
+      const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+      const result = await model.embedContent(text);
+      return result.embedding.values;
+    } catch (error) {
+      console.error("Gemini Embedding Error:", error);
+      throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+
 }
 
 // Lazily created on first use — does NOT throw at module load time

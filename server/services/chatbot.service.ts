@@ -6,6 +6,7 @@ import { predictApprovalProbability } from "./ml/prediction.service";
 import { maskPii } from "../lib/format";
 import { logAudit } from "./audit.service";
 import { internalError, forbidden, notFound } from "../lib/errors";
+import { knowledgeService } from "./knowledge.service";
 
 const POLICY_DIR = path.join(process.cwd(), "server", "data", "policy");
 
@@ -125,23 +126,16 @@ Guidelines:
 
   private async searchPolicy(query: string): Promise<string> {
     try {
-      const files = await fs.readdir(POLICY_DIR);
-      let context = "";
-      for (const file of files) {
-        if (file.endsWith(".md")) {
-          const content = await fs.readFile(path.join(POLICY_DIR, file), "utf-8");
-          // Simple keyword search - in real world use embeddings
-          if (content.toLowerCase().includes(query.toLowerCase()) || query.length < 3) {
-            context += `--- Source: ${file} ---\n${content}\n\n`;
-          }
-        }
-      }
-      return context || "No relevant policy documents found.";
+      const chunks = await knowledgeService.retrieveRelevant(query, 3);
+      if (chunks.length === 0) return "No relevant policy documents found.";
+
+      return chunks.map(c => `--- Source: ${c.filename} ---\n${c.content}`).join("\n\n");
     } catch (error) {
       console.error("Policy search error", error);
       return "Error searching policy documents.";
     }
   }
+
 
   private async lookupData(userId: string, role: string, dataType: string, appId?: string): Promise<any> {
     const isAdmin = role === "admin";
