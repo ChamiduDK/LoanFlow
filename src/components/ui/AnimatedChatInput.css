@@ -1,58 +1,68 @@
-.animated-input-wrapper {
-  position: relative;
+.animated-input-container {
   display: flex;
-  flex: 1;
-  align-items: center;
-  border-radius: 12px;
-  border: 1px solid hsl(var(--border));
-  background-color: hsl(var(--background));
+  background: linear-gradient(173deg, #23272f 0%, #14161a 100%);
+  border-radius: 1rem;
   box-shadow:
-    10px 10px 40px rgba(56, 83, 199, 0.15),
-    -10px -10px 40px rgba(25, 173, 136, 0.15);
-  transition: all 0.3s ease;
+    10px 10px 20px #0e1013,
+    -10px -10px 40px #383e4b;
+  padding: 0.3rem;
+  gap: 0.3rem;
+  width: 100%;
+  position: relative;
 }
 
-.animated-input-wrapper:focus-within {
+.animated-input-textarea {
+  border-radius: 0.8rem !important;
+  background: #23272f !important;
   box-shadow:
-    15px 15px 50px rgba(56, 83, 199, 0.3),
-    -15px -15px 50px rgba(25, 173, 136, 0.3);
-  border-color: #3853c7;
+    inset 5px 5px 10px #0e1013,
+    inset -5px -5px 10px #383e4b,
+    0px 0px 100px rgba(255, 212, 59, 0),
+    0px 0px 100px rgba(255, 102, 0, 0) !important;
+  width: 100%;
+  flex-basis: 100%;
+  padding: 1rem !important;
+  border: 1px solid transparent !important;
+  color: white !important;
+  transition: all 0.2s ease-in-out !important;
+  resize: none;
+  font-size: 14px;
+}
+
+.animated-input-textarea:focus {
+  border: 1px solid hsl(var(--sidebar-primary)) !important;
+  outline: none !important;
+  box-shadow:
+    inset 0px 0px 10px rgba(56, 189, 248, 0.3),
+    0px 0px 40px rgba(56, 189, 248, 0.2) !important;
+}
+
+@media (max-width: 500px) {
+  .animated-input-container {
+    flex-direction: column;
+  }
+
+  .animated-input-textarea {
+    border-radius: 0.8rem;
+  }
 }
 
 .animated-input-shortcut {
   position: absolute;
   top: 50%;
-  right: 12px;
+  right: 15px;
   transform: translateY(-50%);
-  transition: all 0.3s ease;
-  color: hsl(var(--muted-foreground));
-  background-color: hsl(var(--muted));
-  padding: 4px 6px;
+  color: #c5c5c5;
+  background-color: #383e4b;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
   font-size: 10px;
-  font-weight: 600;
-  border-radius: 6px;
+  opacity: 0.6;
   pointer-events: none;
-  border: 1px solid hsl(var(--border));
-  white-space: nowrap;
+  transition: opacity 0.2s ease;
 }
 
-.animated-input-textarea {
-  background-color: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-  width: 100%;
-  resize: none;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  padding-left: 16px;
-  padding-right: 50px;
-  /* makes room for the shortcut indicator */
-}
-
-/* Hide shortcut when user is typing or focusing */
-.animated-input-wrapper:focus-within .animated-input-shortcut,
-.animated-input-wrapper:has(textarea:not(:placeholder-shown)) .animated-input-shortcut {
+.animated-input-textarea:focus+.animated-input-shortcut,
+.animated-input-textarea:not(:placeholder-shown)+.animated-input-shortcut {
   opacity: 0;
-  transform: translateY(-50%) scale(0.9);
 }
