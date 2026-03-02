@@ -5,6 +5,7 @@ import { buildFeatureSampleForApplication } from "./data-prep.service";
 import { transformFeatureSample } from "./preprocessing.service";
 import { loadPreprocessingMetadata, loadTfjsModel } from "./storage.service";
 import type { MlFeatureSample, MlPredictionResult, MlPreprocessingMetadata } from "./types";
+import { generateFaithfulExplanations } from "./explanation.service";
 
 type PredictOptions = {
   applicationId: string;
@@ -175,12 +176,12 @@ export async function predictApprovalProbability(
   });
   const sample: MlFeatureSample = options.featureOverrides
     ? {
-        ...baseSample,
-        features: {
-          ...baseSample.features,
-          ...options.featureOverrides,
-        },
-      }
+      ...baseSample,
+      features: {
+        ...baseSample.features,
+        ...options.featureOverrides,
+      },
+    }
     : baseSample;
 
   const fallbackProbabilityPercent = Number(
@@ -224,6 +225,13 @@ export async function predictApprovalProbability(
   const rawProbability = await predictWithModel(sample, activeBundle);
   const probability = clamp(rawProbability, 0, 1);
 
+  const explainability = await generateFaithfulExplanations(
+    sample,
+    activeBundle.model,
+    activeBundle.preprocessing,
+    probability
+  );
+
   return {
     probability,
     probability_percent: toPercent(probability),
@@ -233,8 +241,9 @@ export async function predictApprovalProbability(
       id: activeBundle.modelId,
       version: activeBundle.version,
     },
-    explainability: buildExplainability(sample, false),
+    explainability,
     confidence: buildConfidence(probability, false),
     feature_sample: sample,
   };
 }
+
