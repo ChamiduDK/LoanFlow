@@ -145,7 +145,8 @@ function buildProposalHtml(data: Record<string, unknown>): string {
       <table style="border-collapse:collapse; width:100%; margin: 8px 0 16px 0; font-size: 13px;">
         <thead>
           <tr>
-            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">Document</th>
+            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;width:60%;">Document</th>
+            <th style="text-align:left;padding:6px 8px;border:1px solid #cfd8e3;background:#f4f7fb;">Status / File</th>
           </tr>
         </thead>
         <tbody>
@@ -154,6 +155,7 @@ function buildProposalHtml(data: Record<string, unknown>): string {
         return `
                 <tr>
                   <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.display_name ?? doc.document_type ?? "-"))}</td>
+                  <td style="padding:6px 8px;border:1px solid #cfd8e3;">${escapeHtml(String(doc.file_name ?? "-"))}</td>
                 </tr>
               `;
       })
@@ -261,6 +263,7 @@ export async function generateLoanProposal(
     resultResult,
     outcomeResult,
     latestProposalResult,
+    availabilityResult,
   ] = await Promise.all([
     supabaseAdmin
       .from("profiles")
@@ -307,6 +310,11 @@ export async function generateLoanProposal(
       .order("proposal_version", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabaseAdmin
+      .from("document_availability")
+      .select("document_type, is_available")
+      .eq("application_id", applicationId)
+      .eq("user_id", userId),
   ]);
 
   if (profileResult.error) {
@@ -345,35 +353,73 @@ export async function generateLoanProposal(
     throw internalError("Failed to load proposal version history", latestProposalResult.error);
   }
 
+  if (availabilityResult.error) {
+    throw internalError("Failed to load document availability for proposal", availabilityResult.error);
+  }
+
   const profile = profileResult.data ?? {};
   const product = productResult.data;
   const allRequiredDocs = requiredDocsResult.data ?? [];
   const requiredDocs = allRequiredDocs.filter((item) => item.is_required === true);
   const documents = documentsResult.data ?? [];
+  const availability = (availabilityResult.data ?? []) as Array<{ document_type: string; is_available: boolean }>;
+
   const displayNameByType = new Map<string, string>(
     allRequiredDocs.map((doc) => [String(doc.document_type).trim().toLowerCase(), String(doc.display_name)]),
   );
+
+  const availabilityMap = new Map(
+    availability.map((a) => [String(a.document_type).trim().toLowerCase(), Boolean(a.is_available)]),
+  );
+
   const uploadedTypes = new Set(documents.map((doc) => String(doc.document_type).trim().toLowerCase()));
+  const declaredTypes = new Set(
+    availability.filter((a) => a.is_available).map((a) => String(a.document_type).trim().toLowerCase()),
+  );
+
+  // A document is considered "available" if either it is uploaded or declared available
+  const availableTypes = new Set([...uploadedTypes, ...declaredTypes]);
+
   const missingDocs = requiredDocs
-    .filter((doc) => !uploadedTypes.has(String(doc.document_type).trim().toLowerCase()))
+    .filter((doc) => !availableTypes.has(String(doc.document_type).trim().toLowerCase()))
     .map((doc) => String(doc.display_name));
 
-  const availableDocuments = documents
-    .map((doc) => {
-      const normalizedType = String(doc.document_type).trim().toLowerCase();
-      return {
-        document_type: normalizedType,
-        display_name: displayNameByType.get(normalizedType) ?? String(doc.document_type),
-        file_name: String(doc.file_name ?? "-"),
-        validation_status: String(doc.validation_status ?? "unclear"),
-        uploaded_at: doc.created_at ? String(doc.created_at) : null,
-      };
-    })
-    .sort((a, b) => {
-      const aTime = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
-      const bTime = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
-      return bTime - aTime;
+  const availableDocuments = [];
+
+  // Add uploaded documents first
+  for (const doc of documents) {
+    const normalizedType = String(doc.document_type).trim().toLowerCase();
+    availableDocuments.push({
+      document_type: normalizedType,
+      display_name: displayNameByType.get(normalizedType) ?? String(doc.document_type),
+      file_name: String(doc.file_name ?? "-"),
+      validation_status: String(doc.validation_status ?? "unclear"),
+      uploaded_at: doc.created_at ? String(doc.created_at) : null,
+      source: "upload" as const,
     });
+  }
+
+  // Add declared documents that haven't been uploaded yet
+  for (const a of availability) {
+    if (!a.is_available) continue;
+    const normalizedType = String(a.document_type).trim().toLowerCase();
+    if (uploadedTypes.has(normalizedType)) continue;
+
+    availableDocuments.push({
+      document_type: normalizedType,
+      display_name: displayNameByType.get(normalizedType) ?? String(a.document_type),
+      file_name: "Manual Declaration",
+      validation_status: "valid", // Treat manual declaration as valid in the proposal
+      uploaded_at: null,
+      source: "checklist" as const,
+    });
+  }
+
+  availableDocuments.sort((a, b) => {
+    const aTime = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
+    const bTime = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
+    return bTime - aTime;
+  });
 
   const bankProfile = Array.isArray(product.banks)
     ? (product.banks[0] as { name?: string; contact_email?: string | null; website?: string | null } | undefined) ?? null
@@ -383,9 +429,9 @@ export async function generateLoanProposal(
   const bankEmail = bankProfile?.contact_email ?? null;
   const bankWebsite = bankProfile?.website ?? null;
 
-  const validCount = documents.filter((doc) => String(doc.validation_status ?? "unclear") === "valid").length;
-  const invalidCount = documents.filter((doc) => String(doc.validation_status ?? "unclear") === "invalid").length;
-  const unclearCount = documents.filter((doc) => String(doc.validation_status ?? "unclear") === "unclear").length;
+  const validCount = availableDocuments.filter((doc) => doc.validation_status === "valid").length;
+  const invalidCount = availableDocuments.filter((doc) => doc.validation_status === "invalid").length;
+  const unclearCount = availableDocuments.filter((doc) => doc.validation_status === "unclear").length;
 
   const approvedAmount = toNumber(outcomeResult.data?.approved_amount, toNumber(application.requested_amount, 0));
   const approvedTenure = toNumber(outcomeResult.data?.approved_tenure_months, toNumber(application.preferred_tenure_months, 0));
