@@ -31,7 +31,7 @@ export class AiService {
     userMessage: string,
     tools: any[]
   ): Promise<{ text: string; toolCalls?: any[] }> {
-    try {
+    return this.withRetry(async () => {
       const genAI = this.getGenAI();
       const model = genAI.getGenerativeModel({
         model: this.model,
@@ -42,7 +42,7 @@ export class AiService {
       const chatSession = model.startChat({
         history: history,
         generationConfig: {
-          temperature: 0.1, // Lower temperature for more consistent tool calling
+          temperature: 0.1,
           maxOutputTokens: 2048,
         },
       });
@@ -56,24 +56,37 @@ export class AiService {
         text,
         toolCalls: call ? [call.functionCall] : undefined
       };
-    } catch (error) {
+    });
+  }
+
+  private async withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const isRateLimit = error?.message?.includes("429") || error?.message?.includes("Too Many Requests");
+      if (isRateLimit && retries > 0) {
+        console.warn(`Gemini Rate Limit (429). Retrying in ${delay}ms... (${retries} retries left)`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.withRetry(fn, retries - 1, delay * 2);
+      }
+
       console.error("Gemini API Error:", error);
       const message = error instanceof Error ? error.message : "Unknown error";
-      throw new Error(`Failed to generate AI response: ${message}`);
+      const hint = isRateLimit ? " You have exceeded your free tier quota. Please wait a minute or upgrade your Gemini API plan." : "";
+      throw new Error(`Gemini Error: ${message}${hint}`);
     }
   }
 
+
   async embedContent(text: string): Promise<number[]> {
-    try {
+    return this.withRetry(async () => {
       const genAI = this.getGenAI();
       const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
       const result = await model.embedContent(text);
       return result.embedding.values;
-    } catch (error) {
-      console.error("Gemini Embedding Error:", error);
-      throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
+    });
   }
+
 
 
 }
