@@ -380,7 +380,9 @@ export default function Index() {
 
           <div className="relative">
             <div className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-full max-h-64 w-full max-w-3xl rounded-full bg-[hsl(var(--info)/0.55)] blur-[170px]" />
-            <img src={logo} alt="LoanFlow" className="mx-auto mt-6 h-auto w-full max-w-3xl object-contain opacity-40" />
+            <h2 className="mt-6 text-center text-[clamp(3rem,15vw,15rem)] font-extrabold leading-[0.7] text-transparent [-webkit-text-stroke:1px_hsl(var(--info))]">
+              LoanFlow
+            </h2>
           </div>
         </footer>
       </div>

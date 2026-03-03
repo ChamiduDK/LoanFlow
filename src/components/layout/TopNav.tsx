@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bell, ChevronRight, LogOut, Menu, Plus, Search, Settings, User } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -12,6 +12,8 @@ import logo from "@/assets/logo.png";
 
 interface TopNavProps {
   onMenuClick: () => void;
+  sidebarCollapsed: boolean;
+  onDesktopSidebarToggle: () => void;
 }
 
 type QuickLink = {
@@ -41,7 +43,7 @@ const ADMIN_QUICK_LINKS: QuickLink[] = [
   { label: "Admin Audit Logs", path: "/admin/audit-logs", keywords: ["admin", "audit", "logs"] },
 ];
 
-export default function TopNav({ onMenuClick }: TopNavProps) {
+export default function TopNav({ onMenuClick, sidebarCollapsed, onDesktopSidebarToggle }: TopNavProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -122,6 +124,17 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
       <div className="flex h-16 items-center gap-2 px-3 sm:px-6 lg:px-8">
         <Button variant="outline" size="icon" className="shrink-0 lg:hidden" onClick={onMenuClick}>
           <Menu className="h-5 w-5" />
+        </Button>
+
+        <Button
+          variant="outline"
+          size="icon"
+          className="hidden shrink-0 lg:inline-flex"
+          onClick={onDesktopSidebarToggle}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
         </Button>
 
         <Link to="/" className="flex min-w-0 items-center gap-2">
