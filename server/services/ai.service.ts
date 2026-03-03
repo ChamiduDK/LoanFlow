@@ -80,6 +80,11 @@ export class AiService {
     });
   }
 
+  async generateChatResponse(systemPrompt: string, history: ChatMessage[], userMessage: string): Promise<string> {
+    const result = await this.generateChatResponseWithTools(systemPrompt, history, userMessage, []);
+    return result.text;
+  }
+
   private async withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
     try {
       return await fn();
@@ -112,5 +117,5 @@ export class AiService {
   }
 
 }
-// Lazily created on first use — does NOT throw at module load time
+// Lazily created on first use - does NOT throw at module load time
 export const aiService = new AiService();
