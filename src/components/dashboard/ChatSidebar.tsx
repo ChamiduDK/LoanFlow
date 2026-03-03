@@ -20,6 +20,7 @@ interface ChatSidebarProps {
 export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const { toast } = useToast();
 
   const fetchSessions = async () => {
@@ -40,11 +41,20 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
 
   const createNewSession = async () => {
     try {
+      setIsCreating(true);
       const res = await apiFetch<ChatSession>("/api/chat/sessions", { method: "POST" });
       setSessions([res, ...sessions]);
       onSelectSession(res.id);
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to create new chat", variant: "destructive" });
+      toast({ title: "Success", description: "New chat started" });
+    } catch (error: any) {
+      console.error("Session creation failed:", error);
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to create new chat. Please try again.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -61,14 +71,14 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
   };
 
   return (
-    <div className="chat-sidebar w-64 shrink-0 overflow-hidden">
+    <div className="chat-sidebar w-full md:w-64 shrink-0 overflow-hidden flex flex-col h-full">
       <Button 
         onClick={createNewSession}
-        className="new-chat-btn text-white"
-        disabled={isLoading}
+        className="new-chat-btn text-white w-full"
+        disabled={isLoading || isCreating}
       >
         <Plus className="h-4 w-4 mr-2" />
-        New Chat
+        {isCreating ? "Starting..." : "New Chat"}
       </Button>
 
       <div className="px-4 py-2 text-xs font-semibold text-white/50 uppercase tracking-widest flex items-center gap-2">

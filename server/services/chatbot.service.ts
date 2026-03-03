@@ -265,7 +265,7 @@ Guidelines:
   }
 
   async createSession(userId: string) {
-    return supabaseAdmin
+    const result = await supabaseAdmin
       .from("chat_sessions")
       .insert({
         user_id: userId,
@@ -274,6 +274,12 @@ Guidelines:
       })
       .select()
       .single();
+
+    if (result.error) {
+      console.error("Supabase error creating chat session:", result.error);
+    }
+
+    return result;
   }
 
   async deleteSession(userId: string, sessionId: string) {
