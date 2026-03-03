@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -11,10 +11,9 @@ import {
   User,
   Bell,
   ChevronRight,
-  Bot,
-  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import logo from "@/assets/logo.png";
 
 const navItems = [
   {
@@ -50,8 +49,6 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ open, onClose }: AppSidebarProps) {
   const location = useLocation();
-
-
   useEffect(() => {
     if (!open) return;
     const prevOverflow = document.body.style.overflow;
@@ -93,14 +90,8 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
         <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
           {/* Brand */}
           <div className="border-b border-sidebar-border/60 px-5 pb-5 pt-5">
-            <Link to="/" className="flex items-center gap-2.5 group" onClick={onClose}>
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="block text-sm font-bold text-sidebar-foreground leading-none">LoanFlow</span>
-                <span className="block text-[10px] font-medium text-sidebar-foreground/50 leading-none mt-0.5">AI-Powered Lending</span>
-              </div>
+            <Link to="/" className="flex items-center group" onClick={onClose}>
+              <img src={logo} alt="LoanFlow" className="h-9 w-auto object-contain" />
             </Link>
           </div>
 
@@ -141,7 +132,8 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
 
           {/* Footer */}
           <div className="border-t border-sidebar-border/60 px-4 py-3">
-            <p className="text-[10px] text-center text-sidebar-foreground/30 font-medium">LoanFlow © 2025 · SME Lending</p>
+            <img src={logo} alt="LoanFlow" className="mx-auto h-5 w-auto object-contain opacity-80" />
+            <p className="mt-1 text-[10px] text-center text-sidebar-foreground/30 font-medium">(c) 2026 | SME Lending</p>
           </div>
         </div>
       </aside>

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { AnimatedGroup } from '@/components/ui/animated-group';
 import { cn } from '@/lib/utils';
 import heroMain from '@/assets/hero.png';
+import logo from '@/assets/logo.png';
 
 const transitionVariants = {
   item: {
@@ -342,8 +343,6 @@ const HeroHeader = () => {
 
 const Logo = ({ className }: { className?: string }) => {
   return (
-    <span className={cn('inline-flex items-center', className)}>
-      <span className='text-sm font-semibold tracking-tight text-foreground sm:text-base'>LoanFlow</span>
-    </span>
+    <img src={logo} alt='LoanFlow' className={cn('h-8 w-auto object-contain', className)} />
   );
 };
