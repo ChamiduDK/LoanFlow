@@ -36,8 +36,8 @@ const navItems = [
   {
     group: "Account",
     items: [
-      { label: "Profile", description: "Business info & settings", icon: User, path: "/profile" },
-      { label: "Notifications", description: "Alerts & activity", icon: Bell, path: "/notifications" },
+      { label: "Profile", description: "Business Info & Settings", icon: User, path: "/profile" },
+      { label: "Notifications", description: "Alerts & Activity (Production Ready)", icon: Bell, path: "/notifications" },
     ],
   },
 ];
