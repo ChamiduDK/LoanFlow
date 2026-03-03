@@ -405,6 +405,9 @@ export type BankAgentAccessVerifyResponse = {
     notes: string | null;
   } | null;
   tracker_summary: TrackerSummary;
+  proposal: LoanProposal | null;
+  document_checklist: DocumentChecklistResponse;
+  documents: DocumentRow[];
 };
 
 export type BankAgentOutcomeUpdateResponse = {

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ShieldCheck, KeyRound, RefreshCcw } from "lucide-react";
+import { ShieldCheck, KeyRound, RefreshCcw, FileText, Eye } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import type {
   BankAgentAccessVerifyResponse,
@@ -28,6 +28,13 @@ function toNumberOrNull(value: string): number | null {
 function formatDate(value: string | null): string {
   if (!value) return "-";
   return new Date(value).toLocaleString();
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
 }
 
 export default function BankAgentAccess() {
@@ -128,6 +135,23 @@ export default function BankAgentAccess() {
     }
   }, [hasToken]);
 
+  const openProposalPreview = () => {
+    const html = accessData?.proposal?.html_content;
+    if (!html) {
+      toast({
+        title: "No proposal available",
+        description: "Loan proposal has not been generated for this application yet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const blob = new Blob([html], { type: "text/html" });
+    const previewUrl = URL.createObjectURL(blob);
+    window.open(previewUrl, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+  };
+
   if (!hasToken) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
@@ -202,6 +226,131 @@ export default function BankAgentAccess() {
                 <p className="text-xs text-muted-foreground">Access Expires</p>
                 <p className="mt-1 text-sm font-semibold">{formatDate(accessData.access.expires_at)}</p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4" />
+                Loan Proposal
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {accessData.proposal ? (
+                <>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border border-border/70 p-3">
+                      <p className="text-xs text-muted-foreground">Proposal Version</p>
+                      <p className="mt-1 text-sm font-semibold">v{accessData.proposal.proposal_version}</p>
+                    </div>
+                    <div className="rounded-lg border border-border/70 p-3">
+                      <p className="text-xs text-muted-foreground">Updated At</p>
+                      <p className="mt-1 text-sm font-semibold">{formatDate(accessData.proposal.updated_at)}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 p-3">
+                    <p className="text-xs text-muted-foreground">Subject</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {String(
+                        toRecord(accessData.proposal.proposal_data_json.formal_request).subject
+                        ?? "Credit Facility Request",
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button variant="outline" onClick={openProposalPreview}>
+                      <Eye className="h-4 w-4" />
+                      View Proposal
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <Alert>
+                  <AlertTitle>No proposal found</AlertTitle>
+                  <AlertDescription>This application does not have a generated proposal yet.</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="text-base">Document Availability</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-border/70 p-3">
+                  <p className="text-xs text-muted-foreground">Completeness</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {accessData.document_checklist.summary.overall_completeness.toFixed(1)}%
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/70 p-3">
+                  <p className="text-xs text-muted-foreground">Total Required</p>
+                  <p className="mt-1 text-sm font-semibold">{accessData.document_checklist.summary.total_required}</p>
+                </div>
+                <div className="rounded-lg border border-border/70 p-3">
+                  <p className="text-xs text-muted-foreground">Missing Required</p>
+                  <p className="mt-1 text-sm font-semibold">{accessData.document_checklist.summary.total_missing}</p>
+                </div>
+              </div>
+
+              {accessData.document_checklist.by_scheme.length > 0 ? (
+                <div className="space-y-2">
+                  {accessData.document_checklist.by_scheme.map((scheme) => (
+                    <div key={scheme.product_id} className="rounded-lg border border-border/70 p-3">
+                      <p className="text-sm font-semibold">{scheme.bank_name ?? "Bank"} - {scheme.product_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Completeness: {scheme.completeness_score.toFixed(1)}% | Missing: {scheme.missing_docs.length}
+                      </p>
+                      {scheme.missing_docs.length > 0 ? (
+                        <p className="mt-1 text-xs text-destructive">
+                          Missing docs: {scheme.missing_docs.join(", ")}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-emerald-600">All required documents available.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No scheme checklist is available yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70">
+            <CardHeader>
+              <CardTitle className="text-base">View Documents</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {accessData.documents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No uploaded documents found for this application.</p>
+              ) : (
+                accessData.documents.map((doc) => (
+                  <div key={doc.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{doc.file_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Type: {doc.document_type} | Status: {doc.status} | Uploaded: {formatDate(doc.created_at)}
+                      </p>
+                    </div>
+                    {doc.signed_url ? (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={doc.signed_url} target="_blank" rel="noreferrer">
+                          <Eye className="h-4 w-4" />
+                          View Document
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled>
+                        View unavailable
+                      </Button>
+                    )}
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
 

@@ -77,6 +77,7 @@ app.use("/api", healthRouter);
 app.use("/api", authRouter);
 app.use("/api", profileRouter);
 app.use("/api", banksRouter);
+app.use("/api", bankAgentRouter);
 app.use("/api", adminRouter);
 app.use("/api", applicationsRouter);
 app.use("/api", documentsRouter);
@@ -87,7 +88,6 @@ app.use("/api", agentRouter);
 app.use("/api", mlRouter);
 app.use("/api", chatbotRouter);
 app.use("/api", knowledgeRouter);
-app.use("/api", bankAgentRouter);
 
 app.use(errorHandler);
 
