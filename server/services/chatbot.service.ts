@@ -110,6 +110,19 @@ export class ChatbotService {
           },
           required: ["productId"]
         }
+      },
+      {
+        name: "queryDatabase",
+        description: "Fetch data from any table with custom filters. Best for tracking specific data updates or finding related records.",
+        parameters: {
+          type: "object",
+          properties: {
+            table: { type: "string", description: "The table name to query (e.g., 'loan_applications', 'profiles', 'banks')." },
+            select: { type: "string", description: "Optional columns to select, comma-separated. Default is '*'.", default: "*" },
+            limit: { type: "number", description: "Maximum number of rows (default 5, max 50).", default: 5 }
+          },
+          required: ["table"]
+        }
       }
     ];
 
@@ -125,9 +138,10 @@ Guidelines:
 5. If the user asks for available loan schemes or products, use searchProducts.
 6. If the user wants specific details, eligibility rules, or documents for a product, use getProductDetails.
 7. If the user asks for a prediction or probability of approval, use predictLoanApproval.
-8. NEVER reveal sensitive PII (NIC, bank accounts, emails, phone numbers) in your response unless it is masked.
-9. If a tool returns no data, inform the user politely.
-10. Always explain the results clearly.`;
+8. If none of the specialized tools fit, or the user wants to 'track' or 'see' general data, use queryDatabase.
+9. NEVER reveal sensitive PII (NIC, bank accounts, emails, phone numbers) in your response unless it is masked.
+10. If a tool returns no data, inform the user politely.
+11. Always explain the results clearly.`;
 
     const { text, toolCalls } = await aiService.generateChatResponseWithTools(systemPrompt, [], message, tools);
 
@@ -180,6 +194,13 @@ Guidelines:
         finalData = await this.getProductDetails(args.productId);
         const dataStr = JSON.stringify(finalData);
         const resultPrompt = `The user wants details for product ${args.productId}.\n\nDetailed rules & metadata:\n${dataStr}\n\nPlease explain the requirements, eligibility criteria, benefits, and required documents clearly.`;
+        const resultResponse = await aiService.generateChatResponseWithTools(systemPrompt, [], resultPrompt, []);
+        responseText = resultResponse.text;
+      } else if (toolName === "queryDatabase") {
+        intent = "lookup";
+        finalData = await this.queryDatabase(userId, userRole, args.table, args.select, args.limit);
+        const dataStr = JSON.stringify(finalData);
+        const resultPrompt = `The user asked to track data: "${message}"\n\nDatabase result for table ${args.table}:\n${dataStr}\n\nPlease summarize the data found for the user.`;
         const resultResponse = await aiService.generateChatResponseWithTools(systemPrompt, [], resultPrompt, []);
         responseText = resultResponse.text;
       }
@@ -256,7 +277,6 @@ Guidelines:
       .eq("user_id", userId);
   }
 
-
   private async searchPolicy(query: string): Promise<{ context: string; sources: Array<{ filename: string }> }> {
     try {
       const chunks = await knowledgeService.retrieveRelevant(query, 3);
@@ -272,13 +292,15 @@ Guidelines:
     }
   }
 
-
   private async lookupData(userId: string, role: string, dataType: string, appId?: string): Promise<any> {
     const isAdmin = role === "admin";
 
     if (dataType === "profile") {
       const { data, error } = await supabaseAdmin.from("profiles").select("*").eq("id", userId).single();
-      if (error || !data) throw notFound("Profile not found");
+      if (error || !data) {
+        console.error(`[ChatbotService.lookupData] Profile lookup error for ${userId}:`, error);
+        throw notFound("Profile not found");
+      }
 
       return {
         full_name: data.full_name,
@@ -300,7 +322,10 @@ Guidelines:
       }
 
       const { data, error } = await query;
-      if (error) throw internalError("DB error", error);
+      if (error) {
+        console.error(`[ChatbotService.lookupData] Application lookup error:`, error);
+        throw internalError("DB error", error);
+      }
       if (!data || data.length === 0) throw notFound("Application(s) not found");
 
       return data.map(app => ({
@@ -323,7 +348,10 @@ Guidelines:
       }
 
       const { data, error } = await query;
-      if (error) throw internalError("DB error", error);
+      if (error) {
+        console.error(`[ChatbotService.lookupData] Installments lookup error:`, error);
+        throw internalError("DB error", error);
+      }
 
       return data.map(inst => ({
         due_date: inst.due_date,
@@ -335,10 +363,56 @@ Guidelines:
     return null;
   }
 
+  private async queryDatabase(userId: string, role: string, table: string, select = "*", limit = 5): Promise<any> {
+    const isAdmin = role === "admin";
+    const cappedLimit = Math.min(limit, 50);
+
+    try {
+      let query = supabaseAdmin.from(table).select(select);
+
+      if (!isAdmin) {
+        const publicTables = ["banks", "loan_products", "eligibility_rules", "required_documents", "benefits"];
+        const userScopedTables = ["loan_applications", "profiles", "installments", "chat_sessions", "chat_messages"];
+
+        if (userScopedTables.includes(table)) {
+          const idColumn = table === "profiles" ? "id" : (table === "loan_applications" || table === "chat_sessions" || table === "chat_messages" ? "user_id" : null);
+          if (idColumn) {
+            query = query.eq(idColumn, userId);
+          } else if (table === "installments") {
+            query = query.eq("user_id", userId);
+          }
+        } else if (!publicTables.includes(table)) {
+          return { error: "Access denied to table: " + table };
+        }
+      }
+
+      const { data, error } = await query.limit(cappedLimit);
+
+      if (error) {
+        console.error(`[ChatbotService.queryDatabase] Error querying ${table}:`, error);
+        return { error: "DB error", details: error.message };
+      }
+
+      if (!isAdmin && data) {
+        return data.map((item: any) => {
+          const newItem = { ...item };
+          if (newItem.email) newItem.email = maskPii(newItem.email, "email");
+          if (newItem.phone) newItem.phone = maskPii(newItem.phone, "phone");
+          if (newItem.nic) newItem.nic = maskPii(newItem.nic, "nic");
+          return newItem;
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`[ChatbotService.queryDatabase] Fatal error:`, error);
+      return { error: "Internal error during database query" };
+    }
+  }
+
   private async predictLoanApproval(userId: string, role: string, applicationId: string): Promise<any> {
     const isAdmin = role === "admin";
 
-    // Verify ownership
     const { data: app, error: appErr } = await supabaseAdmin
       .from("loan_applications")
       .select("user_id")
