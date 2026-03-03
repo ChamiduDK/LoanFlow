@@ -74,7 +74,7 @@ export default function Profile() {
     return [
       { label: "Applications", value: applications.length, icon: TrendingUp, color: "text-blue-500 bg-blue-500/10" },
       { label: "Approved", value: approved, icon: CheckCircle2, color: "text-emerald-500 bg-emerald-500/10" },
-      { label: "Total Requested", value: totalRequested > 0 ? formatLKR(totalRequested) : "—", icon: DollarSign, color: "text-violet-500 bg-violet-500/10" },
+      { label: "Total Requested", value: totalRequested > 0 ? formatLKR(totalRequested) : "N/A", icon: DollarSign, color: "text-violet-500 bg-violet-500/10" },
     ];
   }, [applications]);
 

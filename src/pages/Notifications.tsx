@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Bell,
   CheckCircle2,
   Clock,
-  FileText,
   Info,
-  TrendingUp,
   Upload,
   X,
   Trash2,
@@ -103,7 +101,7 @@ export default function Notifications() {
   };
 
   const markRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const dismiss = (id: string) => {
@@ -116,14 +114,11 @@ export default function Notifications() {
 
   return (
     <div className="flex flex-col gap-6 pb-10">
-      {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             Notifications
-            {unreadCount > 0 && (
-              <Badge className="text-xs">{unreadCount} new</Badge>
-            )}
+            {unreadCount > 0 && <Badge className="text-xs">{unreadCount} new</Badge>}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Stay up to date with your loan journey activity.</p>
         </div>
@@ -161,9 +156,7 @@ export default function Notifications() {
             <div
               key={notif.id}
               className={`group flex gap-4 rounded-xl border px-4 py-4 transition-all ${
-                notif.read
-                  ? "border-border/60 bg-card/80"
-                  : "border-primary/20 bg-primary/5 shadow-sm"
+                notif.read ? "border-border/60 bg-card/80" : "border-primary/20 bg-primary/5 shadow-sm"
               }`}
               onClick={() => !notif.read && markRead(notif.id)}
               role={notif.read ? undefined : "button"}
@@ -175,7 +168,7 @@ export default function Notifications() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <p className={`text-sm font-semibold ${notif.read ? "text-foreground" : "text-foreground"}`}>{notif.title}</p>
+                    <p className="text-sm font-semibold text-foreground">{notif.title}</p>
                     {!notif.read && <span className="inline-block h-2 w-2 rounded-full bg-primary shrink-0" />}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -183,7 +176,10 @@ export default function Notifications() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      onClick={(e) => { e.stopPropagation(); dismiss(notif.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dismiss(notif.id);
+                      }}
                     >
                       <X className="h-3 w-3" />
                     </Button>
@@ -195,7 +191,7 @@ export default function Notifications() {
                   {notif.link && (
                     <Button variant="link" size="sm" asChild className="h-auto p-0 text-xs font-medium text-primary">
                       <Link to={notif.link} onClick={(e) => e.stopPropagation()}>
-                        {notif.linkLabel} →
+                        {notif.linkLabel} {"->"}
                       </Link>
                     </Button>
                   )}
