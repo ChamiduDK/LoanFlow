@@ -1,13 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 // Mock dependencies
-const { generateChatResponseWithToolsMock } = vi.hoisted(() => ({
+const { generateChatResponseWithToolsMock, embedContentMock } = vi.hoisted(() => ({
   generateChatResponseWithToolsMock: vi.fn(),
+  embedContentMock: vi.fn(),
 }));
 
 vi.mock("../../server/services/ai.service", () => ({
   aiService: {
     generateChatResponseWithTools: generateChatResponseWithToolsMock,
+    embedContent: embedContentMock,
   },
 }));
 
@@ -25,8 +27,12 @@ vi.mock("../../server/lib/supabase/client", () => ({
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     single: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    delete: vi.fn().mockReturnThis(),
   },
 }));
 
@@ -35,10 +41,20 @@ vi.mock("../../server/services/audit.service", () => ({
 }));
 
 import { chatbotService } from "../../server/services/chatbot.service";
+import { supabaseAdmin } from "../../server/lib/supabase/client";
 
 describe("ChatbotService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    embedContentMock.mockResolvedValue([0, 0, 0]);
+    (supabaseAdmin.maybeSingle as any).mockResolvedValue({
+      data: { id: "session-1" },
+      error: null,
+    });
+    (supabaseAdmin.single as any).mockResolvedValue({
+      data: { metadata: { title: "Existing Session" } },
+      error: null,
+    });
   });
 
   it("handles policy intent correctly", async () => {
@@ -70,8 +86,7 @@ describe("ChatbotService", () => {
       });
 
     // Mock DB response for profile
-    const { supabaseAdmin } = await import("../../server/lib/supabase/client");
-    (supabaseAdmin.from as any)().select().eq().single.mockResolvedValue({
+    (supabaseAdmin.single as any).mockResolvedValueOnce({
       data: {
         full_name: "Test User",
         email: "test@example.com",
@@ -98,8 +113,7 @@ describe("ChatbotService", () => {
         toolCalls: []
       });
 
-    const { supabaseAdmin } = await import("../../server/lib/supabase/client");
-    (supabaseAdmin.from as any)().select().eq().single.mockResolvedValue({
+    (supabaseAdmin.single as any).mockResolvedValueOnce({
       data: {
         full_name: "Test User",
         email: "test@example.com",
@@ -120,8 +134,7 @@ describe("ChatbotService", () => {
         toolCalls: [{ name: "predictLoanApproval", args: { applicationId: "app-others" } }]
       });
 
-    const { supabaseAdmin } = await import("../../server/lib/supabase/client");
-    (supabaseAdmin.from as any)().select().eq().single.mockResolvedValue({
+    (supabaseAdmin.single as any).mockResolvedValueOnce({
       data: { user_id: "other-user" },
       error: null
     });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import SmartChatPanel from "@/components/dashboard/SmartChatPanel";
-import { Bot, Menu, ArrowLeft } from "lucide-react";
+import { Menu, ArrowLeft } from "lucide-react";
 import { AnimatedBackground } from "@/components/ui/AnimatedBackground";
 import { ChatSidebar } from "@/components/dashboard/ChatSidebar";
 import { Button } from "@/components/ui/button";
@@ -9,14 +9,14 @@ import logo from "@/assets/logo.png";
 
 export default function AiChat() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
   const navigate = useNavigate();
 
   return (
-    <div className="relative flex flex-col w-screen h-[100dvh] overflow-hidden bg-background">
+    <div className="relative flex flex-col w-full h-[100dvh] overflow-hidden bg-background">
       <AnimatedBackground />
       
-      <div className="relative z-10 flex flex-col h-full p-2 md:p-6 overflow-hidden">
+      <div className="relative z-10 flex flex-col h-full p-2 md:p-4 lg:p-6 overflow-hidden">
         {/* Header */}
         <div className="text-white flex items-center justify-between mb-2 md:mb-4 px-2 md:px-0">
           <div className="flex items-center gap-2 md:gap-4">
@@ -36,10 +36,11 @@ export default function AiChat() {
             <Button 
               variant="ghost" 
               size="icon" 
-              className="text-white hover:bg-white/10 h-8 w-8 md:h-10 md:w-10"
+              className="text-white hover:bg-white/10 h-8 w-8 md:hidden"
               onClick={() => setShowSidebar(!showSidebar)}
+              aria-label="Toggle chat history"
             >
-              <Menu className="h-5 w-5 md:h-6 md:w-6" />
+              <Menu className="h-5 w-5" />
             </Button>
           </div>
         </div>
@@ -53,7 +54,7 @@ export default function AiChat() {
               onClick={() => setShowSidebar(false)}
             >
               <div 
-                className="w-72 h-full animate-in slide-in-from-left duration-300 bg-background flex flex-col"
+                className="w-[85vw] max-w-[320px] h-full animate-in slide-in-from-left duration-300 bg-background flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -75,14 +76,12 @@ export default function AiChat() {
             </div>
           )}
 
-          {showSidebar && (
-            <div className="hidden md:block">
-              <ChatSidebar 
-                activeSessionId={activeSessionId} 
-                onSelectSession={setActiveSessionId} 
-              />
-            </div>
-          )}
+          <div className="hidden md:block h-full min-h-0">
+            <ChatSidebar 
+              activeSessionId={activeSessionId} 
+              onSelectSession={setActiveSessionId} 
+            />
+          </div>
           
           <div className="flex-1 h-full min-w-0">
             <SmartChatPanel 

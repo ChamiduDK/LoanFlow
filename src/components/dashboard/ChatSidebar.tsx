@@ -9,7 +9,7 @@ import "./ChatSidebar.css";
 interface ChatSession {
   id: string;
   started_at: string;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
 }
 
 interface ChatSidebarProps {
@@ -26,7 +26,7 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
   const fetchSessions = async () => {
     try {
       setIsLoading(true);
-      const res = await apiFetch<ChatSession[]>("/api/chat/sessions");
+      const res = await apiFetch<ChatSession[]>("/api/sessions");
       setSessions(res);
     } catch (error) {
       console.error("Failed to fetch sessions", error);
@@ -42,8 +42,8 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
   const createNewSession = async () => {
     try {
       setIsCreating(true);
-      const res = await apiFetch<ChatSession>("/api/chat/sessions", { method: "POST" });
-      setSessions([res, ...sessions]);
+      const res = await apiFetch<ChatSession>("/api/sessions", { method: "POST" });
+      setSessions((previous) => [res, ...previous.filter((session) => session.id !== res.id)]);
       onSelectSession(res.id);
       toast({ title: "Success", description: "New chat started" });
     } catch (error: any) {
@@ -61,8 +61,8 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
   const deleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await apiFetch(`/api/chat/sessions/${id}`, { method: "DELETE" });
-      setSessions(sessions.filter(s => s.id !== id));
+      await apiFetch(`/api/sessions/${id}`, { method: "DELETE" });
+      setSessions((previous) => previous.filter((session) => session.id !== id));
       if (activeSessionId === id) onSelectSession(null);
       toast({ title: "Success", description: "Chat deleted" });
     } catch (error) {
@@ -71,7 +71,7 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
   };
 
   return (
-    <div className="chat-sidebar w-full md:w-64 shrink-0 overflow-hidden flex flex-col h-full">
+    <div className="chat-sidebar w-full md:w-64 shrink-0 overflow-hidden flex flex-col h-full min-h-0">
       <Button 
         onClick={createNewSession}
         className="new-chat-btn text-white w-full"
@@ -86,7 +86,7 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
         Recent History
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-1 p-2">
           {sessions.map((session) => (
             <div

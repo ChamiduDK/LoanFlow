@@ -3,6 +3,7 @@
   backdrop-filter: blur(12px);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   height: 100%;
+  min-height: 0;
   color: white;
   display: flex;
   flex-direction: column;
@@ -40,4 +41,20 @@
 .new-chat-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+
+@media (max-width: 767px) {
+  .chat-sidebar {
+    border-right: 0;
+    background: transparent;
+  }
+
+  .new-chat-btn {
+    margin: 12px;
+  }
+
+  .session-item {
+    margin: 3px 6px;
+    padding: 10px 12px;
+  }
 }

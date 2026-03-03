@@ -40,10 +40,17 @@
 @media (max-width: 500px) {
   .animated-input-container {
     flex-direction: column;
+    box-shadow:
+      4px 4px 10px #0e1013,
+      -4px -4px 12px #2d3340;
   }
 
   .animated-input-textarea {
     border-radius: 0.8rem;
+  }
+
+  .animated-input-shortcut {
+    display: none;
   }
 }
 

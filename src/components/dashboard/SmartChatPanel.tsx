@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, FileText, BarChart3, Info } from "lucide-react";
+import { Bot, Loader2, FileText, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -43,7 +43,7 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
       const fetchHistory = async () => {
         try {
           setIsLoading(true);
-          const history = await apiFetch<any[]>(`/api/chat/sessions/${activeSessionId}`);
+          const history = await apiFetch<any[]>(`/api/sessions/${activeSessionId}`);
           setMessages(history.map(m => ({
             id: m.id,
             role: m.role,
@@ -120,15 +120,15 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
   };
 
   return (
-    <div className="animated-chat-container">
-      <div className="animated-chat-inner flex flex-col h-full">
-        <div className="p-4 border-b border-white/5 flex items-center gap-2 text-white">
+    <div className="animated-chat-container min-h-0">
+      <div className="animated-chat-inner flex flex-col h-full min-h-0">
+        <div className="p-3 md:p-4 border-b border-white/5 flex items-center gap-2 text-white">
           <Bot className="h-5 w-5 text-primary" />
           <h3 className="font-semibold text-lg">LoanFlow Smart Assistant</h3>
           <Badge variant="outline" className="ml-auto border-white/20 text-white/70">Active</Badge>
         </div>
 
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 min-h-0 p-3 md:p-4">
         <div className="space-y-6">
           {messages.length === 0 && (
             <div className="text-center py-10">
@@ -146,11 +146,11 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
 
           {messages.map((m) => (
             <div key={m.id} className={`flex w-full mb-2 md:mb-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[90%] md:max-w-[80%] items-start gap-2 md:gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+              <div className={`flex max-w-full md:max-w-[80%] items-start gap-2 md:gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                 <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center shrink-0 ${
                   m.role === "user" ? "bg-sidebar-primary" : "bg-white/10"
                 }`}>
-                  {m.role === "user" ? <div className="text-[10px] md:text-xs">U</div> : <Bot className="h-4 w-4 md:h-5 md:h-5 text-white/70" />}
+                  {m.role === "user" ? <div className="text-[10px] md:text-xs">U</div> : <Bot className="h-4 w-4 md:h-5 md:w-5 text-white/70" />}
                 </div>
                 <div className="space-y-2">
                   <div className={`px-3 py-1.5 md:px-4 md:py-2 text-[13px] md:text-sm ${m.role === "user" ? "animated-user-message-card" : "animated-chat-message-card"}`}>
@@ -196,8 +196,8 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t bg-muted/10">
-        <div className="flex gap-3 items-center p-1 w-full relative">
+      <div className="p-3 md:p-4 border-t bg-muted/10">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end p-1 w-full relative">
           <div className="animated-input-container">
             <Textarea
               value={input}
@@ -211,9 +211,9 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
                 }
               }}
             />
-            <div className="animated-input-shortcut">↵ Enter</div>
+            <div className="animated-input-shortcut">Enter</div>
           </div>
-          <AnimatedSendButton className="mb-0.5" onClick={handleSend} disabled={!input.trim() || isLoading} />
+          <AnimatedSendButton className="mb-0.5 w-full sm:w-auto" onClick={handleSend} disabled={!input.trim() || isLoading} />
         </div>
         <p className="text-[10px] text-muted-foreground mt-2 text-center uppercase tracking-widest font-medium opacity-50">
           Powered by SME Prediction Engine
@@ -287,3 +287,4 @@ function SourceList({ sources }: { sources: Array<{ filename: string }> }) {
     </div>
   );
 }
+
