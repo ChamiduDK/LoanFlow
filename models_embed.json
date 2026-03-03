@@ -1,0 +1,9 @@
+﻿{
+    "name":  "models/gemini-embedding-001",
+    "supportedGenerationMethods":  [
+                                       "embedContent",
+                                       "countTextTokens",
+                                       "countTokens",
+                                       "asyncBatchEmbedContent"
+                                   ]
+}
