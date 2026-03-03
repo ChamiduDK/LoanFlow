@@ -155,9 +155,9 @@ export default function AdminBanks() {
       </Dialog>
 
       <Card className="data-table-wrap">
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Bank Directory</CardTitle>
-          <div className="relative w-full max-w-sm">
+          <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="Search by name or code" />
           </div>
@@ -210,7 +210,8 @@ export default function AdminBanks() {
               ))}
             </TableBody>
           </Table>
-          {rows.length === 0 ? <div className="p-4 text-sm text-muted-foreground">No banks found.</div> : null}
+          {banksQuery.isLoading ? <div className="p-4 text-sm text-muted-foreground">Loading banks...</div> : null}
+          {rows.length === 0 && !banksQuery.isLoading ? <div className="p-4 text-sm text-muted-foreground">No banks found.</div> : null}
         </CardContent>
       </Card>
     </div>
