@@ -12,6 +12,9 @@ import { apiFetch } from "@/lib/api/client";
 import type { ChatResponse, ChatIntent } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
 import logo from "@/assets/logo.png";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { LookupCard } from "./LookupCard";
 
 type Message = {
   id: string;
@@ -121,7 +124,7 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
         </div>
 
       <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4">
+        <div className="space-y-6">
           {messages.length === 0 && (
             <div className="text-center py-10">
               <img src={logo} alt="LoanFlow Logo" className="h-16 w-auto mx-auto mb-6 drop-shadow-lg opacity-80" />
@@ -144,7 +147,12 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
                 </div>
                 <div className="space-y-2">
                   <div className={`px-4 py-2 text-sm ${m.role === "user" ? "animated-user-message-card" : "animated-chat-message-card"}`}>
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      className="prose prose-sm prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10"
+                    >
+                      {m.content}
+                    </ReactMarkdown>
                   </div>
 
                   {/* Intent-specific widgets */}
@@ -154,6 +162,10 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
 
                   {m.role === "assistant" && m.intent === "policy" && m.data?.sources?.length > 0 && (
                      <SourceList sources={m.data.sources} />
+                  )}
+
+                  {m.role === "assistant" && m.intent === "lookup" && m.data && (
+                    <LookupCard data={m.data} />
                   )}
                 </div>
               </div>
