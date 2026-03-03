@@ -45,9 +45,10 @@ const navItems = [
 interface AppSidebarProps {
   open: boolean;
   onClose: () => void;
+  collapsed: boolean;
 }
 
-export default function AppSidebar({ open, onClose }: AppSidebarProps) {
+export default function AppSidebar({ open, onClose, collapsed }: AppSidebarProps) {
   const location = useLocation();
   useEffect(() => {
     if (!open) return;
@@ -82,24 +83,34 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[86vw] max-w-[300px] -translate-x-full transition-transform duration-300 ease-out lg:static lg:w-[272px] lg:shrink-0 lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-[86vw] max-w-[300px] -translate-x-full transition-transform duration-300 ease-out lg:static lg:shrink-0 lg:translate-x-0 lg:transition-[width] lg:duration-300",
+          collapsed ? "lg:w-[88px]" : "lg:w-[272px]",
           open ? "translate-x-0" : "-translate-x-full"
         )}
         aria-label="Sidebar"
       >
         <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
           {/* Brand */}
-          <div className="border-b border-sidebar-border/60 px-5 pb-5 pt-5">
-            <Link to="/" className="flex items-center group" onClick={onClose}>
-              <img src={logo} alt="LoanFlow" className="h-9 w-auto object-contain" />
+          <div className={cn("border-b border-sidebar-border/60 px-5 pb-5 pt-5", collapsed && "lg:px-3")}>
+            <Link to="/" className={cn("flex items-center group", collapsed && "lg:justify-center")} onClick={onClose}>
+              <img
+                src={logo}
+                alt="LoanFlow"
+                className={cn("h-9 w-auto object-contain transition-all", collapsed && "lg:h-8 lg:w-8")}
+              />
             </Link>
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+          <nav className={cn("flex-1 overflow-y-auto px-3 py-4 space-y-6", collapsed && "lg:px-2")}>
             {navItems.map((group) => (
               <div key={group.group}>
-                <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-sidebar-foreground/40">
+                <p
+                  className={cn(
+                    "px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-sidebar-foreground/40",
+                    collapsed && "lg:hidden"
+                  )}
+                >
                   {group.group}
                 </p>
                 <div className="space-y-0.5">
@@ -108,21 +119,23 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
                       key={item.path}
                       to={item.path}
                       onClick={onClose}
+                      title={item.label}
                       className={({ isActive }) =>
                         cn(
                           "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                          collapsed && "lg:justify-center lg:px-0",
                           isActive
                             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                         )
                       }
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      <div className="min-w-0 flex-1">
+                      <item.icon className={cn("h-4 w-4 shrink-0", collapsed && "lg:h-5 lg:w-5")} />
+                      <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
                         <p className="truncate text-sm font-semibold leading-none">{item.label}</p>
                         <p className="truncate text-[11px] opacity-70 mt-0.5 leading-none">{item.description}</p>
                       </div>
-                      <ChevronRight className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity" />
+                      <ChevronRight className={cn("h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity", collapsed && "lg:hidden")} />
                     </NavLink>
                   ))}
                 </div>
@@ -132,8 +145,8 @@ export default function AppSidebar({ open, onClose }: AppSidebarProps) {
 
           {/* Footer */}
           <div className="border-t border-sidebar-border/60 px-4 py-3">
-            <img src={logo} alt="LoanFlow" className="mx-auto h-5 w-auto object-contain opacity-80" />
-            <p className="mt-1 text-[10px] text-center text-sidebar-foreground/30 font-medium">(c) 2026 | SME Lending</p>
+            <img src={logo} alt="LoanFlow" className={cn("mx-auto h-5 w-auto object-contain opacity-80", collapsed && "lg:h-7 lg:w-7")} />
+            <p className={cn("mt-1 text-[10px] text-center text-sidebar-foreground/30 font-medium", collapsed && "lg:hidden")}>(c) 2026 | SME Lending</p>
           </div>
         </div>
       </aside>
