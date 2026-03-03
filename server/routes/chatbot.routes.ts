@@ -10,7 +10,7 @@ export const chatbotRouter = Router();
 
 const chatRequestSchema = z.object({
   message: z.string().min(1).max(2000),
-  sessionId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().nullable().optional(),
 });
 
 chatbotRouter.use(requireAuth, requireApprovedUser);

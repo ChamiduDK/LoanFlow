@@ -86,7 +86,7 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
         method: "POST",
         body: JSON.stringify({ 
           message: currentInput,
-          sessionId: activeSessionId 
+          sessionId: activeSessionId || undefined 
         }),
       });
 

@@ -82,6 +82,34 @@ export class ChatbotService {
           },
           required: ["applicationId"]
         }
+      },
+      {
+        name: "listBanks",
+        description: "Fetch a list of all active partner banks and their basic info.",
+        parameters: { type: "object", properties: {} }
+      },
+      {
+        name: "searchProducts",
+        description: "Search for specific loan products/schemes based on bank name, loan purpose, or amount.",
+        parameters: {
+          type: "object",
+          properties: {
+            bankId: { type: "string", description: "Optional bank ID to filter by." },
+            query: { type: "string", description: "Optional text search for product name or description." },
+            minAmount: { type: "number", description: "Optional minimum amount filter." }
+          }
+        }
+      },
+      {
+        name: "getProductDetails",
+        description: "Get comprehensive details for a specific loan product, including eligibility rules, required documents, and benefits.",
+        parameters: {
+          type: "object",
+          properties: {
+            productId: { type: "string", description: "The unique ID of the loan product." }
+          },
+          required: ["productId"]
+        }
       }
     ];
 
@@ -93,10 +121,13 @@ Guidelines:
 1. Use the provided tools to answer accurately.
 2. If the user asks about policies or "how to" apply, use searchPolicy.
 3. If the user asks about their own loans or status, use lookupData.
-4. If the user asks for a prediction or probability of approval, use predictLoanApproval.
-5. NEVER reveal sensitive PII (NIC, bank accounts, emails, phone numbers) in your response unless it is masked.
-6. If a tool returns no data, inform the user politely.
-7. Always explain the results clearly.`;
+4. If the user asks about supported banks, use listBanks.
+5. If the user asks for available loan schemes or products, use searchProducts.
+6. If the user wants specific details, eligibility rules, or documents for a product, use getProductDetails.
+7. If the user asks for a prediction or probability of approval, use predictLoanApproval.
+8. NEVER reveal sensitive PII (NIC, bank accounts, emails, phone numbers) in your response unless it is masked.
+9. If a tool returns no data, inform the user politely.
+10. Always explain the results clearly.`;
 
     const { text, toolCalls } = await aiService.generateChatResponseWithTools(systemPrompt, [], message, tools);
 
@@ -128,6 +159,27 @@ Guidelines:
         finalData = await this.predictLoanApproval(userId, userRole, args.applicationId);
         const predictionStr = JSON.stringify(finalData);
         const resultPrompt = `The user asked for a prediction for application ${args.applicationId}.\n\nModel Result:\n${predictionStr}\n\nPlease explain the decision (Approve/Review/Reject), the probability, and the top reasons clearly.`;
+        const resultResponse = await aiService.generateChatResponseWithTools(systemPrompt, [], resultPrompt, []);
+        responseText = resultResponse.text;
+      } else if (toolName === "listBanks") {
+        intent = "lookup";
+        finalData = await this.listBanks();
+        const dataStr = JSON.stringify(finalData);
+        const resultPrompt = `The user asked about banks.\n\nDatabase result:\n${dataStr}\n\nPlease list the partner banks for the user.`;
+        const resultResponse = await aiService.generateChatResponseWithTools(systemPrompt, [], resultPrompt, []);
+        responseText = resultResponse.text;
+      } else if (toolName === "searchProducts") {
+        intent = "lookup";
+        finalData = await this.searchProducts(args.query, args.bankId, args.minAmount);
+        const dataStr = JSON.stringify(finalData);
+        const resultPrompt = `The user searched for products (query: ${args.query}).\n\nDatabase results:\n${dataStr}\n\nPlease summarize the matching loan products.`;
+        const resultResponse = await aiService.generateChatResponseWithTools(systemPrompt, [], resultPrompt, []);
+        responseText = resultResponse.text;
+      } else if (toolName === "getProductDetails") {
+        intent = "lookup";
+        finalData = await this.getProductDetails(args.productId);
+        const dataStr = JSON.stringify(finalData);
+        const resultPrompt = `The user wants details for product ${args.productId}.\n\nDetailed rules & metadata:\n${dataStr}\n\nPlease explain the requirements, eligibility criteria, benefits, and required documents clearly.`;
         const resultResponse = await aiService.generateChatResponseWithTools(systemPrompt, [], resultPrompt, []);
         responseText = resultResponse.text;
       }
@@ -310,6 +362,82 @@ Guidelines:
       decision,
       approval_probability: probability,
       top_reasons: result.explainability.reasons.slice(0, 5)
+    };
+  }
+
+  async listBanks(): Promise<any> {
+    const { data, error } = await supabaseAdmin
+      .from("banks")
+      .select("id, name, code")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (error) throw internalError("DB error fetching banks", error);
+    return data;
+  }
+
+  async searchProducts(query?: string, bankId?: string, minAmount?: number): Promise<any> {
+    let supabaseQuery = supabaseAdmin
+      .from("loan_products")
+      .select("id, bank_id, name, description, min_amount, max_amount, banks(name)")
+      .eq("is_active", true);
+
+    if (bankId) {
+      supabaseQuery = supabaseQuery.eq("bank_id", bankId);
+    }
+    if (minAmount) {
+      supabaseQuery = supabaseQuery.lte("min_amount", minAmount).gte("max_amount", minAmount);
+    }
+    if (query) {
+      supabaseQuery = supabaseQuery.or(`name.ilike.%${query}%,description.ilike.%${query}%`);
+    }
+
+    const { data, error } = await supabaseQuery.limit(10);
+    if (error) throw internalError("DB error searching products", error);
+
+    return data.map(p => {
+      const bankData = Array.isArray(p.banks) ? p.banks[0] : p.banks;
+      return {
+        id: p.id,
+        bank: bankData?.name,
+        name: p.name,
+        description: p.description,
+        amount_range: `${p.min_amount} - ${p.max_amount}`
+      };
+    });
+  }
+
+  async getProductDetails(productId: string): Promise<any> {
+    const [productRes, rulesRes, docsRes, benefitsRes] = await Promise.all([
+      supabaseAdmin.from("loan_products").select("*, banks(name)").eq("id", productId).single(),
+      supabaseAdmin.from("eligibility_rules").select("*").eq("product_id", productId).eq("is_active", true),
+      supabaseAdmin.from("required_documents").select("*").eq("product_id", productId).order("is_required", { ascending: false }),
+      supabaseAdmin.from("benefits").select("*").eq("product_id", productId)
+    ]);
+
+    if (productRes.error || !productRes.data) throw notFound("Product not found");
+
+    const productBankData = Array.isArray(productRes.data.banks) ? productRes.data.banks[0] : productRes.data.banks;
+
+    return {
+      product: {
+        name: productRes.data.name,
+        bank: productBankData?.name,
+        description: productRes.data.description,
+        interest_rate: `${productRes.data.rate_min}% - ${productRes.data.rate_max}%`,
+        tenure: `${productRes.data.tenure_min_months} - ${productRes.data.tenure_max_months} months`,
+        collateral_required: productRes.data.collateral_required
+      },
+      eligibility_rules: rulesRes.data?.map(r => r.rules_json) || [],
+      required_documents: docsRes.data?.map(d => ({
+        name: d.display_name,
+        required: d.is_required,
+        notes: d.notes
+      })) || [],
+      benefits: benefitsRes.data?.map(b => ({
+        title: b.title,
+        description: b.description
+      })) || []
     };
   }
 }
