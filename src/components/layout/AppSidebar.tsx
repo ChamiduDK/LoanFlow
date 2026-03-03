@@ -146,7 +146,7 @@ export default function AppSidebar({ open, onClose, collapsed }: AppSidebarProps
           {/* Footer */}
           <div className="border-t border-sidebar-border/60 px-4 py-3">
             <img src={logo} alt="LoanFlow" className={cn("mx-auto h-5 w-auto object-contain opacity-80", collapsed && "lg:h-7 lg:w-7")} />
-            <p className={cn("mt-1 text-[10px] text-center text-sidebar-foreground/30 font-medium", collapsed && "lg:hidden")}>(c) 2026 | SME Lending</p>
+            <p className={cn("mt-1 text-[10px] text-center text-sidebar-foreground/30 font-medium", collapsed && "lg:hidden")}>&copy; 2026 LoanFlow | SME Lending</p>
           </div>
         </div>
       </aside>
