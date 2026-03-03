@@ -36,7 +36,7 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
 
   useEffect(() => {
     fetchSessions();
-  }, []);
+  }, [activeSessionId]);
 
   const createNewSession = async () => {
     try {
