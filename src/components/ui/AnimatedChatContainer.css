@@ -43,23 +43,53 @@
 
 /* Theme-compliant message bubbles */
 .animated-chat-message-card {
-  border-radius: 16px;
+  border-radius: 12px 16px 16px 4px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border) / 0.5);
   box-shadow: var(--shadow-sm);
   color: hsl(var(--foreground));
-  padding: 10px 14px;
+  padding: 12px 16px;
   transition: all 0.3s ease;
   font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .animated-user-message-card {
-  border-radius: 16px;
+  border-radius: 16px 12px 4px 16px;
   background: hsl(var(--sidebar-primary));
   color: hsl(var(--sidebar-primary-foreground));
   box-shadow: var(--shadow-sm);
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Prose refinements to fix "no line space" and bolding */
+.prose {
+  color: inherit !important;
+}
+
+.prose p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose ul,
+.prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.25em;
+}
+
+.prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.prose strong,
+.prose b {
+  color: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 640px) {
