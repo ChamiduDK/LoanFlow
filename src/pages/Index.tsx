@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import ProcessBeamSection from "@/components/home/process-beam-section";
 import EMICalculatorSection from "@/components/home/EMICalculatorSection";
 import { BentoCard, BentoGrid } from "@/registry/magicui/bento-grid";
+import logo from "@/assets/logo.png";
 
 const features = [
   {
@@ -291,8 +292,8 @@ export default function Index() {
         <footer className="mx-auto w-full max-w-[1350px] overflow-hidden rounded-tl-3xl rounded-tr-3xl bg-[#131314] px-4 pt-8 sm:px-8 md:px-16 lg:px-28 lg:pt-12">
           <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 md:gap-12 lg:grid-cols-6">
             <div className="space-y-6 lg:col-span-3">
-              <Link to="/" className="block text-2xl font-semibold tracking-tight text-white">
-                LoanFlow
+              <Link to="/" className="inline-flex">
+                <img src={logo} alt="LoanFlow" className="h-10 w-auto object-contain" />
               </Link>
               <p className="max-w-96 text-sm/6 text-neutral-300">
                 LoanFlow helps Sri Lankan SMEs compare lenders, calculate EMI, prepare required
@@ -373,15 +374,13 @@ export default function Index() {
           </div>
 
           <div className="mx-auto mt-12 flex max-w-7xl items-center justify-between border-t border-neutral-700 pt-4">
-            <p className="text-sm text-neutral-400">© 2026 LoanFlow</p>
+            <p className="text-sm text-neutral-400">© 2026</p>
             <p className="text-sm text-neutral-400">All rights reserved.</p>
           </div>
 
           <div className="relative">
             <div className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-full max-h-64 w-full max-w-3xl rounded-full bg-[hsl(var(--info)/0.55)] blur-[170px]" />
-            <h2 className="mt-6 text-center text-[clamp(3rem,15vw,15rem)] font-extrabold leading-[0.7] text-transparent [-webkit-text-stroke:1px_hsl(var(--info))]">
-              LoanFlow
-            </h2>
+            <img src={logo} alt="LoanFlow" className="mx-auto mt-6 h-auto w-full max-w-3xl object-contain opacity-40" />
           </div>
         </footer>
       </div>

@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabaseClient } from "@/lib/supabase/client";
+import logo from "@/assets/logo.png";
 
 interface TopNavProps {
   onMenuClick: () => void;
@@ -124,7 +125,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
         </Button>
 
         <Link to="/" className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-sm font-semibold text-foreground sm:text-base">LoanFlow</span>
+          <img src={logo} alt="LoanFlow" className="h-8 w-auto object-contain" />
         </Link>
 
         <div className="relative hidden min-w-0 max-w-xl flex-1 items-center gap-2 md:flex">
