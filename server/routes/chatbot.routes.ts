@@ -24,7 +24,7 @@ chatbotRouter.post(
     const userId = (req as any).auth?.user.id;
     const userRole = (req as any).auth?.profile?.is_admin ? "admin" : "customer";
 
-    const response = await chatbotService.handleChat(userId!, userRole, payload.message, req.ip, payload.sessionId);
+    const response = await chatbotService.handleChat(userId!, userRole, payload.message, req.ip, payload.sessionId ?? undefined);
 
     sendSuccess(res, response);
   }),
