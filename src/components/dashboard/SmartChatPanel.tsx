@@ -27,9 +27,10 @@ type Message = {
 
 interface SmartChatPanelProps {
   activeSessionId?: string | null;
+  onSessionCreated?: (id: string) => void;
 }
 
-export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps) {
+export default function SmartChatPanel({ activeSessionId, onSessionCreated }: SmartChatPanelProps) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -103,6 +104,10 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      if (response.sessionId && response.sessionId !== activeSessionId) {
+        onSessionCreated?.(response.sessionId);
+      }
     } catch (error) {
       toast({
         title: "Chat Error",
@@ -147,12 +152,13 @@ export default function SmartChatPanel({ activeSessionId }: SmartChatPanelProps)
                 </div>
                 <div className="space-y-2">
                   <div className={`px-4 py-2 text-sm ${m.role === "user" ? "animated-user-message-card" : "animated-chat-message-card"}`}>
-                    <ReactMarkdown 
-                      remarkPlugins={[remarkGfm]}
-                      className="prose prose-sm prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10"
-                    >
-                      {m.content}
-                    </ReactMarkdown>
+                    <div className="prose prose-sm prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
 
                   {/* Intent-specific widgets */}

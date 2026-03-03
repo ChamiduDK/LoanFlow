@@ -16,6 +16,7 @@ export type ChatResponse = {
   text: string;
   intent: ChatIntent;
   data?: any;
+  sessionId: string;
 };
 
 export class ChatbotService {
@@ -40,9 +41,11 @@ export class ChatbotService {
       }
     }
 
+    const finalSessionId = targetSessionId as string;
+
     // Save User message
     await supabaseAdmin.from("chat_messages").insert({
-      session_id: targetSessionId,
+      session_id: finalSessionId,
       user_id: userId,
       role: "user",
       message_text: message
@@ -222,12 +225,16 @@ Guidelines:
     const response: ChatResponse = {
       text: responseText,
       intent,
-      data: finalData
+      data: finalData,
+      sessionId: finalSessionId
     };
+
+    // Auto-update session title if it's the first message
+    this.maybeUpdateSessionTitle(finalSessionId, message).catch(console.error);
 
     // Save AI message
     await supabaseAdmin.from("chat_messages").insert({
-      session_id: targetSessionId,
+      session_id: finalSessionId,
       user_id: userId,
       role: "assistant",
       message_text: responseText,
@@ -275,6 +282,35 @@ Guidelines:
       .delete()
       .eq("id", sessionId)
       .eq("user_id", userId);
+  }
+
+  private async maybeUpdateSessionTitle(sessionId: string, firstMessage: string) {
+    // Check if title is already set
+    const { data: session } = await supabaseAdmin
+      .from("chat_sessions")
+      .select("metadata")
+      .eq("id", sessionId)
+      .single();
+
+    if (session?.metadata?.title) return;
+
+    // Use AI to generate a short, punchy title (max 30 chars)
+    const titlePrompt = `Generate a very short, professional title (max 4 words) for a loan assistant chat session starting with this message: "${firstMessage}". Return ONLY the title text.`;
+    const result = await aiService.generateChatResponseWithTools(
+      "You are a helpful assistant that generates short chat titles.",
+      [],
+      titlePrompt,
+      []
+    );
+
+    const title = result.text.replace(/["']/g, "").slice(0, 35).trim();
+
+    await supabaseAdmin
+      .from("chat_sessions")
+      .update({
+        metadata: { ...session?.metadata, title }
+      })
+      .eq("id", sessionId);
   }
 
   private async searchPolicy(query: string): Promise<{ context: string; sources: Array<{ filename: string }> }> {

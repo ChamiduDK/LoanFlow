@@ -358,6 +358,7 @@ export type ChatIntent = "policy" | "lookup" | "prediction" | "unknown";
 export type ChatResponse = {
   text: string;
   intent: ChatIntent;
+  sessionId: string;
   data?: {
     sources?: Array<{ filename: string }>;
     decision?: string;

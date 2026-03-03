@@ -77,7 +77,10 @@ export default function AiChat() {
           )}
           
           <div className="flex-1 h-full min-w-0">
-            <SmartChatPanel activeSessionId={activeSessionId} />
+            <SmartChatPanel 
+              activeSessionId={activeSessionId} 
+              onSessionCreated={setActiveSessionId}
+            />
           </div>
         </div>
       </div>
