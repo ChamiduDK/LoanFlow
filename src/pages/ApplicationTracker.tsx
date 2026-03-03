@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CheckCircle2, Circle, ClipboardCheck, Clock3, FileSearch, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Circle, ClipboardCheck, Clock3, Copy, FileSearch, KeyRound, Link2, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
 import StatusBadge from "@/components/shared/StatusBadge";
 import { apiFetch } from "@/lib/api/client";
 import type {
+  BankAgentAccessGrant,
   DocumentChecklistResponse,
   DocumentRow,
   DocumentScanResponse,
@@ -88,6 +89,7 @@ export default function ApplicationTracker() {
 
   const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
   const [latestScanResult, setLatestScanResult] = useState<DocumentScanResponse | null>(null);
+  const [bankAgentGrant, setBankAgentGrant] = useState<BankAgentAccessGrant | null>(null);
   const [outcomeForm, setOutcomeForm] = useState({
     status: "under_review" as OutcomeStatus,
     notes: "",
@@ -118,6 +120,7 @@ export default function ApplicationTracker() {
 
   useEffect(() => {
     setLatestScanResult(null);
+    setBankAgentGrant(null);
   }, [applicationId]);
 
   const dataQuery = useQuery({
@@ -220,6 +223,44 @@ export default function ApplicationTracker() {
       });
     },
   });
+
+  const bankAgentAccessMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<BankAgentAccessGrant>(`/api/applications/${applicationId}/bank-agent-access`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (payload) => {
+      setBankAgentGrant(payload);
+      toast({
+        title: "Bank-agent access created",
+        description: "Share the link and PIN securely with the assigned bank agent.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to create bank-agent access",
+        description: error instanceof Error ? error.message : "Could not generate secure access",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const copyToClipboard = async (value: string, label: string) => {
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+        throw new Error("Clipboard access is unavailable on this browser");
+      }
+      await navigator.clipboard.writeText(value);
+      toast({ title: `${label} copied` });
+    } catch (error) {
+      toast({
+        title: `Failed to copy ${label.toLowerCase()}`,
+        description: error instanceof Error ? error.message : "Clipboard write failed",
+        variant: "destructive",
+      });
+    }
+  };
 
   const scanMutation = useMutation({
     mutationFn: () =>
@@ -813,6 +854,73 @@ ${htmlToUse}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No proposal generated yet for this application.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Bank Agent Access</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Generate a secure link and 6-digit PIN. The bank agent can use these credentials to update decision and tracking status.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-md border border-border/70 bg-muted/25 px-3 py-1.5 text-xs text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Access controlled by applicant
+            </div>
+            <Button onClick={() => bankAgentAccessMutation.mutate()} disabled={bankAgentAccessMutation.isPending}>
+              <Link2 className="h-4 w-4" />
+              {bankAgentAccessMutation.isPending
+                ? "Generating..."
+                : bankAgentGrant
+                  ? "Regenerate Link + PIN"
+                  : "Generate Link + PIN"}
+            </Button>
+          </div>
+
+          {bankAgentGrant ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label className="text-xs">Access Link</Label>
+                <div className="flex gap-2">
+                  <Input readOnly value={bankAgentGrant.access_url} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void copyToClipboard(bankAgentGrant.access_url, "Access link")}
+                    aria-label="Copy access link"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">6-Digit PIN</Label>
+                <div className="flex gap-2">
+                  <Input readOnly value={bankAgentGrant.pin_code} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void copyToClipboard(bankAgentGrant.pin_code, "PIN")}
+                    aria-label="Copy PIN"
+                  >
+                    <KeyRound className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground md:col-span-2">
+                Expires on {formatDate(bankAgentGrant.expires_at)}. Share this PIN only with the intended bank agent.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No active bank-agent access generated yet for this application.
+            </p>
           )}
         </CardContent>
       </Card>

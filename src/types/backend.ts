@@ -366,3 +366,57 @@ export type ChatResponse = {
     top_reasons?: string[];
   };
 };
+
+export type BankAgentAccessGrant = {
+  application_id: string;
+  access_token: string;
+  access_url: string;
+  pin_code: string;
+  expires_at: string;
+  created_at: string;
+};
+
+export type BankAgentAccessVerifyResponse = {
+  role: "bank_agent";
+  access: {
+    application_id: string;
+    expires_at: string;
+    verified_at: string;
+  };
+  application: {
+    id: string;
+    status: ApplicationStatus | "applied" | "under_review" | "approved" | "rejected";
+    purpose: string;
+    requested_amount: number;
+    preferred_tenure_months: number;
+    tracking_started_at: string | null;
+    selected_product_id: string | null;
+    selected_product_name: string | null;
+    selected_bank_name: string | null;
+  };
+  outcome: {
+    id: string;
+    status: "applied" | "under_review" | "approved" | "rejected";
+    applied_date: string | null;
+    decision_date: string | null;
+    approved_amount: number | null;
+    approved_rate: number | null;
+    approved_tenure_months: number | null;
+    notes: string | null;
+  } | null;
+  tracker_summary: TrackerSummary;
+};
+
+export type BankAgentOutcomeUpdateResponse = {
+  outcome: {
+    id: string;
+    status: "applied" | "under_review" | "approved" | "rejected";
+    applied_date: string | null;
+    decision_date: string | null;
+    approved_amount: number | null;
+    approved_rate: number | null;
+    approved_tenure_months: number | null;
+    notes: string | null;
+  };
+  tracker_summary: TrackerSummary;
+};
