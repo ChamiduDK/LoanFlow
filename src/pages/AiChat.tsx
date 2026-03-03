@@ -13,39 +13,39 @@ export default function AiChat() {
   const navigate = useNavigate();
 
   return (
-    <div className="relative flex flex-col w-screen h-screen overflow-hidden bg-background">
+    <div className="relative flex flex-col w-screen h-[100dvh] overflow-hidden bg-background">
       <AnimatedBackground />
       
-      <div className="relative z-10 flex flex-col h-full p-4 md:p-6 overflow-hidden">
+      <div className="relative z-10 flex flex-col h-full p-2 md:p-6 overflow-hidden">
         {/* Header */}
-        <div className="text-white flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
+        <div className="text-white flex items-center justify-between mb-2 md:mb-4 px-2 md:px-0">
+          <div className="flex items-center gap-2 md:gap-4">
             <Button 
               variant="ghost" 
               size="sm" 
-              className="text-white hover:bg-white/10"
+              className="text-white hover:bg-white/10 h-8 px-2 md:h-10 md:px-4"
               onClick={() => navigate("/dashboard")}
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+              <ArrowLeft className="h-4 w-4 mr-1 md:mr-2" />
+              <span className="hidden xs:inline">Back</span>
             </Button>
-            <div className="h-8 w-[1px] bg-white/10 mx-1" />
-            <img src={logo} alt="LoanFlow Logo" className="h-8 md:h-10 w-auto drop-shadow-lg" />
+            <div className="h-6 w-[1px] bg-white/10 mx-1" />
+            <img src={logo} alt="LoanFlow Logo" className="h-6 md:h-10 w-auto drop-shadow-lg" />
           </div>
           <div className="flex items-center gap-2">
             <Button 
               variant="ghost" 
               size="icon" 
-              className="text-white hover:bg-white/10"
+              className="text-white hover:bg-white/10 h-8 w-8 md:h-10 md:w-10"
               onClick={() => setShowSidebar(!showSidebar)}
             >
-              <Menu className="h-6 w-6" />
+              <Menu className="h-5 w-5 md:h-6 md:w-6" />
             </Button>
           </div>
         </div>
 
         {/* Chat Layout with Sidebar */}
-        <div className="flex-1 relative flex gap-4 overflow-hidden min-h-0">
+        <div className="flex-1 relative flex gap-2 md:gap-4 overflow-hidden min-h-0">
           {/* Mobile Sidebar Overlay */}
           {showSidebar && (
             <div 
@@ -53,16 +53,24 @@ export default function AiChat() {
               onClick={() => setShowSidebar(false)}
             >
               <div 
-                className="w-72 h-full animate-in slide-in-from-left duration-300 bg-background"
+                className="w-72 h-full animate-in slide-in-from-left duration-300 bg-background flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
-                <ChatSidebar 
-                  activeSessionId={activeSessionId} 
-                  onSelectSession={(id) => {
-                    setActiveSessionId(id);
-                    setShowSidebar(false);
-                  }} 
-                />
+                <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                  <span className="font-semibold text-white">History</span>
+                  <Button variant="ghost" size="sm" onClick={() => setShowSidebar(false)}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ChatSidebar 
+                    activeSessionId={activeSessionId} 
+                    onSelectSession={(id) => {
+                      setActiveSessionId(id);
+                      setShowSidebar(false);
+                    }} 
+                  />
+                </div>
               </div>
             </div>
           )}

@@ -145,13 +145,15 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
           )}
 
           {messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`flex gap-3 max-w-[85%] ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-white/10 border border-white/10 text-white"}`}>
-                  {m.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+            <div key={m.id} className={`flex w-full mb-2 md:mb-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`flex max-w-[90%] md:max-w-[80%] items-start gap-2 md:gap-3 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center shrink-0 ${
+                  m.role === "user" ? "bg-sidebar-primary" : "bg-white/10"
+                }`}>
+                  {m.role === "user" ? <div className="text-[10px] md:text-xs">U</div> : <Bot className="h-4 w-4 md:h-5 md:h-5 text-white/70" />}
                 </div>
                 <div className="space-y-2">
-                  <div className={`px-4 py-2 text-sm ${m.role === "user" ? "animated-user-message-card" : "animated-chat-message-card"}`}>
+                  <div className={`px-3 py-1.5 md:px-4 md:py-2 text-[13px] md:text-sm ${m.role === "user" ? "animated-user-message-card" : "animated-chat-message-card"}`}>
                     <div className="prose prose-sm prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10">
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
@@ -214,7 +216,7 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
           <AnimatedSendButton className="mb-0.5" onClick={handleSend} disabled={!input.trim() || isLoading} />
         </div>
         <p className="text-[10px] text-muted-foreground mt-2 text-center uppercase tracking-widest font-medium opacity-50">
-          Powered by Gemini AI & SME Prediction Engine
+          Powered by SME Prediction Engine
         </p>
       </div>
       </div>
