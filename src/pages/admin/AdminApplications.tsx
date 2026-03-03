@@ -54,10 +54,10 @@ export default function AdminApplications() {
       />
 
       <Card className="data-table-wrap">
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Applications</CardTitle>
           <Input
-            className="max-w-sm"
+            className="w-full sm:max-w-sm"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by applicant, email, purpose, or app ID"
@@ -96,6 +96,10 @@ export default function AdminApplications() {
               })}
             </TableBody>
           </Table>
+
+          {applicationsQuery.isLoading ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading applications...</div>
+          ) : null}
 
           {(rows.length === 0 && !applicationsQuery.isLoading) ? (
             <div className="p-4 text-sm text-muted-foreground">No applications found.</div>

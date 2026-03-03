@@ -88,9 +88,9 @@ export default function AdminUsers() {
       />
 
       <Card className="data-table-wrap">
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>User Directory</CardTitle>
-          <Input className="max-w-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users" />
+          <Input className="w-full sm:max-w-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users" />
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -186,6 +186,7 @@ export default function AdminUsers() {
               })}
             </TableBody>
           </Table>
+          {usersQuery.isLoading ? <div className="p-4 text-sm text-muted-foreground">Loading users...</div> : null}
           {rows.length === 0 ? <div className="p-4 text-sm text-muted-foreground">No users found.</div> : null}
         </CardContent>
       </Card>
