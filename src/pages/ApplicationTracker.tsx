@@ -601,19 +601,43 @@ ${htmlToUse}
           <p className="text-sm text-muted-foreground">{application.id.slice(0, 8)} | {application.purpose}</p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-1">
+          <div className="relative flex w-full items-start justify-between overflow-x-auto pb-4 md:pb-0 scrollbar-none">
             {timelineSteps.map((step, i) => {
               const isCurrent = step.status === "current";
               return (
-                <div key={step.label} className="flex gap-4 rounded-lg px-1 py-2">
-                  <div className="flex flex-col items-center">
-                    {step.status === "done" ? <CheckCircle2 className="h-6 w-6 text-success" /> : isCurrent ? <Clock3 className="h-6 w-6 text-primary" /> : <Circle className="h-6 w-6 text-muted" />}
-                    {i < timelineSteps.length - 1 ? <div className={cn("h-10 w-0.5", step.status === "done" ? "bg-success/60" : "bg-border")} /> : null}
+                <div key={step.label} className="relative flex flex-1 flex-col items-center text-center min-w-[120px]">
+                  {/* Connector Line */}
+                  {i < timelineSteps.length - 1 && (
+                    <div 
+                      className={cn(
+                        "absolute left-[50%] top-3 h-0.5 w-full -z-0",
+                        step.status === "done" ? "bg-success/60" : "bg-border"
+                      )} 
+                    />
+                  )}
+                  
+                  {/* Icon Container */}
+                  <div className="relative z-10 bg-card px-2">
+                    {step.status === "done" ? (
+                      <CheckCircle2 className="h-6 w-6 text-success" />
+                    ) : isCurrent ? (
+                      <Clock3 className="h-6 w-6 text-primary" />
+                    ) : (
+                      <Circle className="h-6 w-6 text-muted" />
+                    )}
                   </div>
-                  <div className="pb-6">
-                    <p className={cn("text-sm font-semibold", step.status === "pending" ? "text-muted-foreground" : "text-foreground")}>{step.label}</p>
-                    <p className="text-xs text-muted-foreground">{step.date}</p>
-                    {isCurrent ? <StatusBadge className="mt-2" status="under review" /> : null}
+
+                  {/* Text Content */}
+                  <div className="mt-3 px-1">
+                    <p className={cn("text-xs font-semibold", step.status === "pending" ? "text-muted-foreground" : "text-foreground")}>
+                      {step.label}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{step.date}</p>
+                    {isCurrent ? (
+                      <div className="mt-2 flex justify-center">
+                        <StatusBadge className="scale-90" status="under review" />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );

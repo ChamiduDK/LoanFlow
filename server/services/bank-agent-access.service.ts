@@ -5,6 +5,8 @@ import { supabaseAdmin } from "../lib/supabase/client";
 import { logAudit } from "./audit.service";
 import { getOutcome, upsertOutcome } from "./outcome.service";
 import { getTrackerSummary } from "./tracker.service";
+import { checkDocumentCompleteness, listDocumentsForApplication } from "./document.service";
+import { getLatestLoanProposal } from "./proposal.service";
 
 type BankAgentAccessRow = {
   id: string;
@@ -285,12 +287,22 @@ export async function verifyBankAgentAccess(token: string, pinCode: string): Pro
   };
   outcome: Record<string, unknown> | null;
   tracker_summary: Awaited<ReturnType<typeof getTrackerSummary>>;
+  proposal: Awaited<ReturnType<typeof getLatestLoanProposal>>;
+  document_checklist: Awaited<ReturnType<typeof checkDocumentCompleteness>>;
+  documents: Awaited<ReturnType<typeof listDocumentsForApplication>>;
 }> {
   const access = await verifyAccessCredentials(token, pinCode);
-  const [applicationSummary, trackerSummary, outcome] = await Promise.all([
-    loadApplicationSummary(access.application_id),
+  const applicationSummary = await loadApplicationSummary(access.application_id);
+  const checklistProductIds = applicationSummary.selected_product_id
+    ? [applicationSummary.selected_product_id]
+    : undefined;
+
+  const [trackerSummary, outcome, proposal, documentChecklist, documents] = await Promise.all([
     getTrackerSummary(access.user_id, access.application_id),
     getOutcome(access.user_id, access.application_id),
+    getLatestLoanProposal(access.user_id, access.application_id),
+    checkDocumentCompleteness(access.user_id, access.application_id, checklistProductIds),
+    listDocumentsForApplication(access.user_id, access.application_id),
   ]);
 
   return {
@@ -303,6 +315,9 @@ export async function verifyBankAgentAccess(token: string, pinCode: string): Pro
     application: applicationSummary,
     outcome,
     tracker_summary: trackerSummary,
+    proposal,
+    document_checklist: documentChecklist,
+    documents,
   };
 }
 
