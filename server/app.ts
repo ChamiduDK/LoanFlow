@@ -20,6 +20,7 @@ import { agentRouter } from "./routes/agent.routes";
 import { mlRouter } from "./routes/ml.routes";
 import { chatbotRouter } from "./routes/chatbot.routes";
 import { knowledgeRouter } from "./routes/knowledge.routes";
+import { bankAgentRouter } from "./routes/bank-agent.routes";
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.use("/api", agentRouter);
 app.use("/api", mlRouter);
 app.use("/api", chatbotRouter);
 app.use("/api", knowledgeRouter);
+app.use("/api", bankAgentRouter);
 
 app.use(errorHandler);
 

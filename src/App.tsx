@@ -27,6 +27,7 @@ const ApplicationTracker = lazy(() => import("./pages/ApplicationTracker"));
 const LoanManagement = lazy(() => import("./pages/LoanManagement"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const BankAgentAccess = lazy(() => import("./pages/BankAgentAccess"));
 const AdminOverview = lazy(() => import("./pages/admin/AdminOverview"));
 const AdminBanks = lazy(() => import("./pages/admin/AdminBanks"));
 const AdminSchemes = lazy(() => import("./pages/admin/AdminSchemes"));
@@ -60,6 +61,7 @@ function AppRoutes() {
     <Suspense fallback={<RouteFallback message="Loading page..." />}>
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/bank-agent-access/:token" element={<BankAgentAccess />} />
 
         <Route element={<RequireGuest />}>
           <Route path="/login" element={<Login />} />
