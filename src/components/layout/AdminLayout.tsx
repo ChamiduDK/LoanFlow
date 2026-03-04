@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import logo from "@/assets/logo.png";
 
 const adminNav = [
   { label: "Overview", icon: LayoutDashboard, path: "/admin" },
@@ -73,15 +74,20 @@ export default function AdminLayout() {
       >
         <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg">
           <div className="border-b border-sidebar-border/80 p-5">
-            <div className={cn("flex items-center gap-3", collapsed ? "lg:justify-center" : "")}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border bg-sidebar-accent text-sidebar-foreground">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div className={cn(collapsed ? "lg:hidden" : "")}>
-                <h2 className="text-base font-semibold text-sidebar-foreground">LankaLoan Admin</h2>
-                <p className="text-xs text-sidebar-foreground/60">Credit Ops Console</p>
-              </div>
-            </div>
+            <Link
+              to="/admin"
+              className={cn("flex items-center gap-3", collapsed ? "lg:justify-center" : "")}
+              aria-label="Admin home"
+            >
+              <img
+                src={logo}
+                alt="LoanFlow"
+                className={cn(
+                  "h-9 w-auto object-contain transition-all",
+                  collapsed ? "lg:h-9 lg:w-9" : "lg:h-10 lg:w-auto"
+                )}
+              />
+            </Link>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto p-3">
             {adminNav.map((item) => (
