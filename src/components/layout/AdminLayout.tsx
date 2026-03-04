@@ -55,7 +55,7 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="flex min-h-screen app-shell-bg">
+    <div className="flex h-screen min-h-0 overflow-hidden app-shell-bg">
       {open && (
         <button
           type="button"
@@ -64,11 +64,13 @@ export default function AdminLayout() {
           onClick={() => setOpen(false)}
         />
       )}
-      <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-[272px] -translate-x-full transition-all duration-300 ease-out lg:static lg:shrink-0 lg:translate-x-0",
-        open ? "translate-x-0" : "-translate-x-full",
-        collapsed ? "lg:w-[88px]" : "lg:w-[272px]",
-      )}>
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-[272px] -translate-x-full transition-all duration-300 ease-out lg:static lg:shrink-0 lg:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full",
+          collapsed ? "lg:w-[88px]" : "lg:w-[272px]",
+        )}
+      >
         <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg">
           <div className="border-b border-sidebar-border/80 p-5">
             <div className={cn("flex items-center gap-3", collapsed ? "lg:justify-center" : "")}>
@@ -81,7 +83,7 @@ export default function AdminLayout() {
               </div>
             </div>
           </div>
-          <nav className="flex-1 space-y-1 p-3">
+          <nav className="flex-1 space-y-1 overflow-y-auto p-3">
             {adminNav.map((item) => (
               <Link
                 key={item.path}
@@ -113,8 +115,8 @@ export default function AdminLayout() {
           </div>
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="z-30 border-b border-border/70 bg-background/95">
+      <div className="flex min-w-0 flex-1 flex-col min-h-0">
+        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-2">
               <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setOpen(true)}>
@@ -142,7 +144,7 @@ export default function AdminLayout() {
             </Button>
           </div>
         </header>
-        <main className="flex-1">
+        <main className="flex-1 min-h-0 overflow-y-auto">
           <div className="page-shell px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pt-6">
             <Outlet />
           </div>
