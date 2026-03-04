@@ -668,7 +668,7 @@ export default function AdminDocuments() {
       </Card>
 
       <Tabs defaultValue="documents">
-        <TabsList>
+        <TabsList className="w-full flex-wrap justify-start gap-2 overflow-x-auto rounded-xl bg-muted/50 p-1">
           <TabsTrigger value="documents">Required Documents</TabsTrigger>
           <TabsTrigger value="benefits">Benefits</TabsTrigger>
           <TabsTrigger value="collateral">Collateral</TabsTrigger>
@@ -699,103 +699,216 @@ export default function AdminDocuments() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Display Name</TableHead>
-                    <TableHead>Document Type Key</TableHead>
-                    <TableHead>Required</TableHead>
-                    <TableHead>Accepted Formats</TableHead>
-                    <TableHead>Verification Rules</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead className="w-40">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {requiredDocuments.map((doc, index) => (
-                    <TableRow key={`doc-${index}`}>
-                      <TableCell>
-                        <Input
-                          value={doc.display_name}
-                          onChange={(event) => updateRequiredDocument(index, { display_name: event.target.value })}
-                          placeholder="National Identity Card"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={doc.document_type}
-                          onChange={(event) => updateRequiredDocument(index, { document_type: event.target.value })}
-                          placeholder="nic"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={doc.is_required}
-                          onCheckedChange={(checked) => updateRequiredDocument(index, { is_required: checked })}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          {DOCUMENT_FORMAT_OPTIONS.map((format) => (
-                            <label key={format} className="inline-flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
-                              <Checkbox
-                                checked={doc.accepted_formats.includes(format)}
-                                onCheckedChange={(checked) => toggleDocumentFormat(index, format, checked === true)}
-                              />
-                              {format}
-                            </label>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
-                          <Input
-                            value={doc.verification_required_keywords}
-                            onChange={(event) => updateRequiredDocument(index, { verification_required_keywords: event.target.value })}
-                            placeholder="Required keywords (comma separated)"
-                          />
-                          <Input
-                            value={doc.verification_forbidden_keywords}
-                            onChange={(event) => updateRequiredDocument(index, { verification_forbidden_keywords: event.target.value })}
-                            placeholder="Forbidden keywords (comma separated)"
-                          />
-                          <div className="grid gap-2 md:grid-cols-2">
-                            <Input
-                              value={doc.verification_min_text_length}
-                              onChange={(event) => updateRequiredDocument(index, { verification_min_text_length: event.target.value })}
-                              placeholder="Min OCR chars"
-                              inputMode="numeric"
-                            />
-                            <Input
-                              value={doc.verification_ai_instructions}
-                              onChange={(event) => updateRequiredDocument(index, { verification_ai_instructions: event.target.value })}
-                              placeholder="Gemini instruction (optional)"
-                            />
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={doc.notes}
-                          onChange={(event) => updateRequiredDocument(index, { notes: event.target.value })}
-                          placeholder="Optional note"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button variant="outline" size="sm" onClick={() => applySriLankaPresetForRow(index)}>
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Preset
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => removeRequiredDocument(index)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="hidden xl:block overflow-x-auto">
+                <Table className="min-w-[1200px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Display Name</TableHead>
+                      <TableHead>Document Type Key</TableHead>
+                      <TableHead>Required</TableHead>
+                      <TableHead>Accepted Formats</TableHead>
+                      <TableHead>Verification Rules</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead className="w-40">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {requiredDocuments.map((doc, index) => (
+                      <TableRow key={`doc-${index}`}>
+                        <TableCell>
+                          <Input
+                            value={doc.display_name}
+                            onChange={(event) => updateRequiredDocument(index, { display_name: event.target.value })}
+                            placeholder="National Identity Card"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={doc.document_type}
+                            onChange={(event) => updateRequiredDocument(index, { document_type: event.target.value })}
+                            placeholder="nic"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={doc.is_required}
+                            onCheckedChange={(checked) => updateRequiredDocument(index, { is_required: checked })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            {DOCUMENT_FORMAT_OPTIONS.map((format) => (
+                              <label key={format} className="inline-flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+                                <Checkbox
+                                  checked={doc.accepted_formats.includes(format)}
+                                  onCheckedChange={(checked) => toggleDocumentFormat(index, format, checked === true)}
+                                />
+                                {format}
+                              </label>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-2">
+                            <Input
+                              value={doc.verification_required_keywords}
+                              onChange={(event) => updateRequiredDocument(index, { verification_required_keywords: event.target.value })}
+                              placeholder="Required keywords (comma separated)"
+                            />
+                            <Input
+                              value={doc.verification_forbidden_keywords}
+                              onChange={(event) => updateRequiredDocument(index, { verification_forbidden_keywords: event.target.value })}
+                              placeholder="Forbidden keywords (comma separated)"
+                            />
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <Input
+                                value={doc.verification_min_text_length}
+                                onChange={(event) => updateRequiredDocument(index, { verification_min_text_length: event.target.value })}
+                                placeholder="Min OCR chars"
+                                inputMode="numeric"
+                              />
+                              <Input
+                                value={doc.verification_ai_instructions}
+                                onChange={(event) => updateRequiredDocument(index, { verification_ai_instructions: event.target.value })}
+                                placeholder="Gemini instruction (optional)"
+                              />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={doc.notes}
+                            onChange={(event) => updateRequiredDocument(index, { notes: event.target.value })}
+                            placeholder="Optional note"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="outline" size="sm" onClick={() => applySriLankaPresetForRow(index)}>
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Preset
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => removeRequiredDocument(index)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="space-y-4 p-4 xl:hidden">
+                {requiredDocuments.map((doc, index) => (
+                  <div
+                    key={`doc-card-${index}`}
+                    className="rounded-xl border border-border/70 bg-card p-4 shadow-xs"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 space-y-2">
+                        <div className="space-y-1">
+                          <Label>Display Name</Label>
+                          <Input
+                            value={doc.display_name}
+                            onChange={(event) => updateRequiredDocument(index, { display_name: event.target.value })}
+                            placeholder="National Identity Card"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Document Type Key</Label>
+                          <Input
+                            value={doc.document_type}
+                            onChange={(event) => updateRequiredDocument(index, { document_type: event.target.value })}
+                            placeholder="nic"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => applySriLankaPresetForRow(index)}>
+                          <Sparkles className="h-4 w-4" />
+                          Preset
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => removeRequiredDocument(index)} aria-label="Remove row">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Required document</p>
+                        <p className="text-xs text-muted-foreground">Toggle if applicant must provide it</p>
+                      </div>
+                      <Switch
+                        checked={doc.is_required}
+                        onCheckedChange={(checked) => updateRequiredDocument(index, { is_required: checked })}
+                      />
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <Label className="text-sm font-semibold">Accepted Formats</Label>
+                      <div className="flex flex-wrap gap-3">
+                        {DOCUMENT_FORMAT_OPTIONS.map((format) => (
+                          <label key={format} className="inline-flex items-center gap-2 rounded-full border border-border/70 px-3 py-1 text-xs font-medium uppercase text-muted-foreground">
+                            <Checkbox
+                              checked={doc.accepted_formats.includes(format)}
+                              onCheckedChange={(checked) => toggleDocumentFormat(index, format, checked === true)}
+                            />
+                            {format}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>Required keywords (comma separated)</Label>
+                        <Input
+                          value={doc.verification_required_keywords}
+                          onChange={(event) => updateRequiredDocument(index, { verification_required_keywords: event.target.value })}
+                          placeholder="national identity card, sri lanka"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Forbidden keywords</Label>
+                        <Input
+                          value={doc.verification_forbidden_keywords}
+                          onChange={(event) => updateRequiredDocument(index, { verification_forbidden_keywords: event.target.value })}
+                          placeholder="sample, specimen"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Min OCR chars</Label>
+                        <Input
+                          value={doc.verification_min_text_length}
+                          onChange={(event) => updateRequiredDocument(index, { verification_min_text_length: event.target.value })}
+                          placeholder="e.g. 80"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <Label>AI verification instructions</Label>
+                        <Input
+                          value={doc.verification_ai_instructions}
+                          onChange={(event) => updateRequiredDocument(index, { verification_ai_instructions: event.target.value })}
+                          placeholder="Gemini instruction (optional)"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-1">
+                      <Label>Notes</Label>
+                      <Input
+                        value={doc.notes}
+                        onChange={(event) => updateRequiredDocument(index, { notes: event.target.value })}
+                        placeholder="Optional note for reviewers"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <div className="px-4 py-3 text-xs text-muted-foreground">
                 Use lowercase `document_type` keys (for example `nic`, `bank_statement`, `business_registration`, `utility_bill`, `tin_tax`, `financial_statements`). Apply Sri Lanka presets for strong OCR + Gemini verification defaults.
               </div>
@@ -819,47 +932,92 @@ export default function AdminDocuments() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Highlight</TableHead>
-                    <TableHead className="w-16">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {benefits.map((benefit, index) => (
-                    <TableRow key={`benefit-${index}`}>
-                      <TableCell>
-                        <Input
-                          value={benefit.title}
-                          onChange={(event) => updateBenefit(index, { title: event.target.value })}
-                          placeholder="Low processing fee"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={benefit.description}
-                          onChange={(event) => updateBenefit(index, { description: event.target.value })}
-                          placeholder="Describe this benefit"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={benefit.is_highlight}
-                          onCheckedChange={(checked) => updateBenefit(index, { is_highlight: checked })}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => removeBenefit(index)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Highlight</TableHead>
+                      <TableHead className="w-16">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {benefits.map((benefit, index) => (
+                      <TableRow key={`benefit-${index}`}>
+                        <TableCell>
+                          <Input
+                            value={benefit.title}
+                            onChange={(event) => updateBenefit(index, { title: event.target.value })}
+                            placeholder="Low processing fee"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={benefit.description}
+                            onChange={(event) => updateBenefit(index, { description: event.target.value })}
+                            placeholder="Describe this benefit"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={benefit.is_highlight}
+                            onCheckedChange={(checked) => updateBenefit(index, { is_highlight: checked })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" onClick={() => removeBenefit(index)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="space-y-3 p-4 md:hidden">
+                {benefits.map((benefit, index) => (
+                  <div
+                    key={`benefit-card-${index}`}
+                    className="rounded-xl border border-border/70 bg-card p-4 shadow-xs"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 space-y-2">
+                        <div className="space-y-1">
+                          <Label>Title</Label>
+                          <Input
+                            value={benefit.title}
+                            onChange={(event) => updateBenefit(index, { title: event.target.value })}
+                            placeholder="Low processing fee"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Description</Label>
+                          <Input
+                            value={benefit.description}
+                            onChange={(event) => updateBenefit(index, { description: event.target.value })}
+                            placeholder="Describe this benefit"
+                          />
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => removeBenefit(index)} aria-label="Remove benefit">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Highlight</p>
+                        <p className="text-xs text-muted-foreground">Surface this benefit in cards & promos</p>
+                      </div>
+                      <Switch
+                        checked={benefit.is_highlight}
+                        onCheckedChange={(checked) => updateBenefit(index, { is_highlight: checked })}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
