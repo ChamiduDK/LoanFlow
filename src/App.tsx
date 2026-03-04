@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { supabaseClient } from "@/lib/supabase/client";
 import RequireAdmin from "@/components/auth/RequireAdmin";
 import RequireAuth from "@/components/auth/RequireAuth";
@@ -108,7 +107,7 @@ function AppRoutes() {
 }
 
 const App = () => (
-  <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+  <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false} disableTransitionOnChange>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
@@ -116,7 +115,6 @@ const App = () => (
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>
-        <ThemeToggle floating />
       </TooltipProvider>
     </QueryClientProvider>
   </ThemeProvider>
