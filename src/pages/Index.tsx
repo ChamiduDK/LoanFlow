@@ -7,13 +7,8 @@ import {
   InputIcon,
 } from "@radix-ui/react-icons";
 import {
-  ArrowRight,
-  Calculator,
-  FileCheck2,
-  GitBranch,
   Github,
   Instagram,
-  Landmark,
   Linkedin,
   Mail,
   Phone,
@@ -116,36 +111,6 @@ const features = [
   },
 ];
 
-const onboardingBenefits = [
-  {
-    icon: Landmark,
-    label: "Compare suitable bank products in one place",
-    iconClassName: "text-info",
-  },
-  {
-    icon: Calculator,
-    label: "Estimate EMI and total repayment before applying",
-    iconClassName: "text-primary",
-  },
-  {
-    icon: FileCheck2,
-    label: "Check document readiness early to avoid delays",
-    iconClassName: "text-success",
-  },
-  {
-    icon: GitBranch,
-    label: "Track your application progress after submission",
-    iconClassName: "text-warning-foreground",
-  },
-];
-
-const focusAreas = [
-  { label: "Target Users", value: "Sri Lankan SME Owners" },
-  { label: "Platform", value: "Web-based Decision Support" },
-  { label: "Predictive Layer", value: "ML/DL Approval Estimation" },
-  { label: "Coverage", value: "Retail, Services, Manufacturing, Agriculture" },
-];
-
 const footerLinks = {
   product: [
     { label: "Loan Results", to: "/results" },
@@ -180,64 +145,6 @@ export default function Index() {
       <HeroSection />
 
       <main className="px-3 sm:px-4 md:px-6">
-        <section className="border-y border-border/70 bg-muted/35">
-          <div className="container px-2 py-12 sm:py-14 md:px-0 lg:py-16">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-              <div className="max-w-3xl">
-                <p className="inline-flex items-center rounded-full border border-border bg-card px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Built for Sri Lankan SMEs
-                </p>
-                <h2 className="mt-5 text-balance text-3xl font-bold leading-tight sm:text-4xl lg:text-[2.9rem]">
-                  Clearer Loan Decisions, Faster Action
-                </h2>
-                <p className="mt-4 text-pretty text-base text-muted-foreground sm:text-lg">
-                  LoanFlow gives business owners one practical workspace to compare lenders,
-                  estimate repayments, and prepare stronger submissions with fewer surprises.
-                </p>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  {onboardingBenefits.map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-start gap-3 rounded-xl border border-border/80 bg-card px-4 py-3 transition hover:bg-muted/30"
-                    >
-                      <item.icon className={`mt-0.5 h-4 w-4 ${item.iconClassName}`} />
-                      <p className="text-sm font-medium text-foreground">{item.label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Button size="lg" asChild className="w-full sm:w-auto">
-                    <Link to="/signup">
-                      Get Started
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                  <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
-                    <Link to="/results">View Loan Matches</Link>
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border/85 bg-card/95 p-5 shadow-sm">
-                <p className="text-sm font-semibold text-foreground">Platform Snapshot</p>
-                <div className="mt-4 space-y-3">
-                  {focusAreas.map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-lg border border-border/80 bg-background/80 px-4 py-3"
-                    >
-                      <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <ProcessBeamSection />
 
         <section id="features" className="py-16 sm:py-20">
