@@ -55,7 +55,7 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="flex min-h-screen overflow-hidden app-shell-bg">
+    <div className="flex min-h-screen app-shell-bg">
       {open && (
         <button
           type="button"
@@ -113,8 +113,8 @@ export default function AdminLayout() {
           </div>
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="z-30 border-b border-border/70 bg-background/95">
           <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-2">
               <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setOpen(true)}>
@@ -142,7 +142,7 @@ export default function AdminLayout() {
             </Button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1">
           <div className="page-shell px-4 pb-8 pt-4 sm:px-6 lg:px-8 lg:pt-6">
             <Outlet />
           </div>
