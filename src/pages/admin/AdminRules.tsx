@@ -591,112 +591,229 @@ export default function AdminRules() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Term</TableHead>
-                <TableHead>Tenure (Months)</TableHead>
-                <TableHead>Interest (%)</TableHead>
-                <TableHead>Fees (%)</TableHead>
-                <TableHead>Prepayment</TableHead>
-                <TableHead>Extra Terms JSON</TableHead>
-                <TableHead className="w-16">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {terms.map((term, index) => (
-                <TableRow key={`term-${index}`}>
-                  <TableCell>
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Term</TableHead>
+                  <TableHead>Tenure (Months)</TableHead>
+                  <TableHead>Interest (%)</TableHead>
+                  <TableHead>Fees (%)</TableHead>
+                  <TableHead>Prepayment</TableHead>
+                  <TableHead>Extra Terms JSON</TableHead>
+                  <TableHead className="w-16">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {terms.map((term, index) => (
+                  <TableRow key={`term-${index}`}>
+                    <TableCell>
+                      <Input
+                        value={term.term_label}
+                        onChange={(event) => updateTerm(index, { term_label: event.target.value })}
+                        placeholder="Standard"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={term.min_tenure_months}
+                          onChange={(event) => updateTerm(index, { min_tenure_months: event.target.value })}
+                          placeholder="Min"
+                        />
+                        <Input
+                          type="number"
+                          min={1}
+                          value={term.max_tenure_months}
+                          onChange={(event) => updateTerm(index, { max_tenure_months: event.target.value })}
+                          placeholder="Max"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          value={term.interest_rate_min}
+                          onChange={(event) => updateTerm(index, { interest_rate_min: event.target.value })}
+                          placeholder="Min"
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          value={term.interest_rate_max}
+                          onChange={(event) => updateTerm(index, { interest_rate_max: event.target.value })}
+                          placeholder="Max"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          value={term.processing_fee_pct}
+                          onChange={(event) => updateTerm(index, { processing_fee_pct: event.target.value })}
+                          placeholder="Processing"
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.01}
+                          value={term.late_fee_pct}
+                          onChange={(event) => updateTerm(index, { late_fee_pct: event.target.value })}
+                          placeholder="Late"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={term.prepayment_allowed}
+                        onCheckedChange={(checked) => updateTerm(index, { prepayment_allowed: checked })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Textarea
+                        className="min-h-20 font-mono text-xs"
+                        value={term.extra_terms_json}
+                        onChange={(event) => updateTerm(index, { extra_terms_json: event.target.value })}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => removeTerm(index)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-4 p-4 lg:hidden">
+            {terms.map((term, index) => (
+              <div
+                key={`term-card-${index}`}
+                className="rounded-xl border border-border/70 bg-card p-4 shadow-xs"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">Term Label</Label>
                     <Input
                       value={term.term_label}
                       onChange={(event) => updateTerm(index, { term_label: event.target.value })}
                       placeholder="Standard"
                     />
-                  </TableCell>
-                  <TableCell>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        value={term.min_tenure_months}
-                        onChange={(event) => updateTerm(index, { min_tenure_months: event.target.value })}
-                        placeholder="Min"
-                      />
-                      <Input
-                        type="number"
-                        min={1}
-                        value={term.max_tenure_months}
-                        onChange={(event) => updateTerm(index, { max_tenure_months: event.target.value })}
-                        placeholder="Max"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.01}
-                        value={term.interest_rate_min}
-                        onChange={(event) => updateTerm(index, { interest_rate_min: event.target.value })}
-                        placeholder="Min"
-                      />
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.01}
-                        value={term.interest_rate_max}
-                        onChange={(event) => updateTerm(index, { interest_rate_max: event.target.value })}
-                        placeholder="Max"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.01}
-                        value={term.processing_fee_pct}
-                        onChange={(event) => updateTerm(index, { processing_fee_pct: event.target.value })}
-                        placeholder="Processing"
-                      />
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.01}
-                        value={term.late_fee_pct}
-                        onChange={(event) => updateTerm(index, { late_fee_pct: event.target.value })}
-                        placeholder="Late"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={term.prepayment_allowed}
-                      onCheckedChange={(checked) => updateTerm(index, { prepayment_allowed: checked })}
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeTerm(index)} aria-label="Remove term">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>Tenure Min (months)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={term.min_tenure_months}
+                      onChange={(event) => updateTerm(index, { min_tenure_months: event.target.value })}
+                      placeholder="Min months"
                     />
-                  </TableCell>
-                  <TableCell>
-                    <Textarea
-                      className="min-h-20 font-mono text-xs"
-                      value={term.extra_terms_json}
-                      onChange={(event) => updateTerm(index, { extra_terms_json: event.target.value })}
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Tenure Max (months)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={term.max_tenure_months}
+                      onChange={(event) => updateTerm(index, { max_tenure_months: event.target.value })}
+                      placeholder="Max months"
                     />
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => removeTerm(index)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Interest Min (%)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={term.interest_rate_min}
+                      onChange={(event) => updateTerm(index, { interest_rate_min: event.target.value })}
+                      placeholder="Min %"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Interest Max (%)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={term.interest_rate_max}
+                      onChange={(event) => updateTerm(index, { interest_rate_max: event.target.value })}
+                      placeholder="Max %"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Processing Fee (%)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={term.processing_fee_pct}
+                      onChange={(event) => updateTerm(index, { processing_fee_pct: event.target.value })}
+                      placeholder="Processing %"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Late Fee (%)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={term.late_fee_pct}
+                      onChange={(event) => updateTerm(index, { late_fee_pct: event.target.value })}
+                      placeholder="Late %"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-border/70 bg-muted/40 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Prepayment allowed</p>
+                    <p className="text-xs text-muted-foreground">Toggle if borrower can prepay without penalty</p>
+                  </div>
+                  <Switch
+                    checked={term.prepayment_allowed}
+                    onCheckedChange={(checked) => updateTerm(index, { prepayment_allowed: checked })}
+                  />
+                </div>
+
+                <div className="mt-3 space-y-1">
+                  <Label>Extra Terms JSON</Label>
+                  <Textarea
+                    className="min-h-24 font-mono text-xs"
+                    value={term.extra_terms_json}
+                    onChange={(event) => updateTerm(index, { extra_terms_json: event.target.value })}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="px-4 py-3 text-xs text-muted-foreground">
             Keep at least one term row. Save validates tenure/rate ranges and JSON format.
           </div>
