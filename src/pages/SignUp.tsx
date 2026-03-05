@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LockKeyhole, Mail, Phone, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -6,6 +6,12 @@ import { supabaseClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api/client";
 import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
 import logo from "@/assets/logo.png";
+import home1 from "@/assets/HOME1.png";
+import home2 from "@/assets/HOME2.png";
+import home3 from "@/assets/HOME3.png";
+
+const HERO_IMAGES = [home1, home2, home3];
+const IMAGE_CHANGE_INTERVAL_MS = 3500;
 
 export default function SignUp() {
   const navigate = useNavigate();
@@ -18,6 +24,15 @@ export default function SignUp() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveImageIndex((currentIndex) => (currentIndex + 1) % HERO_IMAGES.length);
+    }, IMAGE_CHANGE_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -84,16 +99,21 @@ export default function SignUp() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="grid min-h-screen grid-cols-1 md:grid-cols-2">
+    <div className="min-h-[100dvh] bg-background text-foreground">
+      <div className="grid min-h-[100dvh] grid-cols-1 md:grid-cols-2">
         <div className="relative hidden h-full md:block">
-          <img
-            className="h-full w-full object-cover"
-            src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/leftSideImage.png"
-            alt="Authentication visual"
-            loading="lazy"
-            decoding="async"
-          />
+          {HERO_IMAGES.map((image, index) => (
+            <img
+              key={image}
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-in-out ${
+                index === activeImageIndex ? "opacity-100" : "opacity-0"
+              }`}
+              src={image}
+              alt={`Authentication visual ${index + 1}`}
+              loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
+            />
+          ))}
           <div className="absolute inset-0 bg-gradient-to-tr from-black/45 via-black/20 to-transparent" />
           <img
             src={logo}
@@ -102,20 +122,20 @@ export default function SignUp() {
           />
         </div>
 
-        <div className="flex w-full items-center justify-center px-4 py-8 sm:px-8">
+        <div className="flex w-full items-center justify-center px-4 py-4 sm:px-8 sm:py-6">
           <form
-            className="w-full max-w-md rounded-2xl border border-border/70 bg-card/85 p-6 shadow-lg backdrop-blur sm:p-8"
+            className="w-full max-w-sm rounded-2xl border border-border/70 bg-card/85 p-4 shadow-lg backdrop-blur sm:max-w-md sm:p-6"
             onSubmit={onSubmit}
           >
             <img src={logo} alt="LoanFlow" className="mx-auto h-10 w-auto object-contain md:h-11" />
-            <h2 className="mt-6 text-center text-3xl font-semibold sm:text-4xl">Sign up</h2>
-            <p className="mt-3 text-center text-sm text-muted-foreground">
+            <h2 className="mt-4 text-center text-2xl font-semibold sm:text-4xl">Sign up</h2>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
               Create your account to start your loan journey
             </p>
 
             <button
               type="button"
-              className="mt-8 flex h-12 w-full items-center justify-center rounded-full border border-border bg-muted/40 transition-colors hover:bg-muted/70"
+              className="mt-4 flex h-10 w-full items-center justify-center rounded-full border border-border bg-muted/40 transition-colors hover:bg-muted/70 sm:mt-5 sm:h-11"
             >
               <img
                 src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/googleLogo.svg"
@@ -123,14 +143,14 @@ export default function SignUp() {
               />
             </button>
 
-            <div className="my-5 flex w-full items-center gap-4">
+            <div className="my-4 flex w-full items-center gap-3">
               <div className="h-px w-full bg-border" />
-              <p className="w-full text-nowrap text-sm text-muted-foreground">or sign up with email</p>
+              <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">or sign up with email</p>
               <div className="h-px w-full bg-border" />
             </div>
 
             <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="flex h-12 items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+              <div className="flex h-11 items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:h-12">
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <input
                   id="first"
@@ -142,7 +162,7 @@ export default function SignUp() {
                   autoComplete="given-name"
                 />
               </div>
-              <div className="flex h-12 items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+              <div className="flex h-11 items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:h-12">
                 <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <input
                   id="last"
@@ -156,7 +176,7 @@ export default function SignUp() {
               </div>
             </div>
 
-            <div className="mt-4 flex h-12 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+            <div className="mt-3 flex h-11 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:mt-4 sm:h-12">
               <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 id="email"
@@ -170,7 +190,7 @@ export default function SignUp() {
               />
             </div>
 
-            <div className="mt-4 flex h-12 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+            <div className="mt-3 flex h-11 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:mt-4 sm:h-12">
               <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 id="phone"
@@ -182,7 +202,7 @@ export default function SignUp() {
               />
             </div>
 
-            <div className="mt-4 flex h-12 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+            <div className="mt-3 flex h-11 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:mt-4 sm:h-12">
               <LockKeyhole className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 id="password"
@@ -199,13 +219,13 @@ export default function SignUp() {
 
             <button
               type="submit"
-              className="mt-8 h-11 w-full rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-4 h-11 w-full rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-5"
               disabled={submitting}
             >
               {submitting ? "Creating account..." : "Create Account"}
             </button>
 
-            <p className="mt-4 text-center text-sm text-muted-foreground">
+            <p className="mt-2 text-center text-sm text-muted-foreground sm:mt-3">
               Already have an account?{" "}
               <Link to="/login" className="font-medium text-primary hover:underline">
                 Sign in
