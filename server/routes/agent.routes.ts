@@ -25,6 +25,13 @@ import {
 
 export const agentRouter = Router();
 
+function normalizePhoneNumber(value: string): string {
+  const trimmed = value.trim().replace(/^whatsapp:/i, "");
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+  return `${hasPlus ? "+" : ""}${digits}`;
+}
+
 function stripSignaturePrefix(signature: string): string {
   return signature.replace(/^sha256=/i, "").trim().toLowerCase();
 }
@@ -128,16 +135,20 @@ agentRouter.post(
       throw unauthorized();
     }
 
+    const normalizedPhone = normalizePhoneNumber(payload.phone_number);
+
     const { data, error } = await supabaseAdmin
       .from("user_channel_links")
       .upsert(
         {
           user_id: userId,
           channel_type: "whatsapp",
-          channel_user_id: payload.phone_number,
+          channel_user_id: normalizedPhone,
           is_verified: false,
           metadata: {
             link_state: "pending_verification",
+            normalized_phone: normalizedPhone,
+            requested_at: new Date().toISOString(),
           },
         },
         {
@@ -158,6 +169,7 @@ agentRouter.post(
       entityId: String(data.id),
       payloadSummary: {
         phone_number: payload.phone_number,
+        normalized_phone: normalizedPhone,
       },
       ipAddress: req.ip,
     });
@@ -165,7 +177,9 @@ agentRouter.post(
     sendSuccess(res, {
       link_id: data.id,
       status: "pending_verification",
-      instructions: "Use OTP verification flow in upcoming WhatsApp integration phase",
+      phone_number: normalizedPhone,
+      instructions:
+        "Send a WhatsApp message from this number to the configured LoanFlow Twilio number. Verification will be completed on first inbound message.",
     });
   }),
 );

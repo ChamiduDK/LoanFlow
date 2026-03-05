@@ -64,6 +64,20 @@ Copy `.env.example` to `.env` and configure:
   - `forbidden_keywords`: string array that must not appear
   - `min_text_length`: minimum OCR character count
   - `ai_instructions`: optional extra Gemini instruction for edge cases
+- Twilio WhatsApp/Voice channel:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_WHATSAPP_FROM_NUMBER` (example `whatsapp:+14155238886`)
+  - `TWILIO_WEBHOOK_BASE_URL` (public API base URL for signature validation)
+  - `TWILIO_VERIFY_SIGNATURE` (`true`/`false`, default `true`)
+- Voice notes and optional voice replies:
+  - `WHATSAPP_STT_PROVIDER` (`gemini` or `disabled`)
+  - `WHATSAPP_TTS_PROVIDER` (`google` or `disabled`)
+  - `WHATSAPP_SEND_VOICE_REPLY` (`true`/`false`)
+  - `WHATSAPP_AUTO_VERIFY_LINK` (`true`/`false`, auto-verifies linked number on first inbound message)
+  - `GOOGLE_TTS_API_KEY` (required when `WHATSAPP_TTS_PROVIDER=google`)
+  - `GOOGLE_TTS_LANGUAGE_CODE` (default `en-US`)
+  - `GOOGLE_TTS_VOICE_NAME` (optional)
 
 ## Backend Commands
 
@@ -85,6 +99,9 @@ Apply migrations in order:
 6. `supabase/migrations/20260222050000_ml_pipeline.sql`
 7. `supabase/migrations/20260225143000_document_verification_rules.sql`
 8. `supabase/migrations/20260301130000_user_approval_access.sql`
+9. `supabase/migrations/20260302144500_document_availability.sql`
+10. `supabase/migrations/20260303120000_bank_agent_access.sql`
+11. `supabase/migrations/20260305193000_whatsapp_channel_index.sql`
 
 Then apply baseline seed script:
 
@@ -159,3 +176,8 @@ Then apply baseline seed script:
   - `POST /api/agent/chat/webhook`
   - `GET /api/agent/context/:applicationId`
   - `POST /api/agent/actions/log`
+- WhatsApp + voice AI:
+  - `POST /api/whatsapp/twilio/webhook` (incoming WhatsApp text, voice notes, and documents)
+  - `POST /api/whatsapp/twilio/status` (delivery status callbacks)
+  - `POST /api/whatsapp/twilio/voice` (incoming voice call webhook)
+  - `POST /api/whatsapp/twilio/voice/process` (speech turn processing)

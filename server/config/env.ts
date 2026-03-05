@@ -3,6 +3,24 @@ import { z } from "zod";
 
 dotenv.config();
 
+const emptyStringToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => {
+    if (typeof value === "string" && value.trim().length === 0) {
+      return undefined;
+    }
+    return value;
+  }, schema);
+
+const booleanFromEnv = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+
+  return value;
+}, z.boolean());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().int().positive().default(4000),
@@ -42,6 +60,18 @@ const envSchema = z.object({
   AI_CHAT_PROVIDER: z.enum(["disabled", "gemini"]).default("gemini"),
   AI_CHAT_GEMINI_API_KEY: z.string().min(20).optional(),
   AI_CHAT_MODEL: z.string().min(3).default("gemini-2.5-flash"),
+  TWILIO_ACCOUNT_SID: emptyStringToUndefined(z.string().min(10).optional()),
+  TWILIO_AUTH_TOKEN: emptyStringToUndefined(z.string().min(10).optional()),
+  TWILIO_WHATSAPP_FROM_NUMBER: emptyStringToUndefined(z.string().min(10).optional()),
+  TWILIO_WEBHOOK_BASE_URL: emptyStringToUndefined(z.string().url().optional()),
+  TWILIO_VERIFY_SIGNATURE: booleanFromEnv.default(true),
+  WHATSAPP_STT_PROVIDER: z.enum(["disabled", "gemini"]).default("gemini"),
+  WHATSAPP_TTS_PROVIDER: z.enum(["disabled", "google"]).default("disabled"),
+  WHATSAPP_SEND_VOICE_REPLY: booleanFromEnv.default(false),
+  WHATSAPP_AUTO_VERIFY_LINK: booleanFromEnv.default(true),
+  GOOGLE_TTS_API_KEY: emptyStringToUndefined(z.string().min(20).optional()),
+  GOOGLE_TTS_LANGUAGE_CODE: z.string().min(4).default("en-US"),
+  GOOGLE_TTS_VOICE_NAME: emptyStringToUndefined(z.string().min(3).optional()),
 });
 
 const parsed = envSchema.safeParse(process.env);
