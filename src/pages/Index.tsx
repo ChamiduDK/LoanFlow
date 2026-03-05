@@ -21,6 +21,9 @@ import { Button } from "@/components/ui/button";
 import ProcessBeamSection from "@/components/home/process-beam-section";
 import EMICalculatorSection from "@/components/home/EMICalculatorSection";
 import { BentoCard, BentoGrid } from "@/registry/magicui/bento-grid";
+import home1 from "@/assets/HOME1.png";
+import home2 from "@/assets/HOME2.png";
+import home3 from "@/assets/HOME3.png";
 import logo from "@/assets/logo.png";
 
 const features = [
@@ -143,6 +146,22 @@ export default function Index() {
   return (
     <div className="min-h-screen overflow-x-clip bg-background text-foreground">
       <HeroSection />
+
+      <section className="px-3 pb-8 pt-4 sm:px-4 md:px-6 md:pb-12">
+        <div className="container px-2 md:px-0">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="aspect-square overflow-hidden rounded-2xl bg-card shadow-sm">
+              <img src={home1} alt="LoanFlow showcase 1" className="h-full w-full object-cover" />
+            </div>
+            <div className="aspect-square overflow-hidden rounded-2xl bg-card shadow-sm">
+              <img src={home2} alt="LoanFlow showcase 2" className="h-full w-full object-cover" />
+            </div>
+            <div className="aspect-square overflow-hidden rounded-2xl bg-card shadow-sm">
+              <img src={home3} alt="LoanFlow showcase 3" className="h-full w-full object-cover" />
+            </div>
+          </div>
+        </div>
+      </section>
 
       <main className="px-3 sm:px-4 md:px-6">
         <ProcessBeamSection />

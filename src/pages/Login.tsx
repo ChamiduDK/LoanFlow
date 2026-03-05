@@ -1,14 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ShieldCheck, Sparkles } from "lucide-react";
+import { LockKeyhole, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
 import { normalizeEmail, resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 import { supabaseClient } from "@/lib/supabase/client";
+import logo from "@/assets/logo.png";
 
 type MePayload = {
   profile?: {
@@ -66,53 +63,114 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background px-2 py-8 md:px-4">
-      <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-5xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md lg:grid-cols-2">
-        <div className="hidden border-r border-border bg-muted/35 p-10 lg:flex lg:flex-col lg:justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-semibold text-foreground">LoanFlow</span>
-          </div>
-          <div className="space-y-4">
-            <h2 className="text-3xl font-semibold text-foreground">Welcome back to your lending workspace</h2>
-            <p className="text-sm text-muted-foreground">
-              Continue applications, manage documents, and track approvals across banks.
-            </p>
-            <div className="space-y-2 text-sm text-foreground">
-              <p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-success" /> Secure account access</p>
-              <p className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4 text-muted-foreground" /> AI-driven recommendation engine</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">Trusted by SME founders and finance teams across Sri Lanka.</p>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="grid min-h-screen grid-cols-1 md:grid-cols-2">
+        <div className="relative hidden h-full md:block">
+          <img
+            className="h-full w-full object-cover"
+            src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/leftSideImage.png"
+            alt="Authentication visual"
+            loading="lazy"
+            decoding="async"
+          />
+          <div className="absolute inset-0 bg-gradient-to-tr from-black/45 via-black/20 to-transparent" />
+          <img
+            src={logo}
+            alt="LoanFlow"
+            className="absolute left-8 top-8 h-10 w-auto object-contain drop-shadow-md"
+          />
         </div>
 
-        <div className="flex items-center justify-center p-6 sm:p-10">
-          <Card className="w-full max-w-md border-0 shadow-none">
-            <CardHeader className="px-0 text-left">
-              <div className="mb-2 flex items-center gap-2 lg:hidden">
-                <span className="font-semibold">LoanFlow</span>
+        <div className="flex w-full items-center justify-center px-4 py-8 sm:px-8">
+          <form
+            className="w-full max-w-md rounded-2xl border border-border/70 bg-card/85 p-6 shadow-lg backdrop-blur sm:p-8"
+            onSubmit={onSubmit}
+          >
+            <img src={logo} alt="LoanFlow" className="mx-auto h-10 w-auto object-contain md:h-11" />
+            <h2 className="mt-6 text-center text-3xl font-semibold sm:text-4xl">Sign in</h2>
+            <p className="mt-3 text-center text-sm text-muted-foreground">
+              Welcome back! Please sign in to continue
+            </p>
+
+            <button
+              type="button"
+              className="mt-8 flex h-12 w-full items-center justify-center rounded-full border border-border bg-muted/40 transition-colors hover:bg-muted/70"
+            >
+              <img
+                src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/googleLogo.svg"
+                alt="googleLogo"
+              />
+            </button>
+
+            <div className="my-5 flex w-full items-center gap-4">
+              <div className="h-px w-full bg-border" />
+              <p className="w-full text-nowrap text-sm text-muted-foreground">or sign in with email</p>
+              <div className="h-px w-full bg-border" />
+            </div>
+
+            <div className="flex h-12 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email id"
+                className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/80 outline-none"
+                required
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="mt-6 flex h-12 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3">
+              <LockKeyhole className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/80 outline-none"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            <div className="mt-8 flex w-full items-center justify-between text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <input className="h-4 w-4 accent-primary" type="checkbox" id="remember-login" />
+                <label className="text-sm" htmlFor="remember-login">
+                  Remember me
+                </label>
               </div>
-              <CardTitle className="text-2xl">Sign In</CardTitle>
-              <CardDescription>Access your dashboard and continue your loan journey.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 px-0">
-              <form className="space-y-4" onSubmit={onSubmit}>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
-                </div>
-                <Button className="w-full" type="submit" disabled={submitting}>
-                  {submitting ? "Signing in..." : "Sign In"}
-                </Button>
-              </form>
-              <p className="text-center text-sm text-muted-foreground">
-                Do not have an account? <Link to="/signup" className="font-medium text-primary hover:underline">Create one</Link>
-              </p>
-            </CardContent>
-          </Card>
+              <button
+                type="button"
+                className="text-sm underline"
+                onClick={() =>
+                  toast({
+                    title: "Password reset",
+                    description: "Password reset flow is not configured yet.",
+                  })
+                }
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="mt-8 h-11 w-full rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitting}
+            >
+              {submitting ? "Signing in..." : "Login"}
+            </button>
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link to="/signup" className="font-medium text-primary hover:underline">
+                Sign up
+              </Link>
+            </p>
+          </form>
         </div>
       </div>
     </div>
