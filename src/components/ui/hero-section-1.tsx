@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import {
   ArrowRight,
   Banknote,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedGroup } from '@/components/ui/animated-group';
+import { FloatingDots } from '@/components/ui/floating-dots';
 import { cn } from '@/lib/utils';
 import heroMain from '@/assets/hero.png';
 import logo from '@/assets/logo.png';
@@ -50,6 +52,35 @@ const partnerIcons = [
   { name: 'Business Ops', Icon: Building2 },
   { name: 'Finance', Icon: Banknote },
 ];
+
+const GradientBg = () => {
+  const { theme } = useTheme();
+
+  return (
+    <div className='relative h-full w-full overflow-hidden isolate bg-background'>
+      <FloatingDots
+        className='w-full'
+        maxRadius={0.5}
+        maxSpeed={0.8}
+        minSpeed={0.1}
+        color={theme === 'dark' ? 'white' : 'black'}
+      />
+      <div
+        className='absolute inset-x-0 -top-40 -z-10 overflow-hidden transform-gpu blur-3xl sm:-top-80'
+        aria-hidden='true'
+      >
+        <div
+          className='relative left-[calc(50%-11rem)] aspect-[1155/678] w-[36.125rem] -translate-x-1/2 rotate-[30deg] bg-gradient-to-tr from-primary to-[#9089fc] opacity-30 sm:left-[calc(80%-30rem)] sm:w-[72.1875rem]'
+          style={{
+            clipPath:
+              'polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)',
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
 export function HeroSection() {
   return (
     <>
@@ -64,7 +95,10 @@ export function HeroSection() {
           <div className='absolute left-0 top-0 h-[80rem] w-56 -translate-y-[350px] -rotate-45 bg-[radial-gradient(50%_50%_at_50%_50%,hsla(0,0%,85%,.04)_0,hsla(0,0%,45%,.02)_80%,transparent_100%)]' />
         </div>
 
-        <section>
+        <section className='relative overflow-hidden'>
+          <div aria-hidden className='absolute inset-0 -z-30'>
+            <GradientBg />
+          </div>
           <div className='relative pt-20 sm:pt-24 md:pt-32'>
             <AnimatedGroup
               variants={{
