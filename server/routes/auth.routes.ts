@@ -158,6 +158,8 @@ authRouter.get(
       throw internalError("Failed to load profile", error);
     }
 
+    res.setHeader("Cache-Control", "no-store");
+
     sendSuccess(res, {
       user: req.auth?.user,
       profile,

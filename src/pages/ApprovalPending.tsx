@@ -25,7 +25,10 @@ export default function ApprovalPending() {
     queryFn: () => apiFetch<MePayload>("/api/me"),
     enabled: Boolean(sessionQuery.data),
     retry: false,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: 5_000,
   });
 
   if (sessionQuery.isLoading || (sessionQuery.data && meQuery.isLoading)) {
