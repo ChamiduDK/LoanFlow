@@ -87,6 +87,15 @@ Copy `.env.example` to `.env` and configure:
 
 Frontend commands are unchanged (`npm run dev`, `npm run build`, etc.).
 
+## Heroku Deployment
+
+- Deploy from the repository root with `package.json`, `package-lock.json`, and `Procfile` at the top level.
+- Heroku will use the root `Procfile` (`web: npm start`) for the web process.
+- The Express server serves API routes from `/api/*` and the built frontend from `dist/`.
+- Heroku runs the `build` script during Node.js deploys, so `dist/` is rebuilt on the platform.
+- The app pins the Heroku runtime to Node.js `24.x` via `package.json`.
+- Use `.slugignore` to keep local-only files out of the Heroku slug.
+
 ## Supabase SQL Delivery
 
 Apply migrations in order:

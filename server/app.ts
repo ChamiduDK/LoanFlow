@@ -3,6 +3,9 @@ import cors, { type CorsOptions } from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
 import { globalRateLimiter } from "./middleware/rate-limiter";
@@ -24,6 +27,9 @@ import { bankAgentRouter } from "./routes/bank-agent.routes";
 import { whatsappRouter } from "./routes/whatsapp.routes";
 
 const app = express();
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.resolve(currentDir, "..", "dist");
+const distIndex = path.join(distDir, "index.html");
 
 const allowedOrigins = env.CORS_ORIGIN
   .split(",")
@@ -64,6 +70,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 app.get("/", (_req, res) => {
+  if (existsSync(distIndex)) {
+    res.sendFile(distIndex);
+    return;
+  }
+
   res.json({
     success: true,
     data: {
@@ -90,6 +101,21 @@ app.use("/api", mlRouter);
 app.use("/api", chatbotRouter);
 app.use("/api", knowledgeRouter);
 app.use("/api", whatsappRouter);
+
+app.use(express.static(distDir));
+
+app.get(/^\/(?!api(?:\/|$)).*/, (req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    next();
+    return;
+  }
+
+  res.sendFile(distIndex, (error) => {
+    if (error) {
+      next(error);
+    }
+  });
+});
 
 app.use(errorHandler);
 
