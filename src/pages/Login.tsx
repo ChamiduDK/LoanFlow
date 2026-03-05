@@ -94,11 +94,9 @@ export default function Login() {
             />
           ))}
           <div className="absolute inset-0 bg-gradient-to-tr from-black/45 via-black/20 to-transparent" />
-          <img
-            src={logo}
-            alt="LoanFlow"
-            className="absolute left-8 top-8 h-10 w-auto object-contain drop-shadow-md"
-          />
+          <Link to="/" aria-label="Go to home" className="absolute left-8 top-8">
+            <img src={logo} alt="LoanFlow" className="h-10 w-auto object-contain drop-shadow-md" />
+          </Link>
         </div>
 
         <div className="flex h-full w-full items-center justify-center overflow-hidden px-4 py-3 sm:px-8 sm:py-6">
@@ -106,7 +104,9 @@ export default function Login() {
             className="w-full max-w-sm rounded-2xl border border-border/70 bg-card/85 p-4 shadow-lg backdrop-blur sm:max-w-md sm:p-6"
             onSubmit={onSubmit}
           >
-            <img src={logo} alt="LoanFlow" className="mx-auto h-10 w-auto object-contain md:h-11" />
+            <Link to="/" aria-label="Go to home" className="mx-auto block w-fit">
+              <img src={logo} alt="LoanFlow" className="h-10 w-auto object-contain md:h-11" />
+            </Link>
             <h2 className="mt-4 text-center text-2xl font-semibold sm:text-4xl">Sign in</h2>
             <p className="mt-2 text-center text-sm text-muted-foreground">
               Welcome back! Please sign in to continue
