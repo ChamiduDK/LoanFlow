@@ -85,6 +85,32 @@ export class AiService {
     return result.text;
   }
 
+  async generateTextFromParts(
+    systemPrompt: string,
+    parts: Array<Record<string, unknown>>,
+    overrides?: Record<string, unknown>,
+  ): Promise<string> {
+    return this.withRetry(async () => {
+      const ai = this.getGenAI();
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: [
+          {
+            role: "user",
+            parts: parts as any[],
+          },
+        ],
+        config: {
+          temperature: 0,
+          systemInstruction: systemPrompt,
+          ...(overrides ?? {}),
+        } as any,
+      });
+
+      return response.text || "";
+    });
+  }
+
   private async withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
     try {
       return await fn();

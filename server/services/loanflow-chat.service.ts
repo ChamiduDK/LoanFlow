@@ -7,6 +7,8 @@ const MODEL_NAME = "LoanFlow AI";
 const WEB_CHANNEL = "web";
 const REFERENCE_CACHE_TTL_MS = 2 * 60 * 1000;
 
+export type ChatChannel = "web" | "whatsapp" | "voice_call";
+
 type ChatSessionRow = {
   id: string;
   user_id: string;
@@ -798,6 +800,9 @@ export async function sendLoanFlowChatMessage(
   input: {
     session_id?: string;
     message: string;
+    channel?: ChatChannel;
+    message_metadata?: Record<string, unknown>;
+    session_metadata?: Record<string, unknown>;
   },
 ): Promise<SendMessageResult> {
   const message = input.message.trim();
@@ -811,6 +816,7 @@ export async function sendLoanFlowChatMessage(
   const session = input.session_id
     ? await requireSessionOwnership(userId, input.session_id)
     : await ensureActiveWebSession(userId);
+  const effectiveChannel = input.channel ?? WEB_CHANNEL;
 
   const userInsert = await supabaseAdmin
     .from("chat_messages")
@@ -820,7 +826,8 @@ export async function sendLoanFlowChatMessage(
       role: "user",
       message_text: message,
       message_json: {
-        channel: WEB_CHANNEL,
+        channel: effectiveChannel,
+        ...(input.message_metadata ?? {}),
       },
     })
     .select("id, session_id, user_id, role, message_text, message_json, created_at")
@@ -878,6 +885,7 @@ STRICT RULES:
   let responseText: string;
   type AssistantMeta = {
     model: string;
+    channel: ChatChannel;
     intents: string[];
     matched_product_ids: string[];
     matched_bank_ids: string[];
@@ -896,6 +904,7 @@ STRICT RULES:
     matched_product_ids: topProducts.map(p => p.id),
     matched_bank_ids: topProducts.map(p => p.bank_id),
     reference_generated_at: reference.generated_at,
+    channel: effectiveChannel,
   };
 
   if (env.AI_CHAT_PROVIDER === "gemini") {
@@ -936,9 +945,10 @@ STRICT RULES:
     .update({
       metadata: {
         ...(session.metadata ?? {}),
-        channel: WEB_CHANNEL,
+        channel: effectiveChannel,
         model: MODEL_NAME,
         last_message_at: assistantInsert.data.created_at,
+        ...(input.session_metadata ?? {}),
       },
     })
     .eq("id", session.id)
