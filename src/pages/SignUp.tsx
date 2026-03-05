@@ -95,7 +95,7 @@ export default function SignUp() {
     });
 
     const state = location.state as { from?: string } | null;
-    navigate(resolvePostAuthPath(state?.from, { isAdmin: false, isApproved: false }), { replace: true });
+    navigate(resolvePostAuthPath(state?.from, { isAdmin: false, isApproved: true }), { replace: true });
   };
 
   return (
