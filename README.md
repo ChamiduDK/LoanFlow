@@ -191,3 +191,61 @@ Then apply baseline seed script:
   - `POST /api/whatsapp/twilio/status` (delivery status callbacks)
   - `POST /api/whatsapp/twilio/voice` (incoming voice call webhook)
   - `POST /api/whatsapp/twilio/voice/process` (speech turn processing)
+  - `POST /api/whatsapp/dev/simulate/text` (localhost text simulation)
+  - `POST /api/whatsapp/dev/simulate/voice` (localhost voice-note simulation with multipart file upload)
+  - `POST /api/whatsapp/dev/simulate/document` (localhost document upload simulation with multipart file upload)
+  - `POST /api/whatsapp/dev/simulate/call` (localhost voice-call turn simulation)
+
+## Localhost Support
+
+The full WhatsApp assistant logic now supports localhost in two modes:
+
+1. Real Twilio mode
+- Run the API locally with `npm run server:dev`
+- Expose it with a tunnel such as `ngrok http 4000`
+- Set `TWILIO_WEBHOOK_BASE_URL` to the public tunnel URL
+- Keep `TWILIO_VERIFY_SIGNATURE=true`
+
+2. Pure localhost simulation mode
+- Run the API locally with `npm run server:dev`
+- You do not need Twilio or a tunnel
+- You can call these local dev endpoints directly:
+  - `POST http://localhost:4000/api/whatsapp/dev/simulate/text`
+  - `POST http://localhost:4000/api/whatsapp/dev/simulate/voice`
+  - `POST http://localhost:4000/api/whatsapp/dev/simulate/document`
+  - `POST http://localhost:4000/api/whatsapp/dev/simulate/call`
+
+Example localhost requests:
+
+```bash
+curl -X POST http://localhost:4000/api/whatsapp/dev/simulate/text \
+  -H "Content-Type: application/json" \
+  -d "{\"from\":\"+94770000000\",\"body\":\"Can I get a loan for my grocery business?\"}"
+```
+
+```bash
+curl -X POST http://localhost:4000/api/whatsapp/dev/simulate/call \
+  -H "Content-Type: application/json" \
+  -d "{\"from\":\"+94770000000\",\"speechResult\":\"What documents do I need for a small business loan?\"}"
+```
+
+```bash
+curl -X POST http://localhost:4000/api/whatsapp/dev/simulate/document \
+  -F "from=+94770000000" \
+  -F "body=bank statement" \
+  -F "file=@C:/path/to/statement.pdf"
+```
+
+```bash
+curl -X POST http://localhost:4000/api/whatsapp/dev/simulate/voice \
+  -F "from=+94770000000" \
+  -F "body=voice note test" \
+  -F "file=@C:/path/to/voice.ogg"
+```
+
+Local simulation still requires:
+- a valid linked WhatsApp phone in `user_channel_links` for linked-user flows
+- Gemini keys for AI replies / transcription
+- OCR configuration for document scanning
+
+If you only want to test route plumbing on localhost, you can disable Twilio signature checks with `TWILIO_VERIFY_SIGNATURE=false`.

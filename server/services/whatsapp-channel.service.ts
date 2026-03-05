@@ -16,6 +16,11 @@ type TwilioWebhookPayload = Record<string, unknown>;
 type MediaEntry = {
   mediaUrl: string;
   contentType: string;
+  localFile?: {
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+  };
 };
 
 type ChannelLinkRow = {
@@ -396,7 +401,13 @@ async function processVoiceMessage(input: {
   body: string;
   media: MediaEntry;
 }): Promise<{ text: string; mediaUrl?: string }> {
-  const downloaded = await twilioService.downloadMedia(input.media.mediaUrl, extensionFromMime(input.media.contentType));
+  const downloaded = input.media.localFile
+    ? {
+      buffer: input.media.localFile.buffer,
+      mimeType: input.media.localFile.mimeType,
+      fileName: input.media.localFile.fileName,
+    }
+    : await twilioService.downloadMedia(input.media.mediaUrl, extensionFromMime(input.media.contentType));
   const transcript = await transcribeAudioWithGemini({
     buffer: downloaded.buffer,
     mimeType: downloaded.mimeType || input.media.contentType || "audio/ogg",
@@ -490,7 +501,13 @@ async function processDocumentMessage(input: {
     return { text: msg };
   }
 
-  const download = await twilioService.downloadMedia(input.media.mediaUrl, extensionFromMime(input.media.contentType));
+  const download = input.media.localFile
+    ? {
+      buffer: input.media.localFile.buffer,
+      mimeType: input.media.localFile.mimeType,
+      fileName: input.media.localFile.fileName,
+    }
+    : await twilioService.downloadMedia(input.media.mediaUrl, extensionFromMime(input.media.contentType));
   const normalizedMime = download.mimeType || input.media.contentType || "application/octet-stream";
   const fileNameWithExtension = download.fileName.includes(".")
     ? download.fileName
@@ -608,6 +625,19 @@ async function processLinkedInbound(payload: {
 }
 
 export async function handleIncomingWhatsAppWebhook(payload: TwilioWebhookPayload, ipAddress?: string): Promise<void> {
+  const result = await processIncomingWhatsAppMessage(payload, ipAddress);
+
+  await twilioService.sendMessage({
+    to: result.from,
+    body: result.replyText,
+    mediaUrl: result.replyMediaUrl,
+  });
+}
+
+export async function processIncomingWhatsAppMessage(
+  payload: TwilioWebhookPayload,
+  ipAddress?: string,
+): Promise<{ from: string; replyText: string; replyMediaUrl?: string }> {
   const from = String(payload.From ?? "").trim();
   if (!from) {
     throw internalError("Missing From in WhatsApp webhook payload");
@@ -638,12 +668,6 @@ export async function handleIncomingWhatsAppWebhook(payload: TwilioWebhookPayloa
     responseMediaUrl = processed.mediaUrl;
   }
 
-  await twilioService.sendMessage({
-    to: from,
-    body: responseText,
-    mediaUrl: responseMediaUrl,
-  });
-
   await logAudit({
     actorUserId: link?.user_id ?? null,
     action: "whatsapp.inbound.processed",
@@ -657,6 +681,12 @@ export async function handleIncomingWhatsAppWebhook(payload: TwilioWebhookPayloa
     },
     ipAddress: ipAddress ?? null,
   });
+
+  return {
+    from,
+    replyText: responseText,
+    replyMediaUrl: responseMediaUrl,
+  };
 }
 
 export async function handleVoiceCallTurn(input: {
@@ -687,4 +717,103 @@ export async function handleVoiceCallTurn(input: {
   });
 
   return toSpeakableText(ai.assistant_message.message_text ?? "Please share your question again.");
+}
+
+export async function simulateIncomingWhatsAppText(input: {
+  from: string;
+  body: string;
+  ipAddress?: string;
+}): Promise<{ replyText: string; replyMediaUrl?: string }> {
+  const result = await processIncomingWhatsAppMessage(
+    {
+      From: input.from,
+      Body: input.body,
+      NumMedia: 0,
+    },
+    input.ipAddress,
+  );
+
+  return {
+    replyText: result.replyText,
+    replyMediaUrl: result.replyMediaUrl,
+  };
+}
+
+export async function simulateIncomingWhatsAppAudio(input: {
+  from: string;
+  body?: string;
+  fileName: string;
+  mimeType: string;
+  buffer: Buffer;
+  ipAddress?: string;
+}): Promise<{ replyText: string; replyMediaUrl?: string }> {
+  const link = await resolveWhatsappLink(input.from);
+  if (!link) {
+    return {
+      replyText: "Your number is not linked to a LoanFlow account yet. Link WhatsApp first, then retry the voice note.",
+    };
+  }
+
+  await markLinkVerified(link);
+  const session = await ensureChannelSession(link, input.from, "whatsapp");
+  const result = await processVoiceMessage({
+    link,
+    session,
+    from: input.from,
+    body: input.body ?? "",
+    media: {
+      mediaUrl: "",
+      contentType: input.mimeType,
+      localFile: {
+        buffer: input.buffer,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+      },
+    },
+  });
+
+  return {
+    replyText: result.text,
+    replyMediaUrl: result.mediaUrl,
+  };
+}
+
+export async function simulateIncomingWhatsAppDocument(input: {
+  from: string;
+  body?: string;
+  fileName: string;
+  mimeType: string;
+  buffer: Buffer;
+  ipAddress?: string;
+}): Promise<{ replyText: string; replyMediaUrl?: string }> {
+  const link = await resolveWhatsappLink(input.from);
+  if (!link) {
+    return {
+      replyText: "Your number is not linked to a LoanFlow account yet. Link WhatsApp first, then retry the document upload.",
+    };
+  }
+
+  await markLinkVerified(link);
+  const session = await ensureChannelSession(link, input.from, "whatsapp");
+  const result = await processDocumentMessage({
+    link,
+    session,
+    from: input.from,
+    body: input.body ?? "",
+    media: {
+      mediaUrl: "",
+      contentType: input.mimeType,
+      localFile: {
+        buffer: input.buffer,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+      },
+    },
+    ipAddress: input.ipAddress,
+  });
+
+  return {
+    replyText: result.text,
+    replyMediaUrl: result.mediaUrl,
+  };
 }
