@@ -20,10 +20,12 @@ export default function RequireAdmin() {
     queryFn: () => apiFetch<MePayload>("/api/me"),
     enabled: Boolean(sessionQuery.data),
     retry: false,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
-  if (sessionQuery.isLoading || (sessionQuery.data && meQuery.isLoading)) {
+  if (sessionQuery.isLoading || (sessionQuery.data && (meQuery.isLoading || meQuery.isFetching))) {
     return <RouteFallback message="Checking your access..." />;
   }
 

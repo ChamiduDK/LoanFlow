@@ -22,6 +22,18 @@ describe("auth utils", () => {
     expect(resolvePostAuthPath(undefined, { isAdmin: false, isApproved: false })).toBe("/approval-pending");
   });
 
+  it("blocks pending regular users from all protected user routes", () => {
+    expect(resolvePostAuthPath("/chat", { isAdmin: false, isApproved: false })).toBe("/approval-pending");
+    expect(resolvePostAuthPath("/profile", { isAdmin: false, isApproved: false })).toBe("/approval-pending");
+    expect(resolvePostAuthPath("/notifications", { isAdmin: false, isApproved: false })).toBe("/approval-pending");
+  });
+
+  it("keeps protected user route for approved users", () => {
+    expect(resolvePostAuthPath("/chat", { isAdmin: false, isApproved: true })).toBe("/chat");
+    expect(resolvePostAuthPath("/profile", { isAdmin: false, isApproved: true })).toBe("/profile");
+    expect(resolvePostAuthPath("/notifications", { isAdmin: false, isApproved: true })).toBe("/notifications");
+  });
+
   it("treats missing approval flag as approved for backward compatibility", () => {
     expect(resolveAccessState({ is_admin: false })).toEqual({ isAdmin: false, isApproved: true });
   });

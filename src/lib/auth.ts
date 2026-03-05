@@ -13,6 +13,7 @@ export type MeProfileAccess = {
 } | null | undefined;
 
 const userAppRoutePrefixes = [
+  "/chat",
   "/dashboard",
   "/apply",
   "/results",
@@ -20,6 +21,8 @@ const userAppRoutePrefixes = [
   "/documents",
   "/tracker",
   "/management",
+  "/profile",
+  "/notifications",
 ];
 
 function defaultPostAuthPath(access: AccessState): string {
