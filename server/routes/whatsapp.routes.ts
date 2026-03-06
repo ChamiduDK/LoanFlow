@@ -6,6 +6,7 @@ import { badRequest, unauthorized } from "../lib/errors";
 import { parseWithSchema } from "../lib/validation";
 import { logAudit } from "../services/audit.service";
 import { twilioService } from "../services/twilio.service";
+import { supabaseAdmin } from "../lib/supabase/client";
 import {
   handleIncomingWhatsAppWebhook,
   handleVoiceCallTurn,
@@ -21,6 +22,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 const devTextSchema = z.object({
   from: z.string().min(7).max(30),
   body: z.string().min(1).max(3000),
+});
+
+const devLinkSchema = z.object({
+  phone_number: z.string().min(7).max(30),
+  user_id: z.string().uuid().optional(),
+  email: z.string().email().optional(),
+}).refine((value) => Boolean(value.user_id || value.email), {
+  message: "Either user_id or email is required",
 });
 
 const devVoiceSchema = z.object({
@@ -142,6 +151,62 @@ whatsappRouter.post(
 
     const twiml = continueCallTwiml(reply);
     res.type("text/xml").status(200).send(twiml);
+  }),
+);
+
+whatsappRouter.post(
+  "/whatsapp/dev/link",
+  asyncHandler(async (req, res) => {
+    assertLocalDevAllowed();
+    const payload = parseWithSchema(devLinkSchema, req.body ?? {});
+
+    const profileQuery = supabaseAdmin
+      .from("profiles")
+      .select("id, email, full_name")
+      .limit(1);
+
+    const profileResult = payload.user_id
+      ? await profileQuery.eq("id", payload.user_id).maybeSingle()
+      : await profileQuery.eq("email", payload.email ?? "").maybeSingle();
+
+    if (profileResult.error) {
+      throw badRequest("Failed to load target profile", profileResult.error);
+    }
+
+    if (!profileResult.data) {
+      throw badRequest("Target profile not found");
+    }
+
+    const normalizedPhone = twilioService.normalizeWhatsAppAddress(payload.phone_number).replace(/^whatsapp:/i, "");
+    const upsertResult = await supabaseAdmin
+      .from("user_channel_links")
+      .upsert(
+        {
+          user_id: String(profileResult.data.id),
+          channel_type: "whatsapp",
+          channel_user_id: normalizedPhone,
+          is_verified: true,
+          metadata: {
+            linked_via: "localhost_dev_endpoint",
+            linked_at: new Date().toISOString(),
+          },
+        },
+        { onConflict: "user_id,channel_type" },
+      )
+      .select("id, user_id, channel_type, channel_user_id, is_verified, metadata")
+      .single();
+
+    if (upsertResult.error || !upsertResult.data) {
+      throw badRequest("Failed to create localhost WhatsApp link", upsertResult.error);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        link: upsertResult.data,
+        profile: profileResult.data,
+      },
+    });
   }),
 );
 
