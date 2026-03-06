@@ -5,7 +5,7 @@ WORKDIR /app
 FROM base AS deps
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install
 FROM deps AS build
 
 COPY . .
