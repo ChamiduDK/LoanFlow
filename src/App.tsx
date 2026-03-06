@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, HashRouter, Route, Routes } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -43,6 +43,12 @@ const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
+const useHashRouter = import.meta.env.VITE_ROUTER_MODE === "hash";
+const routerBasename =
+  !useHashRouter && import.meta.env.BASE_URL !== "/"
+    ? import.meta.env.BASE_URL.replace(/\/$/, "")
+    : undefined;
+const Router = useHashRouter ? HashRouter : BrowserRouter;
 
 function AppRoutes() {
   useEffect(() => {
@@ -128,9 +134,9 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <Router basename={routerBasename}>
           <AppRoutes />
-        </BrowserRouter>
+        </Router>
       </TooltipProvider>
     </QueryClientProvider>
   </ThemeProvider>
