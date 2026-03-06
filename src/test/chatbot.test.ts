@@ -43,15 +43,20 @@ vi.mock("../../server/services/audit.service", () => ({
 import { chatbotService } from "../../server/services/chatbot.service";
 import { supabaseAdmin } from "../../server/lib/supabase/client";
 
+const mockedSupabaseAdmin = supabaseAdmin as unknown as {
+  maybeSingle: ReturnType<typeof vi.fn>;
+  single: ReturnType<typeof vi.fn>;
+};
+
 describe("ChatbotService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     embedContentMock.mockResolvedValue([0, 0, 0]);
-    (supabaseAdmin.maybeSingle as any).mockResolvedValue({
+    mockedSupabaseAdmin.maybeSingle.mockResolvedValue({
       data: { id: "session-1" },
       error: null,
     });
-    (supabaseAdmin.single as any).mockResolvedValue({
+    mockedSupabaseAdmin.single.mockResolvedValue({
       data: { metadata: { title: "Existing Session" } },
       error: null,
     });
@@ -86,7 +91,7 @@ describe("ChatbotService", () => {
       });
 
     // Mock DB response for profile
-    (supabaseAdmin.single as any).mockResolvedValueOnce({
+    mockedSupabaseAdmin.single.mockResolvedValueOnce({
       data: {
         full_name: "Test User",
         email: "test@example.com",
@@ -113,7 +118,7 @@ describe("ChatbotService", () => {
         toolCalls: []
       });
 
-    (supabaseAdmin.single as any).mockResolvedValueOnce({
+    mockedSupabaseAdmin.single.mockResolvedValueOnce({
       data: {
         full_name: "Test User",
         email: "test@example.com",
@@ -134,7 +139,7 @@ describe("ChatbotService", () => {
         toolCalls: [{ name: "predictLoanApproval", args: { applicationId: "app-others" } }]
       });
 
-    (supabaseAdmin.single as any).mockResolvedValueOnce({
+    mockedSupabaseAdmin.single.mockResolvedValueOnce({
       data: { user_id: "other-user" },
       error: null
     });

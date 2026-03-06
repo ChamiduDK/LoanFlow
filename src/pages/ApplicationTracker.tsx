@@ -33,11 +33,9 @@ import { useToast } from "@/hooks/use-toast";
 import ProposalEditor, { fieldsFromProposalData } from "@/components/tracker/ProposalEditor";
 import type { ProposalFields } from "@/components/tracker/ProposalEditor";
 
-type OutcomeStatus = "applied" | "under_review" | "approved" | "rejected";
-
 type OutcomeRecord = {
   id: string;
-  status: OutcomeStatus;
+  status: "applied" | "under_review" | "approved" | "rejected";
   applied_date: string | null;
   decision_date: string | null;
   approved_amount: number | null;
@@ -61,14 +59,6 @@ function toStepStatus(current: number, step: number): "done" | "current" | "pend
   return "pending";
 }
 
-function toNumberOrNull(value: string): number | null {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
-}
-
 function toRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -90,13 +80,6 @@ export default function ApplicationTracker() {
   const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
   const [latestScanResult, setLatestScanResult] = useState<DocumentScanResponse | null>(null);
   const [bankAgentGrant, setBankAgentGrant] = useState<BankAgentAccessGrant | null>(null);
-  const [outcomeForm, setOutcomeForm] = useState({
-    status: "under_review" as OutcomeStatus,
-    notes: "",
-    approved_amount: "",
-    approved_rate: "",
-    approved_tenure_months: "",
-  });
   // Proposal editor state
   const [isEditingProposal, setIsEditingProposal] = useState(false);
   const [editedHtml, setEditedHtml] = useState<string | null>(null);
@@ -170,58 +153,6 @@ export default function ApplicationTracker() {
     queryFn: () => apiFetch<LoanManagementAccessResponse>(`/api/applications/${applicationId}/loan-management`),
     retry: false,
     staleTime: 30_000,
-  });
-
-  useEffect(() => {
-    const outcome = dataQuery.data?.outcome;
-    if (!outcome) {
-      setOutcomeForm({
-        status: "under_review",
-        notes: "",
-        approved_amount: "",
-        approved_rate: "",
-        approved_tenure_months: "",
-      });
-      return;
-    }
-
-    setOutcomeForm({
-      status: outcome.status,
-      notes: outcome.notes ?? "",
-      approved_amount: outcome.approved_amount != null ? String(outcome.approved_amount) : "",
-      approved_rate: outcome.approved_rate != null ? String(outcome.approved_rate) : "",
-      approved_tenure_months: outcome.approved_tenure_months != null ? String(outcome.approved_tenure_months) : "",
-    });
-  }, [dataQuery.data?.outcome]);
-
-  const outcomeMutation = useMutation({
-    mutationFn: () =>
-      apiFetch(`/api/applications/${applicationId}/outcome`, {
-        method: "POST",
-        body: JSON.stringify({
-          status: outcomeForm.status,
-          notes: outcomeForm.notes.trim() || null,
-          approved_amount: outcomeForm.status === "approved" ? toNumberOrNull(outcomeForm.approved_amount) : null,
-          approved_rate: outcomeForm.status === "approved" ? toNumberOrNull(outcomeForm.approved_rate) : null,
-          approved_tenure_months: outcomeForm.status === "approved"
-            ? toNumberOrNull(outcomeForm.approved_tenure_months)
-            : null,
-        }),
-      }),
-    onSuccess: () => {
-      toast({ title: "Outcome status updated" });
-      void queryClient.invalidateQueries({ queryKey: ["tracker-page", applicationId] });
-      void queryClient.invalidateQueries({ queryKey: ["applications"] });
-      void queryClient.invalidateQueries({ queryKey: ["loan-management", applicationId] });
-      void queryClient.invalidateQueries({ queryKey: ["tracker-re-evaluation", applicationId, selectedProductId] });
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to update outcome",
-        description: error instanceof Error ? error.message : "Could not update outcome",
-        variant: "destructive",
-      });
-    },
   });
 
   const bankAgentAccessMutation = useMutation({
@@ -950,47 +881,23 @@ ${htmlToUse}
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Final Outcome Update</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Decision Status</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-xs">Outcome Status</Label>
-              <Select value={outcomeForm.status} onValueChange={(value) => setOutcomeForm((prev) => ({ ...prev, status: value as OutcomeStatus }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="applied">Applied</SelectItem>
-                  <SelectItem value="under_review">Under Review</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="rounded-lg border border-border/70 p-3">
+              <p className="text-xs text-muted-foreground">Current Status</p>
+              <div className="mt-2">
+                <StatusBadge status={dataQuery.data.outcome?.status ?? application.status} />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Notes</Label>
-              <Input value={outcomeForm.notes} onChange={(event) => setOutcomeForm((prev) => ({ ...prev, notes: event.target.value }))} placeholder="Optional decision notes" />
+            <div className="rounded-lg border border-border/70 p-3">
+              <p className="text-xs text-muted-foreground">Controlled By</p>
+              <p className="mt-2 text-sm font-medium text-foreground">Bank agent or admin reviewer</p>
             </div>
           </div>
-
-          {outcomeForm.status === "approved" ? (
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label className="text-xs">Approved Amount (LKR)</Label>
-                <Input type="number" value={outcomeForm.approved_amount} onChange={(event) => setOutcomeForm((prev) => ({ ...prev, approved_amount: event.target.value }))} placeholder={String(application.requested_amount)} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Approved Rate (%)</Label>
-                <Input type="number" value={outcomeForm.approved_rate} onChange={(event) => setOutcomeForm((prev) => ({ ...prev, approved_rate: event.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Approved Tenure (Months)</Label>
-                <Input type="number" value={outcomeForm.approved_tenure_months} onChange={(event) => setOutcomeForm((prev) => ({ ...prev, approved_tenure_months: event.target.value }))} placeholder={String(application.preferred_tenure_months)} />
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex items-center justify-between">
-            <StatusBadge status={dataQuery.data.outcome?.status ?? application.status} />
-            <Button disabled={outcomeMutation.isPending} onClick={() => outcomeMutation.mutate()}>{outcomeMutation.isPending ? "Saving..." : "Save Outcome"}</Button>
+          <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+            Final approval, rejection, and sanctioned terms are not editable from the applicant dashboard.
+            Share the secure bank-agent access link above or contact an admin reviewer if the decision needs to be updated.
           </div>
         </CardContent>
       </Card>

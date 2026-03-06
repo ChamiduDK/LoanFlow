@@ -41,6 +41,10 @@ const emptyDraft: Draft = {
   is_active: true,
 };
 
+function toSafeText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 export default function AdminSchemes() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -118,13 +122,20 @@ export default function AdminSchemes() {
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return schemesQuery.data ?? [];
+    const source = (schemesQuery.data ?? []).map((row) => ({
+      ...row,
+      name: toSafeText(row.name),
+      banks: row.banks ? { ...row.banks, name: toSafeText(row.banks.name) } : row.banks,
+    }));
+    if (!term) return source;
 
-    return (schemesQuery.data ?? []).filter((row) =>
+    return source.filter((row) =>
       row.name.toLowerCase().includes(term) ||
       String(row.banks?.name ?? "").toLowerCase().includes(term),
     );
   }, [schemesQuery.data, search]);
+
+  const saveDisabled = saveMutation.isPending || draft.bank_id.trim().length === 0 || draft.name.trim().length < 2;
 
   return (
     <div className="space-y-6">
@@ -201,7 +212,7 @@ export default function AdminSchemes() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate(draft)}>
+            <Button disabled={saveDisabled} onClick={() => saveMutation.mutate(draft)}>
               {saveMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
@@ -217,6 +228,11 @@ export default function AdminSchemes() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {schemesQuery.isError || banksQuery.isError ? (
+            <div className="p-4 text-sm text-destructive">
+              Failed to load bank or scheme data. Refresh and try again.
+            </div>
+          ) : null}
           <Table>
             <TableHeader>
               <TableRow>

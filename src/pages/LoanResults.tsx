@@ -41,6 +41,30 @@ type FilterableScheme = Pick<RankedScheme, "bankId" | "emi" | "approvalProbabili
   rankingScore?: number;
 };
 
+function formatPercent(value: unknown, digits = 1): string {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(digits)}%` : "-";
+}
+
+function formatScore(value: unknown, digits = 1): string {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(digits) : "-";
+}
+
+function getBankInitials(value: unknown): string {
+  const label = String(value ?? "").trim();
+  if (!label) {
+    return "BNK";
+  }
+
+  return label
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 3)
+    .toUpperCase() || "BNK";
+}
+
 function filterAndSortSchemes<T extends FilterableScheme>(
   items: T[],
   options: {
@@ -90,15 +114,16 @@ export default function LoanResults() {
     staleTime: 30_000,
   });
   const fallbackApplicationId = applicationsQuery.data?.[0]?.id ?? "";
-  const applicationId = applicationIdFromUrl || fallbackApplicationId;
+  const hasRequestedApplication = (applicationsQuery.data ?? []).some((application) => application.id === applicationIdFromUrl);
+  const applicationId = hasRequestedApplication ? applicationIdFromUrl : (applicationIdFromUrl || fallbackApplicationId);
 
   useEffect(() => {
-    if (!applicationIdFromUrl && fallbackApplicationId) {
+    if ((!applicationIdFromUrl || !hasRequestedApplication) && fallbackApplicationId) {
       const next = new URLSearchParams(searchParams);
       next.set("applicationId", fallbackApplicationId);
       setSearchParams(next, { replace: true });
     }
-  }, [applicationIdFromUrl, fallbackApplicationId, searchParams, setSearchParams]);
+  }, [applicationIdFromUrl, fallbackApplicationId, hasRequestedApplication, searchParams, setSearchParams]);
 
   const [view, setView] = useState<"grid" | "table">("grid");
   const [bankFilter, setBankFilter] = useState<string>("all");
@@ -423,7 +448,7 @@ export default function LoanResults() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3">
                             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warning/10 text-sm font-semibold text-warning-foreground">
-                              {scheme.bankName.split(" ").map((p) => p[0]).join("").slice(0, 3)}
+                              {getBankInitials(scheme.bankName)}
                             </div>
                             <div>
                               <CardTitle>{scheme.bankName}</CardTitle>
@@ -446,7 +471,7 @@ export default function LoanResults() {
                           </div>
                           <div className="rounded-lg border border-border/70 bg-warning/5 p-3">
                             <p className="label-xs">Approval probability</p>
-                            <p className="mt-1 text-xl font-semibold text-warning-foreground">{scheme.approvalProbability.toFixed(1)}%</p>
+                            <p className="mt-1 text-xl font-semibold text-warning-foreground">{formatPercent(scheme.approvalProbability)}</p>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -456,7 +481,7 @@ export default function LoanResults() {
                           </div>
                           <div>
                             <p className="label-xs">Eligibility</p>
-                            <p className="mt-1 font-semibold">{scheme.eligibilityScore.toFixed(1)} / 100</p>
+                            <p className="mt-1 font-semibold">{formatScore(scheme.eligibilityScore)} / 100</p>
                           </div>
                           <div>
                             <p className="label-xs">Total interest</p>
@@ -470,7 +495,7 @@ export default function LoanResults() {
                         <div className="flex items-center justify-between">
                           <StatusBadge status="needs_review" />
                           <p className="text-xs text-muted-foreground">
-                            Document completeness {scheme.docCompleteness.toFixed(1)}%
+                            Document completeness {formatPercent(scheme.docCompleteness)}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -519,7 +544,7 @@ export default function LoanResults() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
-                          {scheme.bankName.split(" ").map((p) => p[0]).join("").slice(0, 3)}
+                          {getBankInitials(scheme.bankName)}
                         </div>
                         <div>
                           <CardTitle>{scheme.bankName}</CardTitle>
@@ -545,13 +570,13 @@ export default function LoanResults() {
                       </div>
                       <div className="rounded-lg border border-border/70 bg-primary/5 p-3">
                         <p className="label-xs">Approval probability</p>
-                        <p className="mt-1 text-xl font-semibold text-primary">{scheme.approvalProbability.toFixed(1)}%</p>
+                        <p className="mt-1 text-xl font-semibold text-primary">{formatPercent(scheme.approvalProbability)}</p>
                       </div>
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">Ranking score</span>
-                        <span className="font-semibold text-foreground">{scheme.rankingScore.toFixed(2)}</span>
+                        <span className="font-semibold text-foreground">{formatScore(scheme.rankingScore, 2)}</span>
                       </div>
                       <Progress value={scheme.approvalProbability} />
                     </div>
@@ -562,7 +587,7 @@ export default function LoanResults() {
                       </div>
                       <div>
                         <p className="label-xs">Eligibility</p>
-                        <p className="mt-1 font-semibold">{scheme.eligibilityScore.toFixed(1)} / 100</p>
+                        <p className="mt-1 font-semibold">{formatScore(scheme.eligibilityScore)} / 100</p>
                       </div>
                       <div>
                         <p className="label-xs">Total interest</p>
@@ -576,7 +601,7 @@ export default function LoanResults() {
                     <div className="flex items-center justify-between">
                       <StatusBadge status={scheme.eligibilityPassed ? "valid" : "needs_review"} />
                       <p className="text-xs text-muted-foreground">
-                        Document completeness {scheme.docCompleteness.toFixed(1)}%
+                        Document completeness {formatPercent(scheme.docCompleteness)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -631,7 +656,7 @@ export default function LoanResults() {
                       <TableCell>
                         <StatusBadge status={scheme.approvalProbability >= 80 ? "approved" : "under_review"} />
                       </TableCell>
-                      <TableCell>{scheme.eligibilityScore.toFixed(1)}</TableCell>
+                      <TableCell>{formatScore(scheme.eligibilityScore)}</TableCell>
                       <TableCell className="text-muted-foreground">{formatLKR(scheme.totalPayable)}</TableCell>
                     </TableRow>
                   ))}
@@ -666,7 +691,7 @@ export default function LoanResults() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-foreground">{scheme.bankName} - {scheme.productName}</p>
-                        <p className="text-xs text-muted-foreground">Eligibility score {scheme.eligibilityScore.toFixed(1)} / 100</p>
+                        <p className="text-xs text-muted-foreground">Eligibility score {formatScore(scheme.eligibilityScore)} / 100</p>
                       </div>
                     </div>
                   </AccordionTrigger>

@@ -70,7 +70,7 @@ export default function Dashboard() {
       { label: "Active Applications", value: active, sub: `${applications.length} total`, icon: FileText, colorClass: "text-blue-500 bg-blue-500/10" },
       { label: "Evaluated Profiles", value: evaluated, sub: "Ready for recommendations", icon: TrendingUp, colorClass: "text-emerald-500 bg-emerald-500/10" },
       { label: "Under Review", value: underReview, sub: "Awaiting lender decisions", icon: Clock, colorClass: "text-amber-500 bg-amber-500/10" },
-      { label: "Approval Rate", value: approvalRate !== null ? `${approvalRate}%` : "—", sub: "Based on final outcomes", icon: CheckCircle2, colorClass: "text-violet-500 bg-violet-500/10" },
+      { label: "Approval Rate", value: approvalRate !== null ? `${approvalRate}%` : "-", sub: "Based on final outcomes", icon: CheckCircle2, colorClass: "text-violet-500 bg-violet-500/10" },
     ];
   }, [applications]);
 
@@ -128,7 +128,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Actions — full width grid */}
+      {/* Quick Actions */}
       <Card className="border-border/70 bg-card shadow-sm">
         <CardHeader className="pb-2 pt-4 px-4">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -178,7 +178,7 @@ export default function Dashboard() {
               {recentApplications.map((app) => (
                 <Link
                   key={app.id}
-                  to="/tracker"
+                  to={`/tracker?applicationId=${app.id}`}
                   className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3 hover:bg-muted/40 transition-colors group"
                 >
                   <div className="flex items-center gap-3">
