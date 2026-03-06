@@ -9,7 +9,7 @@ import {
   trackApplicationSchema,
   updateApplicationSchema,
 } from "../schemas/application";
-import { requireApprovedUser, requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middleware/auth";
 import { forbidden, internalError, notFound, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { supabaseAdmin } from "../lib/supabase/client";
@@ -37,6 +37,7 @@ const restrictedUserStatuses = new Set(["under_review", "approved", "rejected"])
 
 applicationsRouter.post(
   "/applications",
+  requireFeatureAccess("new_application"),
   asyncHandler(async (req, res) => {
     const userId = req.auth?.user.id;
     if (!userId) {
@@ -139,6 +140,7 @@ applicationsRouter.get(
 
 applicationsRouter.put(
   "/applications/:id",
+  requireFeatureAccess("new_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationIdParamsSchema, req.params);
     const payload = parseWithSchema(updateApplicationSchema, req.body);
@@ -206,6 +208,7 @@ applicationsRouter.put(
 
 applicationsRouter.post(
   "/applications/:id/evaluate",
+  requireFeatureAccess("new_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(evaluateApplicationParamsSchema, req.params);
     parseWithSchema(evaluatePayloadSchema, req.body ?? {});
@@ -240,6 +243,7 @@ applicationsRouter.get(
 
 applicationsRouter.post(
   "/applications/:id/track",
+  requireFeatureAccess("track_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationIdParamsSchema, req.params);
     const payload = parseWithSchema(trackApplicationSchema, req.body ?? {});
@@ -262,6 +266,7 @@ applicationsRouter.post(
 
 applicationsRouter.post(
   "/applications/:id/proposal/generate",
+  requireFeatureAccess("new_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(proposalParamsSchema, req.params);
     const payload = parseWithSchema(generateProposalBodySchema, req.body ?? {});

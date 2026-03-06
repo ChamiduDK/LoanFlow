@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireApprovedUser, requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middleware/auth";
 import { uploadRateLimiter } from "../middleware/rate-limiter";
 import { unauthorized, badRequest } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
@@ -94,6 +94,7 @@ documentsRouter.use(requireAuth, requireApprovedUser);
 
 documentsRouter.post(
   "/applications/:id/documents/upload",
+  requireFeatureAccess("upload_documents"),
   uploadRateLimiter,
   upload.single("file"),
   asyncHandler(async (req, res) => {
@@ -145,6 +146,7 @@ documentsRouter.post(
 
 documentsRouter.get(
   "/applications/:id/documents",
+  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const userId = req.auth?.user.id;
@@ -161,6 +163,7 @@ documentsRouter.get(
 
 documentsRouter.post(
   "/applications/:id/documents/check",
+  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const payload = parseWithSchema(documentCheckBodySchema, req.body ?? {});
@@ -178,6 +181,7 @@ documentsRouter.post(
 
 documentsRouter.post(
   "/applications/:id/documents/scan",
+  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const payload = parseWithSchema(documentScanBodySchema, req.body ?? {});
@@ -199,6 +203,7 @@ documentsRouter.post(
 
 documentsRouter.post(
   "/applications/:id/documents/availability",
+  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const payload = parseWithSchema(bulkDocumentAvailabilitySchema, req.body ?? {});

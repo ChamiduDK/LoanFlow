@@ -43,6 +43,13 @@ export type Profile = {
   existing_loan_obligations: number | null;
   turnover_band: string | null;
   is_admin: boolean;
+  feature_access: {
+    ai_chat: boolean;
+    new_application: boolean;
+    upload_documents: boolean;
+    track_application: boolean;
+    emi_calculator: boolean;
+  };
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;

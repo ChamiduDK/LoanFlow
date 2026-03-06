@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireApprovedUser, requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middleware/auth";
 import { chatbotService } from "../services/chatbot.service";
 import { sendSuccess } from "../lib/response";
 import { z } from "zod";
@@ -17,6 +17,7 @@ chatbotRouter.use(requireAuth, requireApprovedUser);
 
 chatbotRouter.post(
   "/chat",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     // Zod validation
     const payload = parseWithSchema(chatRequestSchema, req.body);
@@ -32,6 +33,7 @@ chatbotRouter.post(
 
 chatbotRouter.get(
   "/sessions",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = (req as any).auth?.user.id;
     const { data, error } = await chatbotService.getUserSessions(userId!);
@@ -42,6 +44,7 @@ chatbotRouter.get(
 
 chatbotRouter.get(
   "/sessions/:id",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = (req as any).auth?.user.id;
     const sessionId = req.params.id as string;
@@ -53,6 +56,7 @@ chatbotRouter.get(
 
 chatbotRouter.post(
   "/sessions",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = (req as any).auth?.user.id;
     const { data, error } = await chatbotService.createSession(userId!);
@@ -63,6 +67,7 @@ chatbotRouter.post(
 
 chatbotRouter.delete(
   "/sessions/:id",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = (req as any).auth?.user.id;
     const sessionId = req.params.id as string;

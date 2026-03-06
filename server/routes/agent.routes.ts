@@ -2,7 +2,7 @@ import { Router } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireApprovedUser, requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middleware/auth";
 import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
@@ -86,6 +86,7 @@ agentRouter.use(requireAuth, requireApprovedUser);
 
 agentRouter.get(
   "/agent/chat/session",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = req.auth?.user.id;
     if (!userId) {
@@ -99,6 +100,7 @@ agentRouter.get(
 
 agentRouter.post(
   "/agent/chat/session",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = req.auth?.user.id;
     if (!userId) {
@@ -113,6 +115,7 @@ agentRouter.post(
 
 agentRouter.post(
   "/agent/chat/message",
+  requireFeatureAccess("ai_chat"),
   asyncHandler(async (req, res) => {
     const userId = req.auth?.user.id;
     if (!userId) {

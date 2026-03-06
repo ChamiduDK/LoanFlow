@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireApprovedUser, requireAuth } from "../middleware/auth";
+import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middleware/auth";
 import { unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { createInstallmentSchema, trackerParamsSchema } from "../schemas/outcome";
@@ -16,6 +16,7 @@ trackerRouter.use(requireAuth, requireApprovedUser);
 
 trackerRouter.get(
   "/applications/:id/tracker",
+  requireFeatureAccess("track_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(trackerParamsSchema, req.params);
     const userId = req.auth?.user.id;
@@ -31,6 +32,7 @@ trackerRouter.get(
 
 trackerRouter.post(
   "/applications/:id/tracker/re-evaluate",
+  requireFeatureAccess("track_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(trackerParamsSchema, req.params);
     const payload = parseWithSchema(trackerReEvaluateSchema, req.body ?? {});
@@ -53,6 +55,7 @@ trackerRouter.post(
 
 trackerRouter.post(
   "/applications/:id/tracker/installments",
+  requireFeatureAccess("track_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(trackerParamsSchema, req.params);
     const payload = parseWithSchema(createInstallmentSchema, req.body);
@@ -83,6 +86,7 @@ trackerRouter.post(
 
 trackerRouter.get(
   "/applications/:id/tracker/installments",
+  requireFeatureAccess("track_application"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(trackerParamsSchema, req.params);
     const userId = req.auth?.user.id;
