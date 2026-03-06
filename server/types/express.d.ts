@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import type { UserFeatureAccess } from "../lib/feature-access";
 
 declare global {
   namespace Express {
@@ -12,6 +13,7 @@ declare global {
           is_admin: boolean;
           is_approved: boolean;
           email: string | null;
+          feature_access: UserFeatureAccess;
         };
       };
     }

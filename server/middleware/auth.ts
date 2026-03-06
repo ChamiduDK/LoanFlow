@@ -1,12 +1,15 @@
 import type { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../lib/supabase/client";
 import { forbidden, unauthorized } from "../lib/errors";
+import { getFeatureLabel } from "./auth_helpers";
+import { normalizeFeatureAccess, type UserFeatureAccess, type UserFeatureKey } from "../lib/feature-access";
 
 type ProfileAccessRow = {
   id: string;
   email: string | null;
   is_admin: boolean;
   is_approved: boolean;
+  feature_access: UserFeatureAccess;
 };
 
 function readAccessToken(req: Request): string | null {
@@ -85,6 +88,7 @@ async function fetchProfileAccess(userId: string): Promise<ProfileAccessRow | nu
     email: data.email ?? null,
     is_admin: Boolean(data.is_admin),
     is_approved: hasApprovalFlag ? Boolean(data.is_approved) : true,
+    feature_access: normalizeFeatureAccess(data.feature_access),
   };
 }
 
@@ -132,4 +136,29 @@ export async function requireAdmin(req: Request, _res: Response, next: NextFunct
   }
 
   next();
+}
+
+export function requireFeatureAccess(featureKey: UserFeatureKey) {
+  return async function ensureFeatureAccess(req: Request, _res: Response, next: NextFunction): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.user?.id) {
+      next(unauthorized());
+      return;
+    }
+
+    const profile = auth.profile ?? await fetchProfileAccess(auth.user.id);
+    if (!profile) {
+      next(unauthorized("Profile not found for authenticated user"));
+      return;
+    }
+
+    auth.profile = profile;
+
+    if (profile.is_admin || profile.feature_access[featureKey]) {
+      next();
+      return;
+    }
+
+    next(forbidden(`${getFeatureLabel(featureKey)} access must be enabled by an admin`));
+  };
 }

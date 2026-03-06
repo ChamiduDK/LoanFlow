@@ -8,6 +8,7 @@ import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
 import { authRateLimiter } from "../middleware/rate-limiter";
+import { normalizeFeatureAccess } from "../lib/feature-access";
 
 export const authRouter = Router();
 
@@ -160,9 +161,16 @@ authRouter.get(
 
     res.setHeader("Cache-Control", "no-store");
 
+    const normalizedProfile = profile
+      ? {
+          ...profile,
+          feature_access: normalizeFeatureAccess((profile as Record<string, unknown>).feature_access),
+        }
+      : null;
+
     sendSuccess(res, {
       user: req.auth?.user,
-      profile,
+      profile: normalizedProfile,
     });
   }),
 );

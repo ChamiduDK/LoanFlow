@@ -12,6 +12,7 @@ import {
   Clock,
   FileText,
   GitBranch,
+  Lock,
   Plus,
   TrendingUp,
   Upload,
@@ -24,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiRequestError } from "@/lib/api/client";
 import type { LoanApplication } from "@/types/backend";
 import { formatLKR } from "@/lib/currency";
+import { hasFeatureAccess, type UserFeatureKey } from "@/lib/feature-access";
 
 const EMPTY_APPLICATIONS: LoanApplication[] = [];
 
@@ -43,20 +45,28 @@ function getStatusIcon(status: string) {
 }
 
 const quickActions = [
-  { title: "AI Chat", desc: "Ask LoanFlow AI anything", icon: Bot, path: "/chat", color: "from-primary/10 to-primary/5 border-primary/20 hover:border-primary/40" },
-  { title: "New Application", desc: "Start a new loan request", icon: Plus, path: "/apply", color: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-500/40" },
-  { title: "Upload Documents", desc: "Complete your document checklist", icon: Upload, path: "/documents", color: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-500/40" },
-  { title: "Track Application", desc: "Check bank review progress", icon: GitBranch, path: "/tracker", color: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-500/40" },
-  { title: "EMI Calculator", desc: "Estimate your repayments", icon: Calculator, path: "/calculator", color: "from-amber-500/10 to-amber-600/5 border-amber-500/20 hover:border-amber-500/40" },
+  { title: "AI Chat", desc: "Ask LoanFlow AI anything", lockedDesc: "Admin access required for this feature.", icon: Bot, path: "/chat", featureKey: "ai_chat" as UserFeatureKey, color: "from-primary/10 to-primary/5 border-primary/20 hover:border-primary/40" },
+  { title: "New Application", desc: "Start a new loan request", lockedDesc: "Admin access required for this feature.", icon: Plus, path: "/apply", featureKey: "new_application" as UserFeatureKey, color: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-500/40" },
+  { title: "Upload Documents", desc: "Complete your document checklist", lockedDesc: "Admin access required for this feature.", icon: Upload, path: "/documents", featureKey: "upload_documents" as UserFeatureKey, color: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-500/40" },
+  { title: "Track Application", desc: "Check bank review progress", lockedDesc: "Admin access required for this feature.", icon: GitBranch, path: "/tracker", featureKey: "track_application" as UserFeatureKey, color: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-500/40" },
+  { title: "EMI Calculator", desc: "Estimate your repayments", lockedDesc: "Admin access required for this feature.", icon: Calculator, path: "/calculator", featureKey: "emi_calculator" as UserFeatureKey, color: "from-amber-500/10 to-amber-600/5 border-amber-500/20 hover:border-amber-500/40" },
 ];
 
 export default function Dashboard() {
+  const meQuery = useQuery({
+    queryKey: ["me-profile"],
+    queryFn: () =>
+      apiFetch<{ profile?: { is_admin?: boolean; feature_access?: Record<string, boolean> | null } | null }>("/api/me"),
+    retry: false,
+    staleTime: 60_000,
+  });
   const applicationsQuery = useQuery({
     queryKey: ["applications"],
     queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
   });
   const applications = applicationsQuery.data ?? EMPTY_APPLICATIONS;
   const isLoading = applicationsQuery.isLoading;
+  const canCreateApplication = hasFeatureAccess(meQuery.data?.profile, "new_application");
 
   const stats = useMemo(() => {
     const active = applications.filter((a) => !["approved", "rejected", "withdrawn"].includes(a.status)).length;
@@ -84,12 +94,19 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Welcome back. Here's your loan journey overview.</p>
         </div>
-        <Button asChild>
-          <Link to="/apply">
-            <Plus className="h-4 w-4" />
+        {canCreateApplication ? (
+          <Button asChild>
+            <Link to="/apply">
+              <Plus className="h-4 w-4" />
+              New Application
+            </Link>
+          </Button>
+        ) : (
+          <Button disabled title="Admin must enable new application access">
+            <Lock className="h-4 w-4" />
             New Application
-          </Link>
-        </Button>
+          </Button>
+        )}
       </div>
 
       {/* Stats Row */}
@@ -138,15 +155,32 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent className="px-4 pb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {quickActions.map((action) => (
-            <Link
-              key={action.title}
-              to={action.path}
-              className={`group flex flex-col gap-1.5 rounded-xl border bg-gradient-to-br p-3 transition-all duration-200 ${action.color}`}
-            >
-              <action.icon className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors" />
-              <p className="text-xs font-semibold text-foreground leading-tight">{action.title}</p>
-              <p className="text-[10px] text-muted-foreground leading-tight">{action.desc}</p>
-            </Link>
+            hasFeatureAccess(meQuery.data?.profile, action.featureKey) ? (
+              <Link
+                key={action.title}
+                to={action.path}
+                className={`group flex flex-col gap-1.5 rounded-xl border bg-gradient-to-br p-3 transition-all duration-200 ${action.color}`}
+              >
+                <action.icon className="h-4 w-4 text-foreground/70 group-hover:text-foreground transition-colors" />
+                <p className="text-xs font-semibold text-foreground leading-tight">{action.title}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">{action.desc}</p>
+              </Link>
+            ) : (
+              <div
+                key={action.title}
+                className="flex flex-col gap-1.5 rounded-xl border border-border/70 bg-muted/30 p-3 opacity-80"
+                title="Access is controlled by admin"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <action.icon className="h-4 w-4 text-muted-foreground" />
+                  <Badge variant="outline" className="h-5 border-amber-500/30 bg-amber-500/10 px-1.5 text-[9px] uppercase tracking-wide text-amber-600">
+                    Locked
+                  </Badge>
+                </div>
+                <p className="text-xs font-semibold text-foreground leading-tight">{action.title}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">{action.lockedDesc}</p>
+              </div>
+            )
           ))}
         </CardContent>
       </Card>
@@ -171,7 +205,7 @@ export default function Dashboard() {
             <EmptyState
               title="No applications yet"
               description="Create your first loan application to get started with eligibility evaluation."
-              action={<Button asChild><Link to="/apply">Create Application</Link></Button>}
+              action={canCreateApplication ? <Button asChild><Link to="/apply">Create Application</Link></Button> : <Button disabled>Create Application</Button>}
             />
           ) : (
             <div className="space-y-2">

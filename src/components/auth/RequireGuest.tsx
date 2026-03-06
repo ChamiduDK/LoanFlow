@@ -19,12 +19,11 @@ export default function RequireGuest() {
     queryFn: () => apiFetch<MePayload>("/api/me"),
     enabled: Boolean(sessionQuery.data),
     retry: false,
-    staleTime: 0,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
-  if (sessionQuery.isLoading || (sessionQuery.data && (meQuery.isLoading || meQuery.isFetching))) {
+  if (sessionQuery.isLoading || (sessionQuery.data && meQuery.isLoading && !meQuery.data && !meQuery.isError)) {
     return <RouteFallback message="Checking your session..." />;
   }
 

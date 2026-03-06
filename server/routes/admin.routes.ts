@@ -6,6 +6,7 @@ import { requireAdmin, requireAuth } from "../middleware/auth";
 import { badRequest, internalError, notFound } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import { supabaseAdmin } from "../lib/supabase/client";
+import { normalizeFeatureAccess, type UserFeatureAccess, type UserFeatureKey } from "../lib/feature-access";
 import {
   bankCreateSchema,
   bankUpdateSchema,
@@ -25,6 +26,17 @@ const idParamsSchema = z.object({ id: z.string().uuid() });
 const userRoleParamsSchema = z.object({ id: z.string().uuid() });
 const userRoleBodySchema = z.object({ is_admin: z.boolean() });
 const userApprovalBodySchema = z.object({ is_approved: z.boolean() });
+const featureAccessBodySchema = z.object({
+  feature_access: z.object({
+    ai_chat: z.boolean().optional(),
+    new_application: z.boolean().optional(),
+    upload_documents: z.boolean().optional(),
+    track_application: z.boolean().optional(),
+    emi_calculator: z.boolean().optional(),
+  }).refine((value) => Object.keys(value).length > 0, {
+    message: "At least one feature access flag is required",
+  }),
+});
 const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -83,6 +95,7 @@ function toAdminUserProfile(profile: ProfileRecord): {
   phone: string | null;
   is_admin: boolean;
   is_approved: boolean;
+  feature_access: UserFeatureAccess;
   created_at: string;
   updated_at: string;
 } {
@@ -93,6 +106,7 @@ function toAdminUserProfile(profile: ProfileRecord): {
     phone: typeof profile.phone === "string" ? profile.phone : null,
     is_admin: Boolean(profile.is_admin),
     is_approved: hasApprovalFlag(profile) ? Boolean(profile.is_approved) : true,
+    feature_access: normalizeFeatureAccess(profile.feature_access),
     created_at: String(profile.created_at ?? ""),
     updated_at: String(profile.updated_at ?? ""),
   };
@@ -100,10 +114,11 @@ function toAdminUserProfile(profile: ProfileRecord): {
 
 export const adminRouter = Router();
 
-adminRouter.use(requireAuth, requireAdmin);
+const adminOnly = [requireAuth, requireAdmin] as const;
 
 adminRouter.get(
   "/admin/overview",
+  ...adminOnly,
   asyncHandler(async (_req, res) => {
     const [banksCount, productsCount, applicationsCount, underReviewCount, outcomesCount, profilesResult, auditLogsResult, mlModelResult] = await Promise.all([
       supabaseAdmin.from("banks").select("*", { count: "exact", head: true }),
@@ -183,6 +198,7 @@ adminRouter.get(
 
 adminRouter.get(
   "/admin/banks",
+  ...adminOnly,
   asyncHandler(async (_req, res) => {
     const banksResult = await supabaseAdmin.from("banks").select("*").order("name", { ascending: true });
 
@@ -196,6 +212,7 @@ adminRouter.get(
 
 adminRouter.get(
   "/admin/loan-products",
+  ...adminOnly,
   asyncHandler(async (_req, res) => {
     const productsResult = await supabaseAdmin
       .from("loan_products")
@@ -212,6 +229,7 @@ adminRouter.get(
 
 adminRouter.get(
   "/admin/users",
+  ...adminOnly,
   asyncHandler(async (_req, res) => {
     const [profilesResult, applicationsResult] = await Promise.all([
       supabaseAdmin
@@ -257,6 +275,7 @@ adminRouter.get(
 
 adminRouter.put(
   "/admin/users/:id/role",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(userRoleParamsSchema, req.params);
     const payload = parseWithSchema(userRoleBodySchema, req.body);
@@ -332,6 +351,7 @@ adminRouter.put(
 
 adminRouter.put(
   "/admin/users/:id/approval",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(userRoleParamsSchema, req.params);
     const payload = parseWithSchema(userApprovalBodySchema, req.body);
@@ -384,8 +404,66 @@ adminRouter.put(
   }),
 );
 
+adminRouter.put(
+  "/admin/users/:id/feature-access",
+  ...adminOnly,
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(userRoleParamsSchema, req.params);
+    const payload = parseWithSchema(featureAccessBodySchema, req.body);
+    const existingProfileResult = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", params.id)
+      .maybeSingle();
+
+    if (existingProfileResult.error) {
+      throw internalError("Failed to load user profile", existingProfileResult.error);
+    }
+
+    if (!existingProfileResult.data) {
+      throw notFound("User profile not found");
+    }
+
+    const currentFeatureAccess = normalizeFeatureAccess((existingProfileResult.data as ProfileRecord).feature_access);
+    const nextFeatureAccess: UserFeatureAccess = {
+      ...currentFeatureAccess,
+      ...(payload.feature_access as Partial<Record<UserFeatureKey, boolean>>),
+    };
+
+    const updateResult = await supabaseAdmin
+      .from("profiles")
+      .update({ feature_access: nextFeatureAccess })
+      .eq("id", params.id)
+      .select("*")
+      .maybeSingle();
+
+    if (updateResult.error) {
+      if (String(updateResult.error.message).toLowerCase().includes("feature_access")) {
+        throw badRequest("Feature access requires database migration 20260307010000_profile_feature_access.sql");
+      }
+      throw internalError("Failed to update user feature access", updateResult.error);
+    }
+
+    if (!updateResult.data) {
+      throw notFound("User profile not found");
+    }
+
+    await logAudit({
+      actorUserId: req.auth?.user.id,
+      action: "admin.user_feature_access.update",
+      entityType: "profiles",
+      entityId: params.id,
+      payloadSummary: { feature_access: payload.feature_access },
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, toAdminUserProfile(updateResult.data as ProfileRecord));
+  }),
+);
+
 adminRouter.get(
   "/admin/applications",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const query = parseWithSchema(adminApplicationsQuerySchema, req.query);
     const limit = query.limit ?? 100;
@@ -441,6 +519,7 @@ adminRouter.get(
 
 adminRouter.put(
   "/admin/applications/:id/decision",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(adminApplicationDecisionParamsSchema, req.params);
     const payload = parseWithSchema(adminApplicationDecisionBodySchema, req.body);
@@ -524,6 +603,7 @@ adminRouter.put(
 
 adminRouter.get(
   "/admin/audit-logs",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const query = parseWithSchema(auditQuerySchema, req.query);
     const limit = query.limit ?? 50;
@@ -568,6 +648,7 @@ adminRouter.get(
 
 adminRouter.post(
   "/admin/banks",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const payload = parseWithSchema(bankCreateSchema, req.body);
 
@@ -599,6 +680,7 @@ adminRouter.post(
 
 adminRouter.put(
   "/admin/banks/:id",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(idParamsSchema, req.params);
     const payload = parseWithSchema(bankUpdateSchema, req.body);
@@ -636,6 +718,7 @@ adminRouter.put(
 
 adminRouter.delete(
   "/admin/banks/:id",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(idParamsSchema, req.params);
 
@@ -669,6 +752,7 @@ adminRouter.delete(
 
 adminRouter.post(
   "/admin/loan-products",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const payload = parseWithSchema(loanProductCreateSchema, req.body);
 
@@ -705,6 +789,7 @@ adminRouter.post(
 
 adminRouter.put(
   "/admin/loan-products/:id",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(idParamsSchema, req.params);
     const payload = parseWithSchema(loanProductUpdateSchema, req.body);
@@ -742,6 +827,7 @@ adminRouter.put(
 
 adminRouter.delete(
   "/admin/loan-products/:id",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(idParamsSchema, req.params);
 
@@ -775,6 +861,7 @@ adminRouter.delete(
 
 adminRouter.put(
   "/admin/loan-terms/:productId",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(productIdParamsSchema, req.params);
     const payload = parseWithSchema(upsertLoanTermsSchema, req.body);
@@ -813,6 +900,7 @@ adminRouter.put(
 
 adminRouter.put(
   "/admin/eligibility-rules/:productId",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(productIdParamsSchema, req.params);
     const payload = parseWithSchema(upsertEligibilityRuleSchema, req.body);
@@ -855,6 +943,7 @@ adminRouter.put(
 
 adminRouter.put(
   "/admin/required-documents/:productId",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(productIdParamsSchema, req.params);
     const payload = parseWithSchema(upsertRequiredDocumentsSchema, req.body);
@@ -896,6 +985,7 @@ adminRouter.put(
 
 adminRouter.put(
   "/admin/benefits/:productId",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(productIdParamsSchema, req.params);
     const payload = parseWithSchema(upsertBenefitsSchema, req.body);
@@ -935,6 +1025,7 @@ adminRouter.put(
 
 adminRouter.put(
   "/admin/collateral/:productId",
+  ...adminOnly,
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(productIdParamsSchema, req.params);
     const payload = parseWithSchema(upsertCollateralSchema, req.body);

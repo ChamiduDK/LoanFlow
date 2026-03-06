@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeEmail, resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
+import { hasFeatureAccess, normalizeFeatureAccess } from "@/lib/feature-access";
 
 describe("auth utils", () => {
   it("normalizes email casing and trims whitespace", () => {
@@ -40,5 +41,24 @@ describe("auth utils", () => {
 
   it("respects explicit pending approval flag", () => {
     expect(resolveAccessState({ is_admin: false, is_approved: false })).toEqual({ isAdmin: false, isApproved: false });
+  });
+
+  it("defaults feature access flags to false when missing", () => {
+    expect(normalizeFeatureAccess(undefined)).toEqual({
+      ai_chat: false,
+      new_application: false,
+      upload_documents: false,
+      track_application: false,
+      emi_calculator: false,
+    });
+  });
+
+  it("grants all feature access to admins", () => {
+    expect(hasFeatureAccess({ is_admin: true, feature_access: {} }, "ai_chat")).toBe(true);
+  });
+
+  it("respects explicit per-feature access for regular users", () => {
+    expect(hasFeatureAccess({ is_admin: false, feature_access: { track_application: true } }, "track_application")).toBe(true);
+    expect(hasFeatureAccess({ is_admin: false, feature_access: { track_application: true } }, "ai_chat")).toBe(false);
   });
 });

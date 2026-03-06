@@ -9,6 +9,7 @@ import { supabaseClient } from "@/lib/supabase/client";
 import RequireAdmin from "@/components/auth/RequireAdmin";
 import RequireAuth from "@/components/auth/RequireAuth";
 import RequireApprovedUser from "@/components/auth/RequireApprovedUser";
+import RequireFeatureAccess from "@/components/auth/RequireFeatureAccess";
 import RequireGuest from "@/components/auth/RequireGuest";
 import RouteFallback from "@/components/auth/RouteFallback";
 import AppErrorBoundary from "@/components/error/AppErrorBoundary";
@@ -73,17 +74,29 @@ function AppRoutes() {
             <Route path="/approval-pending" element={<ApprovalPending />} />
 
             <Route element={<RequireApprovedUser />}>
-              <Route path="/chat" element={<AiChat />} />
               <Route element={<AppLayout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/apply" element={<LoanApplication />} />
                 <Route path="/results" element={<LoanResults />} />
-                <Route path="/calculator" element={<EMICalculator />} />
-                <Route path="/documents" element={<DocumentUpload />} />
-                <Route path="/tracker" element={<ApplicationTracker />} />
                 <Route path="/management" element={<LoanManagement />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/notifications" element={<Notifications />} />
+
+                <Route element={<RequireFeatureAccess featureKey="new_application" />}>
+                  <Route path="/apply" element={<LoanApplication />} />
+                </Route>
+                <Route element={<RequireFeatureAccess featureKey="emi_calculator" />}>
+                  <Route path="/calculator" element={<EMICalculator />} />
+                </Route>
+                <Route element={<RequireFeatureAccess featureKey="upload_documents" />}>
+                  <Route path="/documents" element={<DocumentUpload />} />
+                </Route>
+                <Route element={<RequireFeatureAccess featureKey="track_application" />}>
+                  <Route path="/tracker" element={<ApplicationTracker />} />
+                </Route>
+              </Route>
+
+              <Route element={<RequireFeatureAccess featureKey="ai_chat" />}>
+                <Route path="/chat" element={<AiChat />} />
               </Route>
             </Route>
           </Route>

@@ -54,6 +54,13 @@ export type AdminUser = {
   phone: string | null;
   is_admin: boolean;
   is_approved: boolean;
+  feature_access: {
+    ai_chat: boolean;
+    new_application: boolean;
+    upload_documents: boolean;
+    track_application: boolean;
+    emi_calculator: boolean;
+  };
   created_at: string;
   updated_at: string;
   applications_total: number;

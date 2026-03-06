@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bell, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, User } from "lucide-react";
+import { Bell, ChevronRight, Lock, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabaseClient } from "@/lib/supabase/client";
+import { hasFeatureAccess, type UserFeatureKey } from "@/lib/feature-access";
 
 interface TopNavProps {
   onMenuClick: () => void;
@@ -19,15 +20,16 @@ type QuickLink = {
   label: string;
   path: string;
   keywords: string[];
+  featureKey?: UserFeatureKey;
 };
 
 const USER_QUICK_LINKS: QuickLink[] = [
   { label: "Dashboard", path: "/dashboard", keywords: ["home", "summary", "overview"] },
-  { label: "Loan Application", path: "/apply", keywords: ["new", "create", "form"] },
+  { label: "Loan Application", path: "/apply", keywords: ["new", "create", "form"], featureKey: "new_application" },
   { label: "Loan Recommendations", path: "/results", keywords: ["results", "matches", "banks"] },
-  { label: "EMI Calculator", path: "/calculator", keywords: ["emi", "repayment", "calculate"] },
-  { label: "Document Upload", path: "/documents", keywords: ["files", "verification", "checklist"] },
-  { label: "Application Tracker", path: "/tracker", keywords: ["timeline", "status", "progress"] },
+  { label: "EMI Calculator", path: "/calculator", keywords: ["emi", "repayment", "calculate"], featureKey: "emi_calculator" },
+  { label: "Document Upload", path: "/documents", keywords: ["files", "verification", "checklist"], featureKey: "upload_documents" },
+  { label: "Application Tracker", path: "/tracker", keywords: ["timeline", "status", "progress"], featureKey: "track_application" },
   { label: "Loan Management", path: "/management", keywords: ["repayment", "installments", "dues"] },
 ];
 
@@ -53,17 +55,21 @@ export default function TopNav({ onMenuClick, sidebarCollapsed, onDesktopSidebar
   const meQuery = useQuery({
     queryKey: ["me-profile"],
     queryFn: () =>
-      apiFetch<{ profile?: { full_name?: string | null; email?: string | null; is_admin?: boolean } }>("/api/me"),
+      apiFetch<{ profile?: { full_name?: string | null; email?: string | null; is_admin?: boolean; feature_access?: Record<string, boolean> | null } | null }>("/api/me"),
     retry: false,
     staleTime: 60_000,
   });
 
   const userLabel = meQuery.data?.profile?.full_name?.trim() || meQuery.data?.profile?.email || "Account";
   const isAdmin = Boolean(meQuery.data?.profile?.is_admin);
+  const canCreateApplication = hasFeatureAccess(meQuery.data?.profile, "new_application");
 
   const quickLinks = useMemo(
-    () => (isAdmin ? [...USER_QUICK_LINKS, ...ADMIN_QUICK_LINKS] : USER_QUICK_LINKS),
-    [isAdmin],
+    () => {
+      const allowedUserLinks = USER_QUICK_LINKS.filter((item) => !item.featureKey || hasFeatureAccess(meQuery.data?.profile, item.featureKey));
+      return isAdmin ? [...allowedUserLinks, ...ADMIN_QUICK_LINKS] : allowedUserLinks;
+    },
+    [isAdmin, meQuery.data?.profile],
   );
 
   const filteredQuickLinks = useMemo(() => {
@@ -221,18 +227,33 @@ export default function TopNav({ onMenuClick, sidebarCollapsed, onDesktopSidebar
             <span className="sr-only">{signingOut ? "Signing out..." : "Sign Out"}</span>
           </Button>
 
-          <Button asChild className="hidden sm:inline-flex">
-            <Link to="/apply">
-              <Plus className="h-4 w-4" />
-              New Application
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="icon" className="sm:hidden">
-            <Link to="/apply">
-              <Plus className="h-4 w-4" />
-              <span className="sr-only">New Application</span>
-            </Link>
-          </Button>
+          {canCreateApplication ? (
+            <>
+              <Button asChild className="hidden sm:inline-flex">
+                <Link to="/apply">
+                  <Plus className="h-4 w-4" />
+                  New Application
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="icon" className="sm:hidden">
+                <Link to="/apply">
+                  <Plus className="h-4 w-4" />
+                  <span className="sr-only">New Application</span>
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button disabled className="hidden sm:inline-flex" title="Admin must enable new application access">
+                <Lock className="h-4 w-4" />
+                New Application
+              </Button>
+              <Button disabled variant="outline" size="icon" className="sm:hidden" title="Admin must enable new application access">
+                <Lock className="h-4 w-4" />
+                <span className="sr-only">New Application locked</span>
+              </Button>
+            </>
+          )}
           <Button asChild variant="ghost" size="icon" className="relative hover:bg-muted">
             <Link to="/notifications" aria-label="Open notifications">
               <Bell className="h-5 w-5" />

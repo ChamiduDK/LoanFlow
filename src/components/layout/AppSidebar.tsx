@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -11,25 +12,28 @@ import {
   User,
   Bell,
   ChevronRight,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
+import { apiFetch } from "@/lib/api/client";
+import { hasFeatureAccess, type UserFeatureKey } from "@/lib/feature-access";
 
 const navItems = [
   {
     group: "Main",
     items: [
       { label: "Dashboard", description: "Overview & quick actions", icon: LayoutDashboard, path: "/dashboard" },
-      { label: "Loan Application", description: "Create or update your request", icon: FileText, path: "/apply" },
+      { label: "Loan Application", description: "Create or update your request", icon: FileText, path: "/apply", featureKey: "new_application" as UserFeatureKey },
       { label: "Loan Results", description: "View ranked lender matches", icon: Search, path: "/results" },
     ],
   },
   {
     group: "Tools",
     items: [
-      { label: "EMI Calculator", description: "Estimate monthly repayment", icon: Calculator, path: "/calculator" },
-      { label: "Documents", description: "Upload & verify required files", icon: Upload, path: "/documents" },
-      { label: "Tracker", description: "Track bank decision flow", icon: GitBranch, path: "/tracker" },
+      { label: "EMI Calculator", description: "Estimate monthly repayment", icon: Calculator, path: "/calculator", featureKey: "emi_calculator" as UserFeatureKey },
+      { label: "Documents", description: "Upload & verify required files", icon: Upload, path: "/documents", featureKey: "upload_documents" as UserFeatureKey },
+      { label: "Tracker", description: "Track bank decision flow", icon: GitBranch, path: "/tracker", featureKey: "track_application" as UserFeatureKey },
       { label: "Loan Management", description: "Manage approved repayments", icon: Wallet, path: "/management" },
     ],
   },
@@ -50,6 +54,13 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ open, onClose, collapsed }: AppSidebarProps) {
   const location = useLocation();
+  const meQuery = useQuery({
+    queryKey: ["me-profile"],
+    queryFn: () =>
+      apiFetch<{ profile?: { is_admin?: boolean; feature_access?: Record<string, boolean> | null } | null }>("/api/me"),
+    retry: false,
+    staleTime: 60_000,
+  });
   useEffect(() => {
     if (!open) return;
     const prevOverflow = document.body.style.overflow;
@@ -115,28 +126,46 @@ export default function AppSidebar({ open, onClose, collapsed }: AppSidebarProps
                 </p>
                 <div className="space-y-0.5">
                   {group.items.map((item) => (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      onClick={onClose}
-                      title={item.label}
-                      className={({ isActive }) =>
-                        cn(
-                          "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                    item.featureKey && !hasFeatureAccess(meQuery.data?.profile, item.featureKey) ? (
+                      <div
+                        key={item.path}
+                        title="Access is controlled by admin"
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/40",
                           collapsed && "lg:justify-center lg:px-0",
-                          isActive
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-                        )
-                      }
-                    >
-                      <item.icon className={cn("h-4 w-4 shrink-0", collapsed && "lg:h-5 lg:w-5")} />
-                      <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
-                        <p className="truncate text-sm font-semibold leading-none">{item.label}</p>
-                        <p className="truncate text-[11px] opacity-70 mt-0.5 leading-none">{item.description}</p>
+                        )}
+                      >
+                        <item.icon className={cn("h-4 w-4 shrink-0", collapsed && "lg:h-5 lg:w-5")} />
+                        <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
+                          <p className="truncate text-sm font-semibold leading-none">{item.label}</p>
+                          <p className="truncate text-[11px] opacity-70 mt-0.5 leading-none">Admin access required</p>
+                        </div>
+                        <Lock className={cn("h-3.5 w-3.5 shrink-0 opacity-60", collapsed && "lg:hidden")} />
                       </div>
-                      <ChevronRight className={cn("h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity", collapsed && "lg:hidden")} />
-                    </NavLink>
+                    ) : (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        onClick={onClose}
+                        title={item.label}
+                        className={({ isActive }) =>
+                          cn(
+                            "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                            collapsed && "lg:justify-center lg:px-0",
+                            isActive
+                              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                          )
+                        }
+                      >
+                        <item.icon className={cn("h-4 w-4 shrink-0", collapsed && "lg:h-5 lg:w-5")} />
+                        <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
+                          <p className="truncate text-sm font-semibold leading-none">{item.label}</p>
+                          <p className="truncate text-[11px] opacity-70 mt-0.5 leading-none">{item.description}</p>
+                        </div>
+                        <ChevronRight className={cn("h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity", collapsed && "lg:hidden")} />
+                      </NavLink>
+                    )
                   ))}
                 </div>
               </div>
