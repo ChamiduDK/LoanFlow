@@ -23,6 +23,7 @@ Copy `.env.example` to `.env` and configure:
 - `SUPABASE_DOCS_BUCKET`
 - `API_PORT`
 - `CORS_ORIGIN`
+- `APP_BASE_URL` (public frontend origin used in generated links)
 - `NODE_ENV`
 - `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
 - `ML_ASSETS_DIR` (filesystem path for trained ML model artifacts)
@@ -86,6 +87,67 @@ Copy `.env.example` to `.env` and configure:
 - `npm run typecheck:server` type-check backend
 
 Frontend commands are unchanged (`npm run dev`, `npm run build`, etc.).
+
+## Railway Deployment
+
+This repo is a single Railway web service:
+
+- `npm run build` builds the Vite frontend into `dist/`
+- `npm start` runs the Express API
+- the Express server serves both `/api/*` and the built frontend
+
+Use the repository root as the Railway service root.
+
+Important differences from the generic Nest/Express Railway guides:
+
+- Do not add a Railway Postgres service for this app unless you are intentionally replacing Supabase.
+- This app already uses Supabase for auth, storage, and database access.
+- For a single Railway service, leave `VITE_API_BASE_URL` empty so the frontend uses same-origin `/api/*` calls.
+
+Recommended GitHub deploy flow:
+
+1. Create a new Railway project.
+2. Choose `Deploy from GitHub repo` and select this repository.
+3. Add these service variables before the first successful build:
+   - `NODE_ENV=production`
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `AGENT_WEBHOOK_SECRET`
+   - `CORS_ORIGIN=https://<your-service-domain>`
+   - `APP_BASE_URL=https://<your-service-domain>`
+4. Deploy the service.
+5. In Railway service settings, generate a public domain.
+6. Update `CORS_ORIGIN` and `APP_BASE_URL` to that final Railway domain if you deployed before the domain existed.
+
+Optional Railway variables:
+
+- `SUPABASE_DOCS_BUCKET`
+- `ML_ASSETS_DIR`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_WHATSAPP_FROM_NUMBER`
+- `TWILIO_WEBHOOK_BASE_URL=https://<your-service-domain>` if you use Twilio signature validation
+- OCR / Gemini variables depending on which providers you enable
+
+CLI deploy flow:
+
+1. Install and authenticate the Railway CLI.
+2. From the repo root, run `railway init`.
+3. Set the same variables listed above on the created service.
+4. Run `railway up`.
+5. Run `railway domain` or generate a domain from the Railway dashboard.
+
+Notes:
+
+- `railway.json` already points Railway to `npm start` and `/api/health`.
+- `API_PORT` is only for local development. Railway injects `PORT`, and the server already falls back to that automatically.
+- `.railwayignore` is configured so CLI deploys still upload the frontend source and server knowledge files required for the build/runtime.
+- If you keep `OCR_PROVIDER=tesseract`, Railpack images will not include `tesseract` or `pdftoppm`. On Railway, either:
+  - switch to `OCR_PROVIDER=azure_document_intelligence` or `google_vision`, or
+  - deploy with a Dockerfile that installs those binaries.
 
 ## Heroku Deployment
 

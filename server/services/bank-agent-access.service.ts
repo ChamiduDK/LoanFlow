@@ -54,6 +54,10 @@ function generatePinCode(): string {
 }
 
 function getFrontendOrigin(): string {
+  if (env.APP_BASE_URL) {
+    return env.APP_BASE_URL;
+  }
+
   const configuredOrigin = env.CORS_ORIGIN
     .split(",")
     .map((item) => item.trim())
