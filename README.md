@@ -253,6 +253,7 @@ Then apply baseline seed script:
   - `POST /api/whatsapp/twilio/status` (delivery status callbacks)
   - `POST /api/whatsapp/twilio/voice` (incoming voice call webhook)
   - `POST /api/whatsapp/twilio/voice/process` (speech turn processing)
+  - `POST /api/whatsapp/dev/link` (localhost-only phone link helper for existing users)
   - `POST /api/whatsapp/dev/simulate/text` (localhost text simulation)
   - `POST /api/whatsapp/dev/simulate/voice` (localhost voice-note simulation with multipart file upload)
   - `POST /api/whatsapp/dev/simulate/document` (localhost document upload simulation with multipart file upload)
@@ -271,13 +272,22 @@ The full WhatsApp assistant logic now supports localhost in two modes:
 2. Pure localhost simulation mode
 - Run the API locally with `npm run server:dev`
 - You do not need Twilio or a tunnel
+- Link a local phone number to an existing LoanFlow user with:
+  - `POST http://localhost:4000/api/whatsapp/dev/link`
 - You can call these local dev endpoints directly:
+  - `POST http://localhost:4000/api/whatsapp/dev/link`
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/text`
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/voice`
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/document`
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/call`
 
 Example localhost requests:
+
+```bash
+curl -X POST http://localhost:4000/api/whatsapp/dev/link \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"user@example.com\",\"phone_number\":\"+94770000000\"}"
+```
 
 ```bash
 curl -X POST http://localhost:4000/api/whatsapp/dev/simulate/text \
@@ -306,7 +316,8 @@ curl -X POST http://localhost:4000/api/whatsapp/dev/simulate/voice \
 ```
 
 Local simulation still requires:
-- a valid linked WhatsApp phone in `user_channel_links` for linked-user flows
+- an existing LoanFlow user profile
+- either `POST /api/whatsapp/dev/link` or a valid `user_channel_links` row for linked-user flows
 - Gemini keys for AI replies / transcription
 - OCR configuration for document scanning
 
