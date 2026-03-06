@@ -5,8 +5,7 @@ WORKDIR /app
 FROM base AS deps
 
 COPY package*.json ./
-RUN npm install
-
+RUN npm ci
 FROM deps AS build
 
 COPY . .
@@ -23,7 +22,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
-ENV API_PORT=4000
 
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
