@@ -17,6 +17,25 @@ interface ChatSidebarProps {
   onSelectSession: (id: string | null) => void;
 }
 
+function getSessionTitle(session: ChatSession): string {
+  const metadata = session.metadata;
+  const rawTitle =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata.title
+      : undefined;
+
+  if (typeof rawTitle === "string" && rawTitle.trim().length > 0) {
+    return rawTitle.trim();
+  }
+
+  const startedAt = new Date(session.started_at);
+  const fallbackDate = Number.isNaN(startedAt.getTime())
+    ? "New chat"
+    : `Chat ${startedAt.toLocaleDateString()}`;
+
+  return fallbackDate;
+}
+
 export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -97,7 +116,7 @@ export function ChatSidebar({ activeSessionId, onSelectSession }: ChatSidebarPro
               <MessageSquare className="h-4 w-4 text-white/60 group-hover:text-white" />
               <div className="flex-1 overflow-hidden">
                 <p className="text-sm font-medium truncate">
-                  {session.metadata?.title || `Chat ${new Date(session.started_at).toLocaleDateString()}`}
+                  {getSessionTitle(session)}
                 </p>
               </div>
               <Trash2 

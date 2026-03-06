@@ -1,0 +1,17 @@
+.git
+.gitignore
+node_modules
+dist
+.env
+.env.*
+!.env.example
+coverage
+tmp
+*.log
+build_error.txt
+build_error_utf8.txt
+reindex_log.txt
+.railwayignore
+.slugignore
+Dockerfile*
+README.md

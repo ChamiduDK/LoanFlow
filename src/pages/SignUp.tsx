@@ -4,7 +4,7 @@ import { LockKeyhole, Mail, Phone, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabaseClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api/client";
-import { normalizeEmail, resolvePostAuthPath } from "@/lib/auth";
+import { normalizeEmail, resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
 import logo from "@/assets/logo.png";
 import home1 from "@/assets/HOME1.png";
 import home2 from "@/assets/HOME2.png";
@@ -95,7 +95,16 @@ export default function SignUp() {
     });
 
     const state = location.state as { from?: string } | null;
-    navigate(resolvePostAuthPath(state?.from, { isAdmin: false, isApproved: true }), { replace: true });
+    let access = { isAdmin: false, isApproved: true };
+
+    try {
+      const me = await apiFetch<{ profile?: { is_admin?: boolean; is_approved?: boolean } | null }>("/api/me");
+      access = resolveAccessState(me.profile);
+    } catch {
+      access = { isAdmin: false, isApproved: true };
+    }
+
+    navigate(resolvePostAuthPath(state?.from, access), { replace: true });
   };
 
   return (
@@ -133,19 +142,9 @@ export default function SignUp() {
               Create your account to start your loan journey
             </p>
 
-            <button
-              type="button"
-              className="mt-4 flex h-10 w-full items-center justify-center rounded-full border border-border bg-muted/40 transition-colors hover:bg-muted/70 sm:mt-5 sm:h-11"
-            >
-              <img
-                src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/googleLogo.svg"
-                alt="googleLogo"
-              />
-            </button>
-
-            <div className="my-4 flex w-full items-center gap-3">
+            <div className="my-4 flex w-full items-center gap-3 sm:mt-5">
               <div className="h-px w-full bg-border" />
-              <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">or sign up with email</p>
+              <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">Create your account with email</p>
               <div className="h-px w-full bg-border" />
             </div>
 

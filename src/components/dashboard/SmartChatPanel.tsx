@@ -34,6 +34,7 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -43,16 +44,26 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
       const fetchHistory = async () => {
         try {
           setIsLoading(true);
+          setLoadError(null);
           const history = await apiFetch<any[]>(`/api/sessions/${activeSessionId}`);
-          setMessages(history.map(m => ({
-            id: m.id,
-            role: m.role,
-            content: m.message_text || "",
-            intent: m.message_json?.intent,
-            data: m.message_json?.data,
-            timestamp: new Date(m.created_at)
-          })));
+          const normalizedMessages = Array.isArray(history)
+            ? history
+                .filter((item) => item && (item.role === "user" || item.role === "assistant"))
+                .map((item) => ({
+                  id: typeof item.id === "string" ? item.id : crypto.randomUUID(),
+                  role: item.role as Message["role"],
+                  content:
+                    typeof item.message_text === "string" && item.message_text.trim().length > 0
+                      ? item.message_text
+                      : "No message content available.",
+                  intent: item.message_json?.intent,
+                  data: item.message_json?.data,
+                  timestamp: item.created_at ? new Date(item.created_at) : new Date(),
+                }))
+            : [];
+          setMessages(normalizedMessages);
         } catch (error) {
+          setLoadError("Failed to load chat history.");
           toast({ title: "Error", description: "Failed to load chat history", variant: "destructive" });
         } finally {
           setIsLoading(false);
@@ -60,6 +71,7 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
       };
       fetchHistory();
     } else {
+      setLoadError(null);
       setMessages([]); // Reset for new chat
     }
   }, [activeSessionId]);
@@ -97,7 +109,10 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: response.text,
+        content:
+          typeof response.text === "string" && response.text.trim().length > 0
+            ? response.text
+            : "I could not generate a response for that request.",
         intent: response.intent,
         data: response.data,
         timestamp: new Date(),
@@ -130,6 +145,14 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
 
       <ScrollArea className="flex-1 min-h-0 p-3 md:p-4">
         <div className="space-y-6">
+          {loadError && (
+            <Card className="animated-chat-message-card border-none">
+              <CardContent className="p-4 text-sm text-white/80">
+                {loadError}
+              </CardContent>
+            </Card>
+          )}
+
           {messages.length === 0 && (
             <div className="text-center py-10">
               <img src={logo} alt="LoanFlow Logo" className="h-16 w-auto mx-auto mb-6 drop-shadow-lg opacity-80" />
@@ -225,6 +248,7 @@ export default function SmartChatPanel({ activeSessionId, onSessionCreated }: Sm
 }
 
 function PredictionCard({ data }: { data: any }) {
+  const approvalProbability = typeof data?.approval_probability === "number" ? data.approval_probability : 0;
   const isApproved = data.decision === "Approve";
   const isRejected = data.decision === "Reject";
 
@@ -244,12 +268,12 @@ function PredictionCard({ data }: { data: any }) {
         <div className="space-y-1">
           <div className="flex justify-between text-xs font-medium">
             <span>Approval Probability</span>
-            <span>{(data.approval_probability * 100).toFixed(1)}%</span>
+            <span>{(approvalProbability * 100).toFixed(1)}%</span>
           </div>
           <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
             <div 
               className={`h-full transition-all duration-500 ${isApproved ? "bg-success" : isRejected ? "bg-destructive" : "bg-warning"}`}
-              style={{ width: `${data.approval_probability * 100}%` }}
+              style={{ width: `${approvalProbability * 100}%` }}
             />
           </div>
         </div>
@@ -274,7 +298,13 @@ function PredictionCard({ data }: { data: any }) {
 
 function SourceList({ sources }: { sources: Array<{ filename: string }> }) {
   // Unique filenames
-  const uniqueSources = Array.from(new Set(sources.map(s => s.filename)));
+  const uniqueSources = Array.from(
+    new Set(
+      sources
+        .map((source) => (typeof source?.filename === "string" ? source.filename.trim() : ""))
+        .filter((filename) => filename.length > 0),
+    ),
+  );
 
   return (
     <div className="flex flex-wrap gap-2 pt-1">

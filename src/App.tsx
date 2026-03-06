@@ -11,6 +11,7 @@ import RequireAuth from "@/components/auth/RequireAuth";
 import RequireApprovedUser from "@/components/auth/RequireApprovedUser";
 import RequireGuest from "@/components/auth/RequireGuest";
 import RouteFallback from "@/components/auth/RouteFallback";
+import AppErrorBoundary from "@/components/error/AppErrorBoundary";
 
 const Index = lazy(() => import("./pages/Index"));
 const Login = lazy(() => import("./pages/Login"));
@@ -57,52 +58,54 @@ function AppRoutes() {
   }, []);
 
   return (
-    <Suspense fallback={<RouteFallback message="Loading page..." />}>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/bank-agent-access/:token" element={<BankAgentAccess />} />
+    <AppErrorBoundary>
+      <Suspense fallback={<RouteFallback message="Loading page..." />}>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/bank-agent-access/:token" element={<BankAgentAccess />} />
 
-        <Route element={<RequireGuest />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<SignUp />} />
-        </Route>
+          <Route element={<RequireGuest />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<SignUp />} />
+          </Route>
 
-        <Route element={<RequireAuth />}>
-          <Route path="/approval-pending" element={<ApprovalPending />} />
+          <Route element={<RequireAuth />}>
+            <Route path="/approval-pending" element={<ApprovalPending />} />
 
-          <Route element={<RequireApprovedUser />}>
-            <Route path="/chat" element={<AiChat />} />
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/apply" element={<LoanApplication />} />
-              <Route path="/results" element={<LoanResults />} />
-              <Route path="/calculator" element={<EMICalculator />} />
-              <Route path="/documents" element={<DocumentUpload />} />
-              <Route path="/tracker" element={<ApplicationTracker />} />
-              <Route path="/management" element={<LoanManagement />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/notifications" element={<Notifications />} />
+            <Route element={<RequireApprovedUser />}>
+              <Route path="/chat" element={<AiChat />} />
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/apply" element={<LoanApplication />} />
+                <Route path="/results" element={<LoanResults />} />
+                <Route path="/calculator" element={<EMICalculator />} />
+                <Route path="/documents" element={<DocumentUpload />} />
+                <Route path="/tracker" element={<ApplicationTracker />} />
+                <Route path="/management" element={<LoanManagement />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/notifications" element={<Notifications />} />
+              </Route>
             </Route>
           </Route>
-        </Route>
 
-        <Route element={<RequireAdmin />}>
-          <Route element={<AdminLayout />}>
-            <Route path="/admin" element={<AdminOverview />} />
-            <Route path="/admin/banks" element={<AdminBanks />} />
-            <Route path="/admin/schemes" element={<AdminSchemes />} />
-            <Route path="/admin/rules" element={<AdminRules />} />
-            <Route path="/admin/documents" element={<AdminDocuments />} />
-            <Route path="/admin/users" element={<AdminUsers />} />
-            <Route path="/admin/applications" element={<AdminApplications />} />
-            <Route path="/admin/ml" element={<AdminML />} />
-            <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
+          <Route element={<RequireAdmin />}>
+            <Route element={<AdminLayout />}>
+              <Route path="/admin" element={<AdminOverview />} />
+              <Route path="/admin/banks" element={<AdminBanks />} />
+              <Route path="/admin/schemes" element={<AdminSchemes />} />
+              <Route path="/admin/rules" element={<AdminRules />} />
+              <Route path="/admin/documents" element={<AdminDocuments />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/applications" element={<AdminApplications />} />
+              <Route path="/admin/ml" element={<AdminML />} />
+              <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
+            </Route>
           </Route>
-        </Route>
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
   );
 }
 

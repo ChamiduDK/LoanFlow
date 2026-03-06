@@ -30,6 +30,11 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString();
 }
 
+function formatPercent(value: unknown): string {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(1)}%` : "-";
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -148,7 +153,14 @@ export default function BankAgentAccess() {
 
     const blob = new Blob([html], { type: "text/html" });
     const previewUrl = URL.createObjectURL(blob);
-    window.open(previewUrl, "_blank", "noopener,noreferrer");
+    const previewWindow = window.open(previewUrl, "_blank", "noopener,noreferrer");
+    if (!previewWindow) {
+      toast({
+        title: "Preview blocked",
+        description: "Allow pop-ups for this site to open the proposal preview.",
+        variant: "destructive",
+      });
+    }
     setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
   };
 
@@ -253,7 +265,7 @@ export default function BankAgentAccess() {
                     <p className="text-xs text-muted-foreground">Subject</p>
                     <p className="mt-1 text-sm font-semibold">
                       {String(
-                        toRecord(accessData.proposal.proposal_data_json.formal_request).subject
+                        toRecord(toRecord(accessData.proposal.proposal_data_json).formal_request).subject
                         ?? "Credit Facility Request",
                       )}
                     </p>
@@ -283,7 +295,7 @@ export default function BankAgentAccess() {
                 <div className="rounded-lg border border-border/70 p-3">
                   <p className="text-xs text-muted-foreground">Completeness</p>
                   <p className="mt-1 text-sm font-semibold">
-                    {accessData.document_checklist.summary.overall_completeness.toFixed(1)}%
+                    {formatPercent(accessData.document_checklist.summary.overall_completeness)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/70 p-3">
@@ -302,7 +314,7 @@ export default function BankAgentAccess() {
                     <div key={scheme.product_id} className="rounded-lg border border-border/70 p-3">
                       <p className="text-sm font-semibold">{scheme.bank_name ?? "Bank"} - {scheme.product_name}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Completeness: {scheme.completeness_score.toFixed(1)}% | Missing: {scheme.missing_docs.length}
+                        Completeness: {formatPercent(scheme.completeness_score)} | Missing: {scheme.missing_docs.length}
                       </p>
                       {scheme.missing_docs.length > 0 ? (
                         <p className="mt-1 text-xs text-destructive">

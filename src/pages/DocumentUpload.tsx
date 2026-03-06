@@ -277,13 +277,19 @@ export default function DocumentUpload() {
         name: item.name,
         required: item.required,
         uploaded: requiredMissingCount === 0 && (item.requiredCount > 0 ? true : hasUploadedRecord),
-        isAvailable: item.isAvailable || item.latestStatus === "verified" || pendingAvailability[item.document_type] === true || checklistQuery.data?.by_scheme.some(s => s.checklist.some(i => i.document_type === item.document_type && i.is_available)),
+        isAvailable:
+          item.isAvailable ||
+          item.latestStatus === "verified" ||
+          pendingAvailability[item.document_type] === true ||
+          checklistQuery.data?.by_scheme.some((scheme) =>
+            scheme.checklist.some((checklistItem) => checklistItem.document_type === item.document_type && checklistItem.is_available),
+          ),
         status,
         fileName: latestDoc?.file_name ?? null,
         signedUrl: latestDoc?.signed_url ?? null,
       };
     });
-  }, [checklistQuery.data?.by_scheme, documentsQuery.data]);
+  }, [checklistQuery.data?.by_scheme, documentsQuery.data, pendingAvailability]);
 
   const fallbackRequired = checklistRows.filter((d) => d.required).length;
   const fallbackMissing = checklistRows.filter((d) => d.required && (d.status === "missing" || d.status === "rejected")).length;
@@ -505,8 +511,8 @@ export default function DocumentUpload() {
                             <p className="text-sm font-semibold text-foreground">{doc.name}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-1">
                               {doc.required ? "Required" : "Optional"}
-                              {doc.fileName ? ` • ${doc.fileName}` : ""}
-                              {isPending && <span className="text-primary font-medium ml-1">• Pending Save</span>}
+                              {doc.fileName ? ` | ${doc.fileName}` : ""}
+                              {isPending && <span className="ml-1 font-medium text-primary">| Pending Save</span>}
                             </p>
                           </div>
                         </div>
@@ -669,13 +675,13 @@ export default function DocumentUpload() {
                             )}
                             {isPending && (
                               <>
-                                <span>•</span>
+                                <span>|</span>
                                 <span className="text-primary font-medium">Modified (Pending Save)</span>
                               </>
                             )}
                             {!isPending && (
                               <>
-                                <span>•</span>
+                                <span>|</span>
                                 <span>{doc.status.replace("_", " ")}</span>
                               </>
                             )}

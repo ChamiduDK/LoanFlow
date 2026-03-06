@@ -233,9 +233,11 @@ export default function TopNav({ onMenuClick, sidebarCollapsed, onDesktopSidebar
               <span className="sr-only">New Application</span>
             </Link>
           </Button>
-          <Button variant="ghost" size="icon" className="relative hover:bg-muted">
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-info animate-pulse" />
+          <Button asChild variant="ghost" size="icon" className="relative hover:bg-muted">
+            <Link to="/notifications" aria-label="Open notifications">
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-info animate-pulse" />
+            </Link>
           </Button>
           <Button variant="ghost" size="sm" className="gap-2 rounded-lg px-2 sm:px-3 hover:bg-muted">
             <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-muted">

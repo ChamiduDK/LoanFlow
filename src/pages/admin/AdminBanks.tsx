@@ -31,6 +31,10 @@ const emptyDraft: Draft = {
   is_active: true,
 };
 
+function toSafeText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 export default function AdminBanks() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -98,12 +102,21 @@ export default function AdminBanks() {
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return banksQuery.data ?? [];
+    const source = (banksQuery.data ?? []).map((bank) => ({
+      ...bank,
+      name: toSafeText(bank.name),
+      code: toSafeText(bank.code),
+      website: toSafeText(bank.website),
+      contact_email: toSafeText(bank.contact_email),
+    }));
+    if (!term) return source;
 
-    return (banksQuery.data ?? []).filter((bank) =>
+    return source.filter((bank) =>
       bank.name.toLowerCase().includes(term) || bank.code.toLowerCase().includes(term),
     );
   }, [banksQuery.data, search]);
+
+  const saveDisabled = saveMutation.isPending || draft.name.trim().length < 2 || draft.code.trim().length < 2;
 
   return (
     <div className="space-y-6">
@@ -147,7 +160,7 @@ export default function AdminBanks() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate(draft)}>
+            <Button disabled={saveDisabled} onClick={() => saveMutation.mutate(draft)}>
               {saveMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
@@ -163,6 +176,11 @@ export default function AdminBanks() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {banksQuery.isError ? (
+            <div className="p-4 text-sm text-destructive">
+              Failed to load banks. Refresh and try again.
+            </div>
+          ) : null}
           <Table>
             <TableHeader>
               <TableRow>

@@ -27,6 +27,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   useEffect(() => {
@@ -77,6 +78,42 @@ export default function Login() {
     }
   };
 
+  const handlePasswordReset = async () => {
+    const normalized = normalizeEmail(email);
+    if (!normalized) {
+      toast({
+        title: "Enter your email first",
+        description: "Provide the email address for the account you want to reset.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSendingReset(true);
+    try {
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(normalized, {
+        redirectTo: `${window.location.origin}/login`,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Password reset email sent",
+        description: "Check your inbox for the reset link.",
+      });
+    } catch (error) {
+      toast({
+        title: "Password reset failed",
+        description: error instanceof Error ? error.message : "Could not send reset email",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
   return (
     <div className="h-screen min-h-[100dvh] overflow-hidden bg-background text-foreground">
       <div className="grid h-full grid-cols-1 md:grid-cols-2">
@@ -112,19 +149,9 @@ export default function Login() {
               Welcome back! Please sign in to continue
             </p>
 
-            <button
-              type="button"
-              className="mt-4 flex h-10 w-full items-center justify-center rounded-full border border-border bg-muted/40 transition-colors hover:bg-muted/70 sm:mt-5 sm:h-11"
-            >
-              <img
-                src="https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/login/googleLogo.svg"
-                alt="googleLogo"
-              />
-            </button>
-
-            <div className="my-4 flex w-full items-center gap-3">
+            <div className="my-4 flex w-full items-center gap-3 sm:mt-5">
               <div className="h-px w-full bg-border" />
-              <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">or sign in with email</p>
+              <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">Sign in with email</p>
               <div className="h-px w-full bg-border" />
             </div>
 
@@ -166,14 +193,10 @@ export default function Login() {
               <button
                 type="button"
                 className="text-sm underline"
-                onClick={() =>
-                  toast({
-                    title: "Password reset",
-                    description: "Password reset flow is not configured yet.",
-                  })
-                }
+                onClick={() => void handlePasswordReset()}
+                disabled={sendingReset}
               >
-                Forgot password?
+                {sendingReset ? "Sending reset..." : "Forgot password?"}
               </button>
             </div>
 

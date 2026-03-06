@@ -32,6 +32,8 @@ export function LookupCard({ data, type }: LookupCardProps) {
 
   const isLoanApp = data.requested_amount !== undefined || type === "application";
   const isProfile = data.full_name !== undefined || type === "profile";
+  const createdAt = data.created_at ? new Date(data.created_at) : null;
+  const hasValidCreatedAt = createdAt !== null && !Number.isNaN(createdAt.getTime());
 
   return (
     <Card className="animated-chat-message-card border-none overflow-hidden mt-2 w-full max-w-full">
@@ -86,13 +88,13 @@ export function LookupCard({ data, type }: LookupCardProps) {
                   </TableRow>
                 );
               })}
-              {data.created_at && (
+              {hasValidCreatedAt && (
                 <TableRow className="border-none hover:bg-transparent h-auto">
                   <TableCell className="py-1 pl-0 text-[10px] text-white/30 italic">
                     Date
                   </TableCell>
                   <TableCell className="py-1 pr-0 text-[10px] text-white/30 italic text-right">
-                    {format(new Date(data.created_at), "MMM d, yyyy HH:mm")}
+                    {format(createdAt, "MMM d, yyyy HH:mm")}
                   </TableCell>
                 </TableRow>
               )}

@@ -37,7 +37,7 @@ type ProfileData = {
   industry?: string | null;
   years_active?: number | null;
   annual_turnover?: number | null;
-  address?: string | null;
+  district?: string | null;
   is_admin?: boolean;
 };
 
@@ -104,7 +104,7 @@ export default function Profile() {
       business_name: profile?.business_name ?? "",
       business_type: profile?.business_type ?? "",
       industry: profile?.industry ?? "",
-      address: profile?.address ?? "",
+      district: profile?.district ?? "",
       years_active: profile?.years_active ?? undefined,
       annual_turnover: profile?.annual_turnover ?? undefined,
     });
@@ -112,7 +112,16 @@ export default function Profile() {
   };
 
   const handleSave = () => {
-    updateMutation.mutate(editForm);
+    updateMutation.mutate({
+      full_name: editForm.full_name?.trim() || null,
+      phone: editForm.phone?.trim() || null,
+      business_name: editForm.business_name?.trim() || null,
+      business_type: editForm.business_type?.trim() || null,
+      industry: editForm.industry?.trim() || null,
+      district: editForm.district?.trim() || null,
+      years_active: editForm.years_active ?? null,
+      annual_turnover: editForm.annual_turnover ?? null,
+    });
   };
 
   return (
@@ -203,8 +212,8 @@ export default function Profile() {
                   <Input id="phone" value={editForm.phone ?? ""} onChange={(e) => setEditForm(p => ({ ...p, phone: e.target.value }))} placeholder="+94 7X XXX XXXX" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="address" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Address</Label>
-                  <Input id="address" value={editForm.address ?? ""} onChange={(e) => setEditForm(p => ({ ...p, address: e.target.value }))} placeholder="Business address" />
+                  <Label htmlFor="district" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">District</Label>
+                  <Input id="district" value={editForm.district ?? ""} onChange={(e) => setEditForm(p => ({ ...p, district: e.target.value }))} placeholder="Business district" />
                 </div>
               </>
             ) : (
@@ -213,7 +222,7 @@ export default function Profile() {
                   { icon: User, label: "Full Name", value: profile?.full_name },
                   { icon: Mail, label: "Email", value: profile?.email },
                   { icon: Phone, label: "Phone", value: profile?.phone },
-                  { icon: MapPin, label: "Address", value: profile?.address },
+                  { icon: MapPin, label: "District", value: profile?.district },
                 ].map((field) => (
                   <div key={field.label} className="flex items-start gap-3 py-2">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -258,11 +267,11 @@ export default function Profile() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Years Active</Label>
-                    <Input type="number" value={editForm.years_active ?? ""} onChange={(e) => setEditForm(p => ({ ...p, years_active: Number(e.target.value) }))} placeholder="e.g. 5" />
+                    <Input type="number" value={editForm.years_active ?? ""} onChange={(e) => setEditForm(p => ({ ...p, years_active: e.target.value === "" ? undefined : Number(e.target.value) }))} placeholder="e.g. 5" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Annual Turnover (LKR)</Label>
-                    <Input type="number" value={editForm.annual_turnover ?? ""} onChange={(e) => setEditForm(p => ({ ...p, annual_turnover: Number(e.target.value) }))} placeholder="e.g. 5000000" />
+                    <Input type="number" value={editForm.annual_turnover ?? ""} onChange={(e) => setEditForm(p => ({ ...p, annual_turnover: e.target.value === "" ? undefined : Number(e.target.value) }))} placeholder="e.g. 5000000" />
                   </div>
                 </div>
               </>

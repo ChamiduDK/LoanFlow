@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calculator, RefreshCw, TrendingDown, TrendingUp, Banknote, CalendarDays, ArrowRight } from "lucide-react";
+import { Calculator, RefreshCw, TrendingUp, Banknote, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -105,7 +105,7 @@ export default function EMICalculator() {
             }`}
           >
             <p className="text-xs font-bold text-foreground">{preset.label}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{formatLKR(preset.principal)} · {preset.rate}% · {preset.tenure}mo</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{formatLKR(preset.principal)} | {preset.rate}% | {preset.tenure}mo</p>
           </button>
         ))}
       </div>
@@ -158,6 +158,7 @@ export default function EMICalculator() {
                 max={25}
                 step={0.5}
                 onValueChange={([val]) => setRate(val)}
+                className="w-full"
               />
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>5%</span>
@@ -177,6 +178,7 @@ export default function EMICalculator() {
                 max={120}
                 step={6}
                 onValueChange={([val]) => setTenure(val)}
+                className="w-full"
               />
               <div className="flex justify-between text-[10px] text-muted-foreground">
                 <span>6 months</span>
@@ -186,7 +188,7 @@ export default function EMICalculator() {
 
             <Button className="w-full" onClick={runCalculation} disabled={resultQuery.isFetching}>
               {resultQuery.isFetching ? (
-                <><RefreshCw className="h-4 w-4 animate-spin" /> Calculating…</>
+                <><RefreshCw className="h-4 w-4 animate-spin" /> Calculating...</>
               ) : (
                 <><Calculator className="h-4 w-4" /> Calculate EMI</>
               )}
@@ -201,12 +203,12 @@ export default function EMICalculator() {
             <CardContent className="p-6 text-center">
               <p className="text-xs font-bold uppercase tracking-widest text-primary/70 mb-2">Monthly EMI</p>
               <p className="text-5xl font-black text-primary leading-none">
-                {resultQuery.isLoading ? "…" : formatLKR(resultQuery.data?.emi.monthlyEmi ?? 0)}
+                {resultQuery.isLoading ? "..." : formatLKR(resultQuery.data?.emi.monthlyEmi ?? 0)}
               </p>
               <p className="text-sm text-muted-foreground mt-2">Per month for {tenure} months</p>
               {resultQuery.data?.range && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Range: {formatLKR(resultQuery.data.range.minEmi)} – {formatLKR(resultQuery.data.range.maxEmi)}
+                  Range: {formatLKR(resultQuery.data.range.minEmi)} - {formatLKR(resultQuery.data.range.maxEmi)}
                 </p>
               )}
             </CardContent>
