@@ -20,6 +20,7 @@ const statusConfig: Record<string, { label: string; variant: BadgeVariant }> = {
   valid: { label: "Valid", variant: "success" },
   invalid: { label: "Invalid", variant: "destructive" },
   unclear: { label: "Unclear", variant: "warning" },
+  unreadable: { label: "Unreadable", variant: "destructive" },
   available: { label: "Available", variant: "info" },
   uploaded: { label: "Uploaded", variant: "info" },
   processing: { label: "Processing", variant: "info" },

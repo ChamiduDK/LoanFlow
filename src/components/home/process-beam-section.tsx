@@ -169,7 +169,7 @@ export default function ProcessBeamSection() {
                 <Circle
                   ref={docCheckRef}
                   label="Doc Check"
-                  tooltip="Checklist and document verification"
+                  tooltip="Document readiness and optional AI guidance"
                 >
                   <ShieldCheck className="h-5 w-5" />
                 </Circle>

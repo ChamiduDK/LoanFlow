@@ -32,13 +32,20 @@ export default defineConfig(({ mode }) => {
               return;
             }
 
-            if (id.includes("@supabase")) return "supabase";
-            if (id.includes("@tanstack")) return "react-query";
-            if (id.includes("react-router")) return "react-router";
-            if (id.includes("@radix-ui")) return "radix-ui";
-            if (id.includes("@splinetool")) return "spline";
-            if (id.includes("lucide-react")) return "icons";
-            if (id.includes("react-dom") || id.includes("\\react\\") || id.includes("/react/")) {
+            const normalizedId = id.replace(/\\/g, "/");
+
+            if (normalizedId.includes("/@supabase/")) return "supabase";
+            if (normalizedId.includes("/@tanstack/")) return "react-query";
+            if (normalizedId.includes("/react-router")) return "react-router";
+            if (normalizedId.includes("/@radix-ui/")) return "radix-ui";
+            if (normalizedId.includes("/@tensorflow/")) return "ml";
+            if (normalizedId.includes("/lucide-react/")) return "icons";
+            if (
+              normalizedId.includes("/node_modules/react/") ||
+              normalizedId.includes("/node_modules/react-dom/") ||
+              normalizedId.includes("/node_modules/scheduler/") ||
+              normalizedId.includes("/node_modules/use-sync-external-store/")
+            ) {
               return "react-core";
             }
 

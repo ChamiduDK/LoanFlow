@@ -8,7 +8,10 @@ dotenv.config();
 
 const KNOWLEDGE_DIR = path.join(process.cwd(), "server", "data", "knowledge");
 const INDEX_FILE = path.join(process.cwd(), "server", "data", "knowledge_index.json");
-const API_KEY = "AIzaSyBdDTjPuwsHPm16Lpp7onYFgoezaHdNud0";
+const API_KEY =
+    process.env.AI_CHAT_GEMINI_API_KEY ||
+    process.env.DOCUMENT_AI_GEMINI_API_KEY ||
+    process.env.GEMINI_API_KEY;
 
 const logFile = path.join(process.cwd(), "reindex_log.txt");
 fs.writeFileSync(logFile, "START SESSION\n");
@@ -22,6 +25,10 @@ function log(msg) {
 
 async function main() {
     try {
+        if (!API_KEY) {
+            throw new Error("Missing Gemini API key. Set AI_CHAT_GEMINI_API_KEY, DOCUMENT_AI_GEMINI_API_KEY, or GEMINI_API_KEY.");
+        }
+
         log("Init GenAI...");
         const genAI = new GoogleGenAI({ apiKey: API_KEY });
 
@@ -42,7 +49,8 @@ async function main() {
                     }
                     throw new Error("Invalid response format from embedContent");
                 } catch (e) {
-                    log(`Model ${m} failed: ${e.message}`);
+                    const reason = e instanceof Error ? e.message : String(e);
+                    log(`Model ${m} failed: ${reason}`);
                 }
             }
             throw new Error("All embedding models failed");
@@ -95,7 +103,8 @@ async function main() {
         fs.writeFileSync(INDEX_FILE, JSON.stringify(newChunks, null, 2));
         log("DONE!");
     } catch (err) {
-        log(`FATAL ERROR: ${err.message}\n${err.stack}`);
+        const reason = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+        log(`FATAL ERROR: ${reason}`);
     }
 }
 

@@ -3,8 +3,10 @@ import multer from "multer";
 import { z } from "zod";
 import { asyncHandler } from "../lib/async-handler";
 import { badRequest, unauthorized } from "../lib/errors";
+import { normalizePhoneNumber } from "../lib/whatsapp";
 import { parseWithSchema } from "../lib/validation";
 import { logAudit } from "../services/audit.service";
+import { isTwilioWhatsAppProvider, isWhatsAppWebProvider } from "../services/whatsapp-messaging.service";
 import { twilioService } from "../services/twilio.service";
 import { supabaseAdmin } from "../lib/supabase/client";
 import {
@@ -48,6 +50,18 @@ function assertLocalDevAllowed(): void {
   }
 }
 
+function assertTwilioProvider(): void {
+  if (!isTwilioWhatsAppProvider()) {
+    throw badRequest("Twilio webhook routes are disabled unless WHATSAPP_PROVIDER=twilio");
+  }
+}
+
+function assertWhatsAppWebProvider(): void {
+  if (!isWhatsAppWebProvider()) {
+    throw badRequest("WhatsApp Web routes are disabled unless WHATSAPP_PROVIDER=whatsapp_web");
+  }
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -84,6 +98,7 @@ function continueCallTwiml(reply: string): string {
 }
 
 function assertTwilioSignature(req: Request): void {
+  assertTwilioProvider();
   const valid = twilioService.verifySignature(req);
   if (!valid) {
     throw unauthorized("Invalid Twilio signature");
@@ -177,7 +192,7 @@ whatsappRouter.post(
       throw badRequest("Target profile not found");
     }
 
-    const normalizedPhone = twilioService.normalizeWhatsAppAddress(payload.phone_number).replace(/^whatsapp:/i, "");
+    const normalizedPhone = normalizePhoneNumber(payload.phone_number);
     const upsertResult = await supabaseAdmin
       .from("user_channel_links")
       .upsert(
@@ -206,6 +221,33 @@ whatsappRouter.post(
         link: upsertResult.data,
         profile: profileResult.data,
       },
+    });
+  }),
+);
+
+whatsappRouter.get(
+  "/whatsapp/web/status",
+  asyncHandler(async (_req, res) => {
+    assertLocalDevAllowed();
+    assertWhatsAppWebProvider();
+    const { whatsappWebService } = await import("../services/whatsapp-web.service");
+    res.status(200).json({
+      success: true,
+      data: whatsappWebService.getStatus(),
+    });
+  }),
+);
+
+whatsappRouter.post(
+  "/whatsapp/web/start",
+  asyncHandler(async (_req, res) => {
+    assertLocalDevAllowed();
+    assertWhatsAppWebProvider();
+    const { whatsappWebService } = await import("../services/whatsapp-web.service");
+    await whatsappWebService.initialize();
+    res.status(200).json({
+      success: true,
+      data: whatsappWebService.getStatus(),
     });
   }),
 );

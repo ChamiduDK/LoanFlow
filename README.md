@@ -27,6 +27,7 @@ Copy `.env.example` to `.env` and configure:
 - `NODE_ENV`
 - `AGENT_WEBHOOK_SECRET` (required for signed agent webhook validation)
 - `ML_ASSETS_DIR` (filesystem path for trained ML model artifacts)
+- `ML_ALLOW_SYNTHETIC_BOOTSTRAP` (optional; defaults to enabled outside production and disabled in production. When enabled, local/demo ML training can include synthetic bootstrap outcomes. Production ML still requires consented real outcomes.)
 - `OCR_PROVIDER` (`placeholder`, `tesseract`, `azure_document_intelligence`, or `google_vision`)
 - Tesseract OCR settings (used when `OCR_PROVIDER=tesseract`):
   - `OCR_TESSERACT_COMMAND` (default `tesseract`)
@@ -60,11 +61,24 @@ Copy `.env.example` to `.env` and configure:
   - `DOCUMENT_AI_MIN_OCR_CHARS` (default `120`)
   - `DOCUMENT_AI_MAX_TEXT_CHARS` (default `6000`)
   - Used for document type detection and rule-based verification status (`valid` / `invalid` / `unclear`)
+- Telegram bot channel:
+  - `TELEGRAM_BOT_TOKEN`
+  - `TELEGRAM_BOT_USERNAME` (optional)
+  - `TELEGRAM_AUTO_START` (`true`/`false`, default `true`)
+  - `TELEGRAM_POLL_INTERVAL_MS` (default `2000`)
 - Admin document verification rules (`required_documents.verification_rules_json`):
   - `required_keywords`: string array that must appear in OCR text
   - `forbidden_keywords`: string array that must not appear
   - `min_text_length`: minimum OCR character count
   - `ai_instructions`: optional extra Gemini instruction for edge cases
+- WhatsApp transport:
+  - `WHATSAPP_PROVIDER` (`whatsapp_web`, `twilio`, or `disabled`)
+  - `WHATSAPP_WEB_SESSION_DIR` (default `.wwebjs_auth`)
+  - `WHATSAPP_WEB_CLIENT_ID` (default `loanflow`)
+  - `WHATSAPP_WEB_HEADLESS` (`true`/`false`)
+  - `WHATSAPP_WEB_EXECUTABLE_PATH` (optional Chromium/Chrome path)
+  - `WHATSAPP_WEB_AUTO_START` (`true`/`false`, default `true`)
+  - `WHATSAPP_WEB_LOG_QR` (`true`/`false`, default `true`)
 - Twilio WhatsApp/Voice channel:
   - `TWILIO_ACCOUNT_SID`
   - `TWILIO_AUTH_TOKEN`
@@ -126,6 +140,17 @@ Optional Railway variables:
 
 - `SUPABASE_DOCS_BUCKET`
 - `ML_ASSETS_DIR`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_BOT_USERNAME`
+- `TELEGRAM_AUTO_START`
+- `TELEGRAM_POLL_INTERVAL_MS`
+- `WHATSAPP_PROVIDER`
+- `WHATSAPP_WEB_SESSION_DIR`
+- `WHATSAPP_WEB_CLIENT_ID`
+- `WHATSAPP_WEB_HEADLESS`
+- `WHATSAPP_WEB_EXECUTABLE_PATH`
+- `WHATSAPP_WEB_AUTO_START`
+- `WHATSAPP_WEB_LOG_QR`
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_WHATSAPP_FROM_NUMBER`
@@ -147,7 +172,7 @@ Notes:
 - `.railwayignore` is configured so CLI deploys still upload the frontend source and server knowledge files required for the build/runtime.
 - If you keep `OCR_PROVIDER=tesseract`, Railpack images will not include `tesseract` or `pdftoppm`. On Railway, either:
   - switch to `OCR_PROVIDER=azure_document_intelligence` or `google_vision`, or
-  - deploy with a Dockerfile that installs those binaries.
+  - host on an environment where `tesseract` and `pdftoppm` are already installed.
 
 ## Heroku Deployment
 
@@ -174,6 +199,7 @@ Apply migrations in order:
 9. `supabase/migrations/20260302144500_document_availability.sql`
 10. `supabase/migrations/20260303120000_bank_agent_access.sql`
 11. `supabase/migrations/20260305193000_whatsapp_channel_index.sql`
+12. `supabase/migrations/20260307020000_add_telegram_channel.sql`
 
 Then apply baseline seed script:
 
@@ -245,14 +271,21 @@ Then apply baseline seed script:
   - `POST /api/agent/chat/session`
   - `POST /api/agent/chat/message`
   - `POST /api/agent/link-whatsapp`
+  - `POST /api/agent/link-telegram`
   - `POST /api/agent/chat/webhook`
   - `GET /api/agent/context/:applicationId`
   - `POST /api/agent/actions/log`
+- Telegram bot:
+  - `GET /api/telegram/status` (localhost Telegram bot polling status)
+  - `POST /api/telegram/start` (manually start localhost Telegram polling)
+  - `POST /api/telegram/dev/link` (localhost-only chat-id link helper for existing users)
 - WhatsApp + voice AI:
   - `POST /api/whatsapp/twilio/webhook` (incoming WhatsApp text, voice notes, and documents)
   - `POST /api/whatsapp/twilio/status` (delivery status callbacks)
   - `POST /api/whatsapp/twilio/voice` (incoming voice call webhook)
   - `POST /api/whatsapp/twilio/voice/process` (speech turn processing)
+  - `GET /api/whatsapp/web/status` (localhost WhatsApp Web client state + QR availability)
+  - `POST /api/whatsapp/web/start` (manually start the localhost WhatsApp Web client)
   - `POST /api/whatsapp/dev/link` (localhost-only phone link helper for existing users)
   - `POST /api/whatsapp/dev/simulate/text` (localhost text simulation)
   - `POST /api/whatsapp/dev/simulate/voice` (localhost voice-note simulation with multipart file upload)
@@ -261,20 +294,48 @@ Then apply baseline seed script:
 
 ## Localhost Support
 
-The full WhatsApp assistant logic now supports localhost in two modes:
+The simplest free localhost channel is now Telegram Bot API via long polling:
 
-1. Real Twilio mode
+1. Telegram mode (free, no tunnel, preferred for localhost)
+- Create a bot with BotFather and set `TELEGRAM_BOT_TOKEN`
+- Run the API locally with `npm run server:dev`
+- The bot starts polling automatically when `TELEGRAM_AUTO_START=true`
+- Check bot state with `GET http://localhost:4000/api/telegram/status`
+- If you disabled auto-start, start it manually with:
+  - `POST http://localhost:4000/api/telegram/start`
+- Send a message to the bot in a private chat; if the chat is not linked yet the bot will reply with the Telegram `chat_id`
+- Link that chat to an existing LoanFlow user with:
+  - `POST http://localhost:4000/api/telegram/dev/link`
+- After linking, the bot supports real Telegram text, voice notes, PDFs, and images on localhost
+- Limitation: Telegram bots do not provide voice-call handling here, so this channel supports voice notes but not live calls
+
+The full WhatsApp assistant logic also supports localhost in three modes:
+
+1. WhatsApp Web mode (free, real WhatsApp on localhost)
+- Set `WHATSAPP_PROVIDER=whatsapp_web`
+- Run the API locally with `npm run server:dev`
+- The server will print a QR code in the terminal on startup
+- Scan it from WhatsApp on the phone that should host the LoanFlow assistant
+- Check client state with `GET http://localhost:4000/api/whatsapp/web/status`
+- If you disabled auto-start, start it manually with:
+  - `POST http://localhost:4000/api/whatsapp/web/start`
+- Linked users can now send real WhatsApp text, voice notes, PDFs, and images directly to that WhatsApp account
+- Limitation: WhatsApp Web does not provide PSTN or WhatsApp call webhooks here, so live voice calls still require Twilio or a separate call provider. Voice notes are supported.
+
+2. Real Twilio mode
 - Run the API locally with `npm run server:dev`
 - Expose it with a tunnel such as `ngrok http 4000`
 - Set `TWILIO_WEBHOOK_BASE_URL` to the public tunnel URL
 - Keep `TWILIO_VERIFY_SIGNATURE=true`
 
-2. Pure localhost simulation mode
+3. Pure localhost simulation mode
 - Run the API locally with `npm run server:dev`
 - You do not need Twilio or a tunnel
 - Link a local phone number to an existing LoanFlow user with:
   - `POST http://localhost:4000/api/whatsapp/dev/link`
 - You can call these local dev endpoints directly:
+  - `GET http://localhost:4000/api/whatsapp/web/status`
+  - `POST http://localhost:4000/api/whatsapp/web/start`
   - `POST http://localhost:4000/api/whatsapp/dev/link`
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/text`
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/voice`
@@ -282,6 +343,12 @@ The full WhatsApp assistant logic now supports localhost in two modes:
   - `POST http://localhost:4000/api/whatsapp/dev/simulate/call`
 
 Example localhost requests:
+
+```bash
+curl -X POST http://localhost:4000/api/telegram/dev/link \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"user@example.com\",\"chat_id\":\"123456789\"}"
+```
 
 ```bash
 curl -X POST http://localhost:4000/api/whatsapp/dev/link \

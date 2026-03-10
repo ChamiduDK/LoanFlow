@@ -7,7 +7,7 @@ const MODEL_NAME = "LoanFlow AI";
 const WEB_CHANNEL = "web";
 const REFERENCE_CACHE_TTL_MS = 2 * 60 * 1000;
 
-export type ChatChannel = "web" | "whatsapp" | "voice_call";
+export type ChatChannel = "web" | "whatsapp" | "telegram" | "voice_call";
 
 type ChatSessionRow = {
   id: string;

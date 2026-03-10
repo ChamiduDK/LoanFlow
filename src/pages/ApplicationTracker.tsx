@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 import { CheckCircle2, Circle, ClipboardCheck, Clock3, Copy, FileSearch, KeyRound, Link2, Mail, Pencil, Printer, RefreshCcw, ShieldCheck, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shared/PageHeader";
@@ -29,9 +30,11 @@ import type {
 import EmptyState from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatLKR } from "@/lib/currency";
+import { formatMlModelVersionLabel } from "@/lib/ml-display";
 import { useToast } from "@/hooks/use-toast";
 import ProposalEditor, { fieldsFromProposalData } from "@/components/tracker/ProposalEditor";
 import type { ProposalFields } from "@/components/tracker/ProposalEditor";
+import { parseDocumentAnalysis } from "@/lib/document-analysis";
 
 type OutcomeRecord = {
   id: string;
@@ -42,6 +45,7 @@ type OutcomeRecord = {
   approved_rate: number | null;
   approved_tenure_months: number | null;
   notes: string | null;
+  consent_for_training?: boolean | null;
 };
 
 function formatDate(value: string | null): string {
@@ -69,6 +73,14 @@ function toText(value: unknown, fallback = "-"): string {
   if (value == null) return fallback;
   const parsed = String(value).trim();
   return parsed.length > 0 ? parsed : fallback;
+}
+
+function formatPercent(value: number | null | undefined, fallback = "-"): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return `${value.toFixed(1)}%`;
 }
 
 export default function ApplicationTracker() {
@@ -136,7 +148,8 @@ export default function ApplicationTracker() {
         method: "POST",
         body: JSON.stringify({}),
       }),
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   });
 
@@ -204,14 +217,43 @@ export default function ApplicationTracker() {
       }),
     onSuccess: (payload) => {
       setLatestScanResult(payload);
-      toast({ title: "Document scan complete", description: `${payload.summary.total_documents} document(s) checked.` });
+      toast({ title: "Document analysis complete", description: `${payload.summary.total_documents} uploaded document(s) analyzed.` });
       void queryClient.invalidateQueries({ queryKey: ["tracker-page", applicationId] });
       void queryClient.invalidateQueries({ queryKey: ["tracker-re-evaluation", applicationId, selectedProductId] });
     },
     onError: (error) => {
       toast({
-        title: "Document scan failed",
-        description: error instanceof Error ? error.message : "Could not scan documents",
+        title: "Document analysis failed",
+        description: error instanceof Error ? error.message : "Could not analyze documents",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const trainingConsentMutation = useMutation({
+    mutationFn: (consentForTraining: boolean) =>
+      apiFetch<OutcomeRecord>(`/api/applications/${applicationId}/outcome/training-consent`, {
+        method: "POST",
+        body: JSON.stringify({
+          consent_for_training: consentForTraining,
+        }),
+      }),
+    onSuccess: async (payload) => {
+      toast({
+        title: payload.consent_for_training
+          ? "Training consent enabled"
+          : "Training consent disabled",
+        description: payload.consent_for_training
+          ? "This finalized real bank outcome can now contribute to future ML training."
+          : "This outcome will no longer be used for future ML training.",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["ml-readiness"] });
+      await dataQuery.refetch();
+    },
+    onError: (error) => {
+      toast({
+        title: "Could not update training consent",
+        description: error instanceof Error ? error.message : "Outcome training consent update failed",
         variant: "destructive",
       });
     },
@@ -256,6 +298,16 @@ export default function ApplicationTracker() {
     ];
   }, [dataQuery.data?.application.created_at, dataQuery.data?.application.status, dataQuery.data?.application.updated_at]);
 
+  const refreshTrackerView = async () => {
+    await dataQuery.refetch();
+    if (selectedProductId) {
+      await reEvaluationQuery.refetch();
+    }
+    if (isApprovedState) {
+      await loanManagementQuery.refetch();
+    }
+  };
+
   if (!applicationId) {
     return (
       <div className="space-y-6 px-2 md:px-6">
@@ -284,7 +336,15 @@ export default function ApplicationTracker() {
   }
 
   const { application, documents, checklist, tracker } = dataQuery.data;
+  const outcomeAllowsTrainingConsent =
+    dataQuery.data.outcome?.status === "approved" || dataQuery.data.outcome?.status === "rejected";
   const reEvaluation = reEvaluationQuery.data;
+  const reEvaluationErrorMessage = reEvaluationQuery.error instanceof Error
+    ? reEvaluationQuery.error.message
+    : "Could not load the final probability breakdown for this application.";
+  const rawMlScoreDisplay = reEvaluation?.prediction?.fallback_mode
+    ? "Fallback"
+    : formatPercent(reEvaluation?.scoring.model_probability);
   const proposal = proposalQuery.data;
   const proposalData = toRecord(proposal?.proposal_data_json);
   const proposalApplicant = toRecord(proposalData.applicant);
@@ -295,28 +355,33 @@ export default function ApplicationTracker() {
   const proposalVerification = toRecord(proposalData.verification);
   const proposalEmailDraft = toRecord(proposalData.email_draft);
   const scannedDocuments = latestScanResult?.documents ?? [];
-  const documentRows = documents.map((doc) => ({
+  const latestDocumentsByType = new Map<string, DocumentRow>();
+  for (const doc of documents) {
+    const key = String(doc.document_type ?? "").trim().toLowerCase();
+    if (!key || latestDocumentsByType.has(key)) {
+      continue;
+    }
+    latestDocumentsByType.set(key, doc);
+  }
+  const documentRows = Array.from(latestDocumentsByType.values()).map((doc) => ({
     id: doc.id,
     file_name: doc.file_name,
     document_type: doc.document_type,
     validation_status: doc.validation_status ?? "unclear",
     detected_doc_type: doc.detected_doc_type ?? null,
     ocr_preview: doc.ocr_preview ?? null,
+    ai_document_analysis: parseDocumentAnalysis(toRecord(doc.extracted_json).ai_document_analysis),
   }));
-
-  const allChecklistItems = checklist.by_scheme.flatMap(s => s.checklist);
-  const uniqueAvailableDocs = new Set(allChecklistItems.filter(i => i.is_available).map(i => i.document_type));
 
   const documentSummary = latestScanResult?.summary ?? {
     total_documents: documentRows.length,
-    valid_count: documentRows.filter((doc) => doc.validation_status === "valid").length,
-    invalid_count: documentRows.filter((doc) => doc.validation_status === "invalid").length,
-    unclear_count: documentRows.filter((doc) => doc.validation_status === "unclear").length,
+    valid_count: documentRows.filter((doc) => doc.ai_document_analysis).length,
+    invalid_count: documentRows.filter((doc) =>
+      doc.ai_document_analysis?.requirement_match.some((item) => item.status === "warning"),
+    ).length,
+    unclear_count: documentRows.filter((doc) => !doc.ai_document_analysis).length,
     missing_required_count: reEvaluation?.documents.missing_count ?? 0,
   };
-
-
-
   const downloadProposalPdf = () => {
     const htmlToUse = editedHtml ?? proposal?.html_content;
     if (!htmlToUse) {
@@ -598,139 +663,171 @@ ${htmlToUse}
         <Card>
           <CardHeader><CardTitle className="text-base">Bank Requirement Re-check Summary</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {!reEvaluation ? <p className="text-sm text-muted-foreground">Run the bank re-check to view eligibility and checklist verification.</p> : (
+            {!reEvaluation ? <p className="text-sm text-muted-foreground">Run the bank re-check to view eligibility and document readiness.</p> : (
               <>
                 <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Eligibility Result</span><StatusBadge status={reEvaluation.eligibility.passed ? "approved" : "needs_review"} /></div>
                 <div className="space-y-1.5"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Bank Match Score</span><span>{reEvaluation.scoring.bank_match_score.toFixed(1)}%</span></div><Progress value={reEvaluation.scoring.bank_match_score} /></div>
-                <div className="space-y-1.5"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Document Completeness</span><span>{reEvaluation.documents.completeness_score.toFixed(1)}%</span></div><Progress value={reEvaluation.documents.completeness_score} /></div>
-                <p className="text-xs text-muted-foreground">Missing docs: {reEvaluation.documents.missing_count} | Invalid docs: {reEvaluation.documents.invalid_count}</p>
+                <div className="space-y-1.5"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Document Readiness</span><span>{reEvaluation.documents.readiness_score.toFixed(1)}%</span></div><Progress value={reEvaluation.documents.readiness_score} /></div>
+                <p className="text-xs text-muted-foreground">Ready now: {reEvaluation.documents.available_count} | Still missing: {reEvaluation.documents.missing_count}</p>
               </>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {checklist.by_scheme.some(s => s.checklist.some(i => i.is_available)) ? (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-primary" />
-              <CardTitle className="text-base">Document Availability Summary</CardTitle>
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Requirements fulfilled via Quick Checklist. AI Scan & Verification is bypassed for Declared Available documents.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Declared Available</p>
-                <p className="mt-1 text-2xl font-bold text-primary">
-                  {uniqueAvailableDocs.size}
-                </p>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Optional AI Document Guidance</CardTitle>
+            <p className="text-sm text-muted-foreground">Analyze uploaded documents against the bank requirement. This guidance does not change prediction.</p>
+          </div>
+          <Button disabled={scanMutation.isPending || documents.length === 0} onClick={() => scanMutation.mutate()}>
+            <FileSearch className="h-4 w-4" />
+            {scanMutation.isPending ? "Analyzing..." : "Analyze Documents"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {documents.length === 0 ? (
+            <EmptyState
+              title="No uploaded documents"
+              description="Open the documents page to mark availability or upload a file for optional AI guidance."
+              action={<Button variant="outline" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}><ShieldCheck className="h-4 w-4" />Open Documents</Button>}
+            />
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Total</p><p className="mt-1 text-lg font-semibold">{documentSummary.total_documents}</p></div>
+                <div className="rounded-lg border border-success/30 bg-success/10 p-3"><p className="label-xs">With Analysis</p><p className="mt-1 text-lg font-semibold text-success">{documentSummary.valid_count}</p></div>
+                <div className="rounded-lg border border-warning/30 bg-warning/10 p-3"><p className="label-xs">Needs Attention</p><p className="mt-1 text-lg font-semibold text-warning-foreground">{documentSummary.invalid_count}</p></div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Pending Analysis</p><p className="mt-1 text-lg font-semibold">{documentSummary.unclear_count}</p></div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Still Missing</p><p className="mt-1 text-lg font-semibold">{documentSummary.missing_required_count}</p></div>
               </div>
-              <div className="rounded-lg border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Verification Path</p>
-                <p className="mt-1 text-lg font-bold text-foreground">Manual Declaration</p>
-              </div>
-              <div className="rounded-lg border border-success/20 bg-success/5 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Completeness Impact</p>
-                <p className="mt-1 text-2xl font-bold text-success">Positive</p>
-              </div>
-            </div>
-            {documents.length > 0 && (
-              <div className="mt-6">
-                <h4 className="text-sm font-semibold mb-3">Other Uploaded Files ({documents.length})</h4>
-                <div className="space-y-2">
-                  {documents.slice(0, 3).map(doc => (
-                    <div key={doc.id} className="text-xs flex items-center justify-between p-2 border rounded-md">
-                      <span>{doc.file_name}</span>
-                      <StatusBadge status={doc.validation_status ?? "unclear"} />
-                    </div>
-                  ))}
-                  {documents.length > 3 && <p className="text-[10px] text-muted-foreground">And {documents.length - 3} more...</p>}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base">Document Scan & Verification</CardTitle>
-              <p className="text-sm text-muted-foreground">Scan uploaded documents, detect type mismatches, and update validation status.</p>
-            </div>
-            <Button disabled={scanMutation.isPending || documents.length === 0} onClick={() => scanMutation.mutate()}>
-              <FileSearch className="h-4 w-4" />
-              {scanMutation.isPending ? "Scanning..." : "Scan Documents"}
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {documents.length === 0 ? (
-              <EmptyState title="No uploaded documents" description="Upload documents first to run tracker verification." action={<Button variant="outline" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}><Upload className="h-4 w-4" />Upload Documents</Button>} />
-            ) : (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Total</p><p className="mt-1 text-lg font-semibold">{documentSummary.total_documents}</p></div>
-                  <div className="rounded-lg border border-success/30 bg-success/10 p-3"><p className="label-xs">Valid</p><p className="mt-1 text-lg font-semibold text-success">{documentSummary.valid_count}</p></div>
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3"><p className="label-xs">Invalid</p><p className="mt-1 text-lg font-semibold text-destructive">{documentSummary.invalid_count}</p></div>
-                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-3"><p className="label-xs">Unclear</p><p className="mt-1 text-lg font-semibold text-warning-foreground">{documentSummary.unclear_count}</p></div>
-                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3"><p className="label-xs">Missing Required</p><p className="mt-1 text-lg font-semibold">{documentSummary.missing_required_count}</p></div>
-                </div>
 
-                {reEvaluation?.documents.missing_docs.length ? (
-                  <Alert variant="warning">
-                    <ShieldCheck className="h-4 w-4" />
-                    <AlertTitle>Missing bank-required documents</AlertTitle>
-                    <AlertDescription>{reEvaluation.documents.missing_docs.join(", ")}</AlertDescription>
-                  </Alert>
-                ) : null}
+              {reEvaluation?.documents.missing_docs.length ? (
+                <Alert variant="warning">
+                  <ShieldCheck className="h-4 w-4" />
+                  <AlertTitle>Documents not marked available yet</AlertTitle>
+                  <AlertDescription>{reEvaluation.documents.missing_docs.join(", ")}</AlertDescription>
+                </Alert>
+              ) : null}
 
-                <div className="space-y-3">
-                  {(scannedDocuments.length > 0 ? scannedDocuments : documentRows).map((doc) => (
-                    <div key={("document_id" in doc ? doc.document_id : doc.id)} className="rounded-lg border border-border/70 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{"file_name" in doc ? doc.file_name : doc.file_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Type: {"document_type" in doc ? doc.document_type : doc.document_type}
-                            {("detected_doc_type" in doc && doc.detected_doc_type) ? ` | Detected: ${doc.detected_doc_type}` : ""}
-                          </p>
-                        </div>
-                        <StatusBadge status={(("validation_status" in doc ? doc.validation_status : "unclear") ?? "unclear") as string} />
+              <div className="space-y-3">
+                {(scannedDocuments.length > 0 ? scannedDocuments : documentRows).map((doc) => {
+                  const aiAnalysis = "ai_document_analysis" in doc ? doc.ai_document_analysis : null;
+                  return (
+                  <div key={("document_id" in doc ? doc.document_id : doc.id)} className="rounded-lg border border-border/70 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{"file_name" in doc ? doc.file_name : doc.file_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Type: {"document_type" in doc ? doc.document_type : doc.document_type}
+                          {("detected_doc_type" in doc && doc.detected_doc_type) ? ` | Detected: ${doc.detected_doc_type}` : ""}
+                        </p>
                       </div>
-                      {"ocr_preview" in doc && doc.ocr_preview ? <p className="mt-2 text-xs text-muted-foreground">{doc.ocr_preview}</p> : null}
-                      {"notes" in doc && Array.isArray(doc.notes) && doc.notes.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{doc.notes.join(" ")}</p> : null}
+                      <p className="text-xs font-medium text-muted-foreground">Guidance only</p>
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                    {"ocr_preview" in doc && doc.ocr_preview ? <p className="mt-2 text-xs text-muted-foreground">{doc.ocr_preview}</p> : null}
+                    {aiAnalysis?.summary ? <p className="mt-2 text-xs text-foreground">AI Summary: {aiAnalysis.summary}</p> : null}
+                    {aiAnalysis ? (
+                      <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+                        {aiAnalysis.extracted_information.map((item) => (
+                          <p key={`${("document_id" in doc ? doc.document_id : doc.id)}-${item.label}`}>
+                            <span className="font-medium text-foreground">{item.label}:</span> {item.value}
+                          </p>
+                        ))}
+                        {aiAnalysis.requirement_match.map((item, index) => (
+                          <p key={`${("document_id" in doc ? doc.document_id : doc.id)}-${index}`}>{item.message}</p>
+                        ))}
+                        <p className="text-foreground">{aiAnalysis.eligibility_hint}</p>
+                      </div>
+                    ) : null}
+                    {"notes" in doc && Array.isArray(doc.notes) && doc.notes.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{doc.notes.join(" ")}</p> : null}
+                  </div>
+                );
+                })}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Final Approval Probability</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          {!reEvaluation ? <p className="text-sm text-muted-foreground">Final probability will appear after tracker-stage re-evaluation.</p> : (
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">Final Approval Probability</CardTitle>
+            <p className="text-sm text-muted-foreground">Full tracker-stage breakdown of the final loan prediction.</p>
+          </div>
+          <Button variant="outline" size="sm" disabled={!selectedProductId || reEvaluationQuery.isFetching} onClick={() => void reEvaluationQuery.refetch()}>
+            <RefreshCcw className="h-4 w-4" />
+            {reEvaluationQuery.isFetching ? "Refreshing..." : "Refresh Probability"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!selectedProductId ? (
+            <p className="text-sm text-muted-foreground">Track a bank scheme first to generate the final probability breakdown.</p>
+          ) : reEvaluationQuery.isLoading && !reEvaluation ? (
+            <p className="text-sm text-muted-foreground">Running tracker-stage re-evaluation...</p>
+          ) : reEvaluationQuery.isError ? (
+            <Alert variant="destructive">
+              <ShieldCheck className="h-4 w-4" />
+              <AlertTitle>Final probability could not be loaded</AlertTitle>
+              <AlertDescription>{reEvaluationErrorMessage}</AlertDescription>
+            </Alert>
+          ) : !reEvaluation ? (
+            <p className="text-sm text-muted-foreground">Final probability will appear after tracker-stage re-evaluation.</p>
+          ) : (
             <>
-              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Initial Probability</span><span className="text-sm font-semibold">{reEvaluation.scoring.initial_probability.toFixed(1)}%</span></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Final Probability</span><span className="text-xl font-semibold text-primary">{reEvaluation.scoring.final_probability.toFixed(1)}%</span></div>
-              {reEvaluation.prediction ? (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Prediction Source</span>
-                  <span className="font-medium">
-                    {reEvaluation.prediction.source === "ml_model"
-                      ? `ML (${reEvaluation.prediction.model_version ?? "active"})`
-                      : "Rule-Based Fallback"}
-                  </span>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <p className="label-xs">Initial Probability</p>
+                  <p className="mt-1 text-lg font-semibold">{formatPercent(reEvaluation.scoring.initial_probability)}</p>
                 </div>
-              ) : null}
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <p className="label-xs">Rule-Based Score</p>
+                  <p className="mt-1 text-lg font-semibold">{formatPercent(reEvaluation.scoring.rule_based_final_probability)}</p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <p className="label-xs">Raw ML Score</p>
+                  <p className="mt-1 text-lg font-semibold">{rawMlScoreDisplay}</p>
+                </div>
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <p className="label-xs">Final Probability</p>
+                  <p className="mt-1 text-2xl font-semibold text-primary">{formatPercent(reEvaluation.scoring.final_probability)}</p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <p className="label-xs">Confidence</p>
+                  <p className="mt-1 text-lg font-semibold capitalize">{reEvaluation.prediction?.confidence.level ?? "-"}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Prediction Source</span>
+                    <span className="font-medium">
+                      {reEvaluation.prediction.source === "ml_model"
+                        ? formatMlModelVersionLabel(reEvaluation.prediction.model_version)
+                        : "Rule-Based Fallback"}
+                    </span>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Live Refresh State</span>
+                    <span className="font-medium">{reEvaluationQuery.isFetching ? "Updating" : "Current"}</span>
+                  </div>
+                </div>
+              </div>
+
               <Progress value={reEvaluation.scoring.final_probability} />
-              <div className="space-y-1">
-                {reEvaluation.reasons.map((reason, index) => <p key={`${index}-${reason}`} className="text-sm text-foreground">{index + 1}. {reason}</p>)}
+
+              <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-4">
+                <p className="text-sm font-semibold text-foreground">Why this final probability was shown</p>
+                <div className="space-y-1">
+                  {reEvaluation.reasons.map((reason, index) => (
+                    <p key={`${index}-${reason}`} className="text-sm text-foreground">{index + 1}. {reason}</p>
+                  ))}
+                </div>
               </div>
             </>
           )}
@@ -895,6 +992,27 @@ ${htmlToUse}
               <p className="mt-2 text-sm font-medium text-foreground">Bank agent or admin reviewer</p>
             </div>
           </div>
+          {outcomeAllowsTrainingConsent ? (
+            <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">Use This Final Outcome For ML Training</p>
+                  <p className="text-sm text-muted-foreground">
+                    Only real approved or rejected bank decisions with your consent are included in future ML model training.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Turning this on adds this finalized outcome to the real-data training pool used by the admin ML readiness check.
+                  </p>
+                </div>
+                <Switch
+                  checked={dataQuery.data.outcome?.consent_for_training === true}
+                  disabled={trainingConsentMutation.isPending}
+                  onCheckedChange={(checked) => trainingConsentMutation.mutate(checked)}
+                  aria-label="Toggle ML training consent"
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
             Final approval, rejection, and sanctioned terms are not editable from the applicant dashboard.
             Share the secure bank-agent access link above or contact an admin reviewer if the decision needs to be updated.
@@ -929,9 +1047,9 @@ ${htmlToUse}
       </Card>
 
       <div className="flex flex-wrap justify-center gap-3 md:justify-start">
-        <Button variant="outline" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}><Upload className="h-4 w-4" />Update Documents</Button>
+        <Button variant="outline" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}><Upload className="h-4 w-4" />Review Documents</Button>
         <Button variant="outline" onClick={() => navigate(`/results?applicationId=${applicationId}`)}><ShieldCheck className="h-4 w-4" />Open Recommendations</Button>
-        <Button onClick={() => void dataQuery.refetch()}><RefreshCcw className="h-4 w-4" />Refresh Tracker</Button>
+        <Button onClick={() => void refreshTrackerView()}><RefreshCcw className="h-4 w-4" />Refresh Tracker</Button>
       </div>
     </div>
   );

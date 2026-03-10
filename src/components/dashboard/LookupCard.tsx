@@ -5,7 +5,7 @@ import { FileText, User as UserIcon, Calendar, DollarSign, Briefcase } from "luc
 import { format } from "date-fns";
 
 interface LookupCardProps {
-  data: any;
+  data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   type?: string;
 }
 
@@ -23,6 +23,8 @@ export function LookupCard({ data, type }: LookupCardProps) {
     );
   }
 
+  const record = data as Record<string, unknown>;
+
   const formatKey = (key: string) => {
     return key
       .split("_")
@@ -30,9 +32,9 @@ export function LookupCard({ data, type }: LookupCardProps) {
       .join(" ");
   };
 
-  const isLoanApp = data.requested_amount !== undefined || type === "application";
-  const isProfile = data.full_name !== undefined || type === "profile";
-  const createdAt = data.created_at ? new Date(data.created_at) : null;
+  const isLoanApp = record.requested_amount !== undefined || type === "application";
+  const isProfile = record.full_name !== undefined || type === "profile";
+  const createdAt = record.created_at ? new Date(String(record.created_at)) : null;
   const hasValidCreatedAt = createdAt !== null && !Number.isNaN(createdAt.getTime());
 
   return (
@@ -49,16 +51,16 @@ export function LookupCard({ data, type }: LookupCardProps) {
           <span className="font-semibold text-sm">
             {isLoanApp ? "Loan Application" : isProfile ? "User Profile" : "Record Details"}
           </span>
-          {data.status && (
+          {record.status && (
             <Badge variant="outline" className="ml-auto text-[10px] h-4">
-              {data.status}
+              {String(record.status)}
             </Badge>
           )}
         </div>
         <div className="p-3">
           <Table>
             <TableBody>
-              {Object.entries(data).map(([key, value]) => {
+              {Object.entries(record).map(([key, value]) => {
                 // Skip internal/long/unfriendly fields
                 if (
                   key === "id" || 
@@ -72,9 +74,10 @@ export function LookupCard({ data, type }: LookupCardProps) {
 
                 let displayValue = String(value);
                 if (key.includes("amount") || key.includes("turnover") || key.includes("income")) {
-                   try {
-                     displayValue = new Intl.NumberFormat('en-LK', { style: 'currency', currency: 'LKR' }).format(Number(value));
-                   } catch (e) {}
+                  const numericValue = Number(value);
+                  if (Number.isFinite(numericValue)) {
+                    displayValue = new Intl.NumberFormat("en-LK", { style: "currency", currency: "LKR" }).format(numericValue);
+                  }
                 }
 
                 return (

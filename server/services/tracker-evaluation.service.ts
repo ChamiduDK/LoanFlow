@@ -6,8 +6,9 @@ import { evaluateEligibility } from "./eligibility.service";
 import { checkDocumentCompleteness } from "./document.service";
 import { logAudit } from "./audit.service";
 import { predictApprovalProbability } from "./ml/prediction.service";
+import { blendApprovalProbabilities } from "./ranking.service";
 
-type ValidationStatus = "valid" | "invalid" | "unclear";
+type DocumentAvailabilityStatus = "available" | "missing";
 
 export type TrackerReEvaluationResult = {
   application_id: string;
@@ -26,24 +27,21 @@ export type TrackerReEvaluationResult = {
     reasons: string[];
   };
   documents: {
-    completeness_score: number;
-    quality_score: number;
+    readiness_score: number;
     required_count: number;
+    available_count: number;
     missing_count: number;
-    invalid_count: number;
-    unclear_count: number;
     missing_docs: string[];
-    validation_notes: Array<{
+    availability_notes: Array<{
       document_type: string;
       display_name: string;
       note: string;
-      status: ValidationStatus;
+      status: DocumentAvailabilityStatus;
     }>;
   };
   scoring: {
     bank_match_score: number;
-    document_completeness_score: number;
-    document_quality_score: number;
+    document_readiness_score: number;
     initial_probability: number;
     rule_based_final_probability: number;
     model_probability: number | null;
@@ -128,7 +126,7 @@ export async function reEvaluateTrackedApplication(
     throw notFound("No tracked loan product selected for this application");
   }
 
-  const [productResult, rulesResult, requiredDocsResult, documentsResult, checksResult, existingResult] = await Promise.all([
+  const [productResult, rulesResult, requiredDocsResult, checksResult, existingResult] = await Promise.all([
     supabaseAdmin
       .from("loan_products")
       .select("*, banks(name)")
@@ -145,12 +143,6 @@ export async function reEvaluateTrackedApplication(
       .from("required_documents")
       .select("document_type, display_name, is_required")
       .eq("product_id", selectedProductId),
-    supabaseAdmin
-      .from("documents")
-      .select("id, document_type, product_id, validation_status, created_at")
-      .eq("application_id", applicationId)
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false }),
     checkDocumentCompleteness(userId, applicationId, [selectedProductId]),
     supabaseAdmin
       .from("application_results")
@@ -176,10 +168,6 @@ export async function reEvaluateTrackedApplication(
     throw internalError("Failed to load required documents", requiredDocsResult.error);
   }
 
-  if (documentsResult.error) {
-    throw internalError("Failed to load uploaded documents", documentsResult.error);
-  }
-
   if (existingResult.error) {
     throw internalError("Failed to load existing recommendation result", existingResult.error);
   }
@@ -187,7 +175,6 @@ export async function reEvaluateTrackedApplication(
   const product = productResult.data;
   const rulePayload = (rulesResult.data?.rules_json ?? {}) as EligibilityRulePayload;
   const requiredDocs = (requiredDocsResult.data ?? []).filter((row) => row.is_required === true);
-  const uploadedDocs = documentsResult.data ?? [];
 
   const eligibility = evaluateEligibility(rulePayload, profile, application);
   let eligibilityScore = eligibility.score;
@@ -213,92 +200,40 @@ export async function reEvaluateTrackedApplication(
   }
 
   const checksByScheme = ((checksResult.by_scheme as Array<Record<string, unknown>> | undefined) ?? [])[0] ?? {};
-  const completenessScore = toNumber(checksByScheme.completeness_score, 0);
+  const readinessScore = toNumber(checksByScheme.completeness_score, 0);
   const missingDocs = ((checksByScheme.missing_docs as string[] | undefined) ?? []).map((item) => String(item));
 
   const checklist = (checksByScheme.checklist as Array<Record<string, any>> | undefined) ?? [];
   const checklistMap = new Map(checklist.map((item) => [String(item.document_type).trim().toLowerCase(), item]));
 
-  const validationNotes: TrackerReEvaluationResult["documents"]["validation_notes"] = [];
-  let qualityAccumulator = 0;
-  let qualityItemCount = 0;
-  let invalidCount = 0;
-  let unclearCount = 0;
+  const availabilityNotes: TrackerReEvaluationResult["documents"]["availability_notes"] = [];
+  let availableCount = 0;
 
   for (const required of requiredDocs) {
     const key = String(required.document_type).trim().toLowerCase();
     const item = checklistMap.get(key);
 
-    if (!item || !item.uploaded) {
-      validationNotes.push({
+    if (item?.is_available === true) {
+      availableCount += 1;
+      availabilityNotes.push({
         document_type: String(required.document_type),
         display_name: String(required.display_name),
-        note: "Required document is missing",
-        status: "invalid",
-      });
-      invalidCount += 1;
-      qualityItemCount += 1;
-      continue;
-    }
-
-    qualityItemCount += 1;
-
-    // If it's declared available, we treat it as valid for scoring
-    if (item.is_available) {
-      qualityAccumulator += 1;
-      validationNotes.push({
-        document_type: String(required.document_type),
-        display_name: String(required.display_name),
-        note: "Document declared available via Quick Checklist",
-        status: "valid",
+        note: "Applicant has marked this document as available.",
+        status: "available",
       });
       continue;
     }
 
-    // Otherwise, check the validation status of the uploaded file
-    const valStatus = String(item.latest_validation_status ?? "unclear").toLowerCase();
-
-    if (valStatus === "valid") {
-      qualityAccumulator += 1;
-      validationNotes.push({
-        document_type: String(required.document_type),
-        display_name: String(required.display_name),
-        note: "Document appears valid for this requirement",
-        status: "valid",
-      });
-    } else if (valStatus === "invalid") {
-      invalidCount += 1;
-      validationNotes.push({
-        document_type: String(required.document_type),
-        display_name: String(required.display_name),
-        note: "Document validation failed or mismatched requirement",
-        status: "invalid",
-      });
-    } else {
-      qualityAccumulator += 0.5;
-      unclearCount += 1;
-      validationNotes.push({
-        document_type: String(required.document_type),
-        display_name: String(required.display_name),
-        note: "Validation is unclear; manual review recommended",
-        status: "unclear",
-      });
-    }
+    availabilityNotes.push({
+      document_type: String(required.document_type),
+      display_name: String(required.display_name),
+      note: "Applicant has not marked this document as available yet.",
+      status: "missing",
+    });
   }
-
-  const documentQualityScore = qualityItemCount === 0
-    ? 100
-    : Number(((qualityAccumulator / qualityItemCount) * 100).toFixed(2));
 
   const bankMatchScore = Number(eligibilityScore.toFixed(2));
-  let finalProbabilityRaw = bankMatchScore * 0.45 + completenessScore * 0.35 + documentQualityScore * 0.2;
-
-  if (missingDocs.length > 0) {
-    finalProbabilityRaw -= Math.min(40, missingDocs.length * 10);
-  }
-  if (invalidCount > 0) {
-    finalProbabilityRaw -= Math.min(30, invalidCount * 12);
-  }
+  let finalProbabilityRaw = bankMatchScore * 0.8 + readinessScore * 0.2;
   if (!eligibilityPassed) {
     finalProbabilityRaw = Math.min(finalProbabilityRaw, 55);
   }
@@ -307,12 +242,16 @@ export async function reEvaluateTrackedApplication(
     existingResult.data?.initial_probability ??
     existingResult.data?.approval_probability ??
     null;
+  const normalizedExistingInitialProbability =
+    typeof existingInitialProbability === "number" && Number.isFinite(existingInitialProbability) && existingInitialProbability > 0
+      ? Number(existingInitialProbability)
+      : null;
 
   const ruleBasedFinalProbability = clamp(Number(finalProbabilityRaw.toFixed(2)), 0, 100);
 
   const initialProbability = Number(
     (
-      existingInitialProbability ??
+      normalizedExistingInitialProbability ??
       existingResult.data?.approval_probability ??
       Math.max(ruleBasedFinalProbability, bankMatchScore * 0.8)
     ).toFixed(2),
@@ -328,11 +267,11 @@ export async function reEvaluateTrackedApplication(
         featureOverrides: {
           eligibility_score: Number(eligibilityScore.toFixed(2)),
           bank_match_score: bankMatchScore,
-          document_completeness_score: completenessScore,
-          document_quality_score: documentQualityScore,
+          document_completeness_score: readinessScore,
+          document_quality_score: readinessScore,
           missing_docs_count: missingDocs.length,
-          invalid_docs_count: invalidCount,
-          unclear_docs_count: unclearCount,
+          invalid_docs_count: 0,
+          unclear_docs_count: 0,
         },
       });
     } catch {
@@ -398,17 +337,15 @@ export async function reEvaluateTrackedApplication(
   })();
 
   const modelProbability = mlPrediction.fallback_mode ? null : mlPrediction.probability_percent;
-  let finalProbability = mlPrediction.fallback_mode ? ruleBasedFinalProbability : mlPrediction.probability_percent;
+  const calibratedProbability = blendApprovalProbabilities({
+    modelProbability,
+    ruleBasedProbability: ruleBasedFinalProbability,
+    previousProbability: normalizedExistingInitialProbability,
+  });
+  let finalProbability = calibratedProbability.probability;
 
-  // Keep tracker-stage probability conservative when major verification gaps exist.
-  if (missingDocs.length > 0 || invalidCount > 0) {
-    finalProbability = Math.min(finalProbability, ruleBasedFinalProbability);
-  }
   if (!eligibilityPassed) {
     finalProbability = Math.min(finalProbability, 60);
-  }
-  if (typeof existingInitialProbability === "number") {
-    finalProbability = Math.min(finalProbability, Number(existingInitialProbability));
   }
   finalProbability = clamp(Number(finalProbability.toFixed(2)), 0, 100);
 
@@ -426,35 +363,38 @@ export async function reEvaluateTrackedApplication(
   } else {
     reasons.push("Eligibility gaps were identified for the selected bank scheme.");
   }
-  if (missingDocs.length > 0) {
-    reasons.push(`Missing ${missingDocs.length} required document(s) for this bank.`);
+  if (missingDocs.length > 0 && availableCount > 0) {
+    reasons.push(`${availableCount} of ${requiredDocs.length} preferred bank documents are already available.`);
+  } else if (missingDocs.length > 0) {
+    reasons.push("Marking available documents will improve the accuracy of this bank-specific estimate.");
   } else {
-    reasons.push("All required documents are present for this bank.");
-  }
-  if (invalidCount > 0) {
-    reasons.push("Some uploaded documents failed automated validation.");
-  }
-  if (unclearCount > 0) {
-    reasons.push("Some documents need manual review before final submission.");
+    reasons.push("All preferred bank documents are already marked as available.");
   }
   if (mlPrediction.fallback_mode) {
-    reasons.push("ML model is not active yet; rule-based probability fallback was used.");
+    reasons.push(
+      mlPrediction.explainability.reasons[0] ??
+      "ML prediction is currently unavailable, so the rule-based fallback score was used.",
+    );
   } else {
     reasons.push(`ML model ${mlPrediction.model.version ?? "active"} predicted ${mlPrediction.probability_percent.toFixed(1)}%.`);
+    if (calibratedProbability.divergence !== null && calibratedProbability.divergence >= 40) {
+      reasons.push("That raw ML result was moderated using bank-fit and document-readiness scoring.");
+    }
     reasons.push(...mlPrediction.explainability.reasons.slice(0, 2));
   }
-  reasons.push(`Final probability adjusted to ${finalProbability.toFixed(1)}% after bank-specific verification.`);
+  reasons.push(`Final probability refined to ${finalProbability.toFixed(1)}% using bank fit and document readiness.`);
 
   const trackerPayload = {
     tracker_re_evaluation: {
       bank_match_score: bankMatchScore,
-      document_completeness_score: completenessScore,
-      document_quality_score: documentQualityScore,
+      document_readiness_score: readinessScore,
+      document_completeness_score: readinessScore,
+      document_quality_score: readinessScore,
       rule_based_final_probability: ruleBasedFinalProbability,
       model_probability: modelProbability,
       final_probability: finalProbability,
       reasons,
-      validation_notes: validationNotes,
+      availability_notes: availabilityNotes,
       ml_prediction: {
         source: mlPrediction.source,
         fallback_mode: mlPrediction.fallback_mode,
@@ -482,7 +422,7 @@ export async function reEvaluateTrackedApplication(
         emi: emi.monthlyEmi,
         total_interest: emi.totalInterest,
         total_payable: emi.totalPayable,
-        document_completeness: completenessScore,
+        document_completeness: readinessScore,
         initial_probability: initialProbability,
         final_probability: finalProbability,
         result_payload: mergedPayload,
@@ -509,7 +449,7 @@ export async function reEvaluateTrackedApplication(
         approval_probability: initialProbability,
         initial_probability: initialProbability,
         final_probability: finalProbability,
-        document_completeness: completenessScore,
+        document_completeness: readinessScore,
         ranking_score: 0,
         rank_position: null,
         result_payload: trackerPayload,
@@ -529,8 +469,8 @@ export async function reEvaluateTrackedApplication(
         user_id: userId,
         checklist_json: checksByScheme.checklist ?? [],
         missing_docs: missingDocs,
-        completeness_score: completenessScore,
-        validation_notes_json: validationNotes,
+        completeness_score: readinessScore,
+        validation_notes_json: availabilityNotes,
         checked_at: new Date().toISOString(),
       },
       { onConflict: "application_id,product_id" },
@@ -551,7 +491,7 @@ export async function reEvaluateTrackedApplication(
       probability_source: mlPrediction.source,
       fallback_mode: mlPrediction.fallback_mode,
       missing_docs: missingDocs.length,
-      invalid_docs: invalidCount,
+      available_docs: availableCount,
     },
     ipAddress: ipAddress ?? null,
   });
@@ -575,19 +515,16 @@ export async function reEvaluateTrackedApplication(
       reasons: eligibilityReasons,
     },
     documents: {
-      completeness_score: completenessScore,
-      quality_score: documentQualityScore,
+      readiness_score: readinessScore,
       required_count: requiredDocs.length,
+      available_count: availableCount,
       missing_count: missingDocs.length,
-      invalid_count: invalidCount,
-      unclear_count: unclearCount,
       missing_docs: missingDocs,
-      validation_notes: validationNotes,
+      availability_notes: availabilityNotes,
     },
     scoring: {
       bank_match_score: bankMatchScore,
-      document_completeness_score: completenessScore,
-      document_quality_score: documentQualityScore,
+      document_readiness_score: readinessScore,
       initial_probability: initialProbability,
       rule_based_final_probability: ruleBasedFinalProbability,
       model_probability: modelProbability,

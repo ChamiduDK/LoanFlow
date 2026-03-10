@@ -4,6 +4,7 @@ import { internalError } from "../lib/errors";
 import { supabaseAdmin } from "../lib/supabase/client";
 import { sendLoanFlowChatMessage } from "./loanflow-chat.service";
 import { logAudit } from "./audit.service";
+import { sendWhatsAppMessage } from "./whatsapp-messaging.service";
 import { twilioService } from "./twilio.service";
 import { transcribeAudioWithGemini, synthesizeSpeechAndStore } from "./speech.service";
 import { uploadDocumentForApplication, checkDocumentCompleteness } from "./document.service";
@@ -13,7 +14,7 @@ import { knowledgeService } from "./knowledge.service";
 
 type TwilioWebhookPayload = Record<string, unknown>;
 
-type MediaEntry = {
+export type WhatsAppMediaEntry = {
   mediaUrl: string;
   contentType: string;
   localFile?: {
@@ -62,10 +63,10 @@ function candidatePhones(raw: string): string[] {
   );
 }
 
-function parseMediaEntries(payload: TwilioWebhookPayload): MediaEntry[] {
+function parseMediaEntries(payload: TwilioWebhookPayload): WhatsAppMediaEntry[] {
   const numMediaRaw = Number(payload.NumMedia ?? 0);
   const numMedia = Number.isFinite(numMediaRaw) ? Math.max(0, Math.min(10, Math.trunc(numMediaRaw))) : 0;
-  const entries: MediaEntry[] = [];
+  const entries: WhatsAppMediaEntry[] = [];
 
   for (let index = 0; index < numMedia; index += 1) {
     const mediaUrl = String(payload[`MediaUrl${index}`] ?? "").trim();
@@ -146,7 +147,7 @@ async function resolveWhatsappLink(from: string): Promise<ChannelLinkRow | null>
   return exact ?? rows[0];
 }
 
-async function markLinkVerified(link: ChannelLinkRow): Promise<void> {
+async function markLinkVerified(link: ChannelLinkRow, verificationChannel = "twilio_whatsapp_webhook"): Promise<void> {
   if (link.is_verified || !env.WHATSAPP_AUTO_VERIFY_LINK) {
     return;
   }
@@ -158,7 +159,7 @@ async function markLinkVerified(link: ChannelLinkRow): Promise<void> {
       metadata: {
         ...(link.metadata ?? {}),
         verified_at: new Date().toISOString(),
-        verification_channel: "twilio_whatsapp_webhook",
+        verification_channel: verificationChannel,
       },
     })
     .eq("id", link.id);
@@ -399,7 +400,7 @@ async function processVoiceMessage(input: {
   session: SessionRow;
   from: string;
   body: string;
-  media: MediaEntry;
+  media: WhatsAppMediaEntry;
 }): Promise<{ text: string; mediaUrl?: string }> {
   const downloaded = input.media.localFile
     ? {
@@ -483,7 +484,7 @@ async function processDocumentMessage(input: {
   session: SessionRow;
   from: string;
   body: string;
-  media: MediaEntry;
+  media: WhatsAppMediaEntry;
   ipAddress?: string;
 }): Promise<{ text: string; mediaUrl?: string }> {
   const applicationId = await resolveApplicationId(input.link.user_id, input.session);
@@ -542,10 +543,16 @@ async function processDocumentMessage(input: {
   const missingRequiredCount = Number((checklist.summary as Record<string, unknown>)?.total_missing ?? 0);
   const validationStatus = String(matchedDoc?.validation_status ?? "unclear");
   const detectedType = String(matchedDoc?.detected_doc_type ?? "unknown");
+  const guidanceStatus =
+    validationStatus === "valid"
+      ? "clear match"
+      : validationStatus === "invalid"
+        ? "needs attention"
+        : "pending analysis";
   const reply = [
     `Document received and attached to application ${applicationId}.`,
-    `Detected type: ${detectedType}. Validation status: ${validationStatus}.`,
-    `Current document summary: ${Number(summary.valid_count ?? 0)} valid, ${Number(summary.unclear_count ?? 0)} pending review, ${Number(summary.invalid_count ?? 0)} invalid.`,
+    `Detected type: ${detectedType}. AI guidance status: ${guidanceStatus}.`,
+    `Current guidance summary: ${Number(summary.valid_count ?? 0)} clear match(es), ${Number(summary.invalid_count ?? 0)} needing attention, ${Number(summary.unclear_count ?? 0)} pending analysis.`,
     `Missing required documents: ${missingRequiredCount}.`,
   ].join(" ");
 
@@ -564,6 +571,7 @@ async function processDocumentMessage(input: {
       channel_message_type: "document_result",
       uploaded_document_id: uploadedDocumentId,
       validation_status: validationStatus,
+      guidance_status: guidanceStatus,
     },
   });
 
@@ -574,10 +582,11 @@ async function processLinkedInbound(payload: {
   link: ChannelLinkRow;
   from: string;
   body: string;
-  mediaEntries: MediaEntry[];
+  mediaEntries: WhatsAppMediaEntry[];
   ipAddress?: string;
+  verificationChannel?: string;
 }): Promise<{ text: string; mediaUrl?: string }> {
-  await markLinkVerified(payload.link);
+  await markLinkVerified(payload.link, payload.verificationChannel);
   const session = await ensureChannelSession(payload.link, payload.from, "whatsapp");
 
   if (payload.mediaEntries.length === 0) {
@@ -627,24 +636,27 @@ async function processLinkedInbound(payload: {
 export async function handleIncomingWhatsAppWebhook(payload: TwilioWebhookPayload, ipAddress?: string): Promise<void> {
   const result = await processIncomingWhatsAppMessage(payload, ipAddress);
 
-  await twilioService.sendMessage({
+  await sendWhatsAppMessage({
     to: result.from,
     body: result.replyText,
     mediaUrl: result.replyMediaUrl,
   });
 }
 
-export async function processIncomingWhatsAppMessage(
-  payload: TwilioWebhookPayload,
-  ipAddress?: string,
-): Promise<{ from: string; replyText: string; replyMediaUrl?: string }> {
-  const from = String(payload.From ?? "").trim();
+export async function processDirectWhatsAppMessage(input: {
+  from: string;
+  body: string;
+  mediaEntries: WhatsAppMediaEntry[];
+  ipAddress?: string;
+  verificationChannel?: string;
+}): Promise<{ from: string; replyText: string; replyMediaUrl?: string }> {
+  const from = input.from.trim();
   if (!from) {
-    throw internalError("Missing From in WhatsApp webhook payload");
+    throw internalError("Missing From in WhatsApp message payload");
   }
 
-  const body = String(payload.Body ?? "").trim();
-  const mediaEntries = parseMediaEntries(payload);
+  const body = input.body.trim();
+  const mediaEntries = input.mediaEntries;
   const link = await resolveWhatsappLink(from);
   let responseText = "";
   let responseMediaUrl: string | undefined;
@@ -662,7 +674,8 @@ export async function processIncomingWhatsAppMessage(
       from,
       body,
       mediaEntries,
-      ipAddress,
+      ipAddress: input.ipAddress,
+      verificationChannel: input.verificationChannel,
     });
     responseText = processed.text;
     responseMediaUrl = processed.mediaUrl;
@@ -679,7 +692,7 @@ export async function processIncomingWhatsAppMessage(
       media_count: mediaEntries.length,
       linked_user: Boolean(link?.user_id),
     },
-    ipAddress: ipAddress ?? null,
+    ipAddress: input.ipAddress ?? null,
   });
 
   return {
@@ -687,6 +700,19 @@ export async function processIncomingWhatsAppMessage(
     replyText: responseText,
     replyMediaUrl: responseMediaUrl,
   };
+}
+
+export async function processIncomingWhatsAppMessage(
+  payload: TwilioWebhookPayload,
+  ipAddress?: string,
+): Promise<{ from: string; replyText: string; replyMediaUrl?: string }> {
+  return processDirectWhatsAppMessage({
+    from: String(payload.From ?? "").trim(),
+    body: String(payload.Body ?? "").trim(),
+    mediaEntries: parseMediaEntries(payload),
+    ipAddress,
+    verificationChannel: "twilio_whatsapp_webhook",
+  });
 }
 
 export async function handleVoiceCallTurn(input: {
@@ -754,7 +780,7 @@ export async function simulateIncomingWhatsAppAudio(input: {
     };
   }
 
-  await markLinkVerified(link);
+  await markLinkVerified(link, "localhost_simulated_whatsapp");
   const session = await ensureChannelSession(link, input.from, "whatsapp");
   const result = await processVoiceMessage({
     link,
@@ -793,7 +819,7 @@ export async function simulateIncomingWhatsAppDocument(input: {
     };
   }
 
-  await markLinkVerified(link);
+  await markLinkVerified(link, "localhost_simulated_whatsapp");
   const session = await ensureChannelSession(link, input.from, "whatsapp");
   const result = await processDocumentMessage({
     link,

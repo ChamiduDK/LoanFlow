@@ -129,7 +129,7 @@ function buildProposalHtml(data: Record<string, unknown>): string {
     ["Requested Amount", String(request.requested_amount_formatted ?? "-")],
     ["Purpose", String(request.purpose ?? "-")],
     ["Requested Tenure", String(request.tenure ?? "-")],
-    ["Collateral Available", Boolean(request.collateral_available) ? "Yes" : "No"],
+    ["Collateral Available", request.collateral_available ? "Yes" : "No"],
     ["Collateral Type", String(request.collateral_type ?? "-")],
     ["Estimated EMI", String(repayment.estimated_emi_formatted ?? "-")],
     ["Estimated Rate", `${toNumber(repayment.approved_rate, 0).toFixed(2)}%`],
@@ -257,11 +257,11 @@ export async function generateLoanProposal(
     productResult,
     requiredDocsResult,
     documentsResult,
+    availabilityResult,
     checksResult,
     resultResult,
     outcomeResult,
     latestProposalResult,
-    availabilityResult,
   ] = await Promise.all([
     supabaseAdmin
       .from("profiles")
@@ -279,7 +279,12 @@ export async function generateLoanProposal(
       .eq("product_id", selectedProductId),
     supabaseAdmin
       .from("documents")
-      .select("document_type, validation_status, file_name, created_at")
+      .select("document_type, file_name, created_at")
+      .eq("application_id", applicationId)
+      .eq("user_id", userId),
+    supabaseAdmin
+      .from("document_availability")
+      .select("document_type, is_available")
       .eq("application_id", applicationId)
       .eq("user_id", userId),
     supabaseAdmin
@@ -308,11 +313,6 @@ export async function generateLoanProposal(
       .order("proposal_version", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabaseAdmin
-      .from("document_availability")
-      .select("document_type, is_available")
-      .eq("application_id", applicationId)
-      .eq("user_id", userId),
   ]);
 
   if (profileResult.error) {
@@ -335,6 +335,10 @@ export async function generateLoanProposal(
     throw internalError("Failed to load uploaded documents for proposal", documentsResult.error);
   }
 
+  if (availabilityResult.error) {
+    throw internalError("Failed to load document availability for proposal", availabilityResult.error);
+  }
+
   if (checksResult.error) {
     throw internalError("Failed to load document check summary", checksResult.error);
   }
@@ -351,67 +355,66 @@ export async function generateLoanProposal(
     throw internalError("Failed to load proposal version history", latestProposalResult.error);
   }
 
-  if (availabilityResult.error) {
-    throw internalError("Failed to load document availability for proposal", availabilityResult.error);
-  }
-
   const profile = profileResult.data ?? {};
   const product = productResult.data;
   const allRequiredDocs = requiredDocsResult.data ?? [];
   const requiredDocs = allRequiredDocs.filter((item) => item.is_required === true);
   const documents = documentsResult.data ?? [];
-  const availability = (availabilityResult.data ?? []) as Array<{ document_type: string; is_available: boolean }>;
+  const availabilityRows = availabilityResult.data ?? [];
 
   const displayNameByType = new Map<string, string>(
     allRequiredDocs.map((doc) => [String(doc.document_type).trim().toLowerCase(), String(doc.display_name)]),
   );
 
-  const availabilityMap = new Map(
-    availability.map((a) => [String(a.document_type).trim().toLowerCase(), Boolean(a.is_available)]),
-  );
+  const uploadedDocsByType = new Map<string, { file_name: string; uploaded_at: string | null }>();
+  for (const doc of documents) {
+    const normalizedType = String(doc.document_type).trim().toLowerCase();
+    if (!normalizedType || uploadedDocsByType.has(normalizedType)) {
+      continue;
+    }
 
-  const uploadedTypes = new Set(documents.map((doc) => String(doc.document_type).trim().toLowerCase()));
-  const declaredTypes = new Set(
-    availability.filter((a) => a.is_available).map((a) => String(a.document_type).trim().toLowerCase()),
-  );
+    uploadedDocsByType.set(normalizedType, {
+      file_name: String(doc.file_name ?? "-"),
+      uploaded_at: doc.created_at ? String(doc.created_at) : null,
+    });
+  }
 
-  // A document is considered "available" if either it is uploaded or declared available
-  const availableTypes = new Set([...uploadedTypes, ...declaredTypes]);
+  const availableTypes = new Set<string>();
+  for (const row of availabilityRows) {
+    const normalizedType = String(row.document_type ?? "").trim().toLowerCase();
+    if (!normalizedType || row.is_available !== true) {
+      continue;
+    }
+
+    availableTypes.add(normalizedType);
+  }
+
+  for (const normalizedType of uploadedDocsByType.keys()) {
+    availableTypes.add(normalizedType);
+  }
 
   const missingDocs = requiredDocs
     .filter((doc) => !availableTypes.has(String(doc.document_type).trim().toLowerCase()))
     .map((doc) => String(doc.display_name));
 
-  const availableDocuments = [];
+  const availableDocuments = Array.from(availableTypes).map((normalizedType) => {
+    const uploadedDoc = uploadedDocsByType.get(normalizedType);
+    const selectedAsAvailable = availabilityRows.some(
+      (row) => String(row.document_type ?? "").trim().toLowerCase() === normalizedType && row.is_available === true,
+    );
 
-  // Add uploaded documents first
-  for (const doc of documents) {
-    const normalizedType = String(doc.document_type).trim().toLowerCase();
-    availableDocuments.push({
+    return {
       document_type: normalizedType,
-      display_name: displayNameByType.get(normalizedType) ?? String(doc.document_type),
-      file_name: String(doc.file_name ?? "-"),
-      validation_status: String(doc.validation_status ?? "unclear"),
-      uploaded_at: doc.created_at ? String(doc.created_at) : null,
-      source: "upload" as const,
-    });
-  }
-
-  // Add declared documents that haven't been uploaded yet
-  for (const a of availability) {
-    if (!a.is_available) continue;
-    const normalizedType = String(a.document_type).trim().toLowerCase();
-    if (uploadedTypes.has(normalizedType)) continue;
-
-    availableDocuments.push({
-      document_type: normalizedType,
-      display_name: displayNameByType.get(normalizedType) ?? String(a.document_type),
-      file_name: "Manual Declaration",
-      validation_status: "valid", // Treat manual declaration as valid in the proposal
-      uploaded_at: null,
-      source: "checklist" as const,
-    });
-  }
+      display_name: displayNameByType.get(normalizedType) ?? normalizedType,
+      file_name: uploadedDoc?.file_name ?? null,
+      uploaded_at: uploadedDoc?.uploaded_at ?? null,
+      source: uploadedDoc && selectedAsAvailable
+        ? "availability_and_upload"
+        : uploadedDoc
+          ? "upload"
+          : "availability",
+    };
+  });
 
   availableDocuments.sort((a, b) => {
     const aTime = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
@@ -426,10 +429,6 @@ export async function generateLoanProposal(
   const bankName = bankProfile?.name ?? "Unknown Bank";
   const bankEmail = bankProfile?.contact_email ?? null;
   const bankWebsite = bankProfile?.website ?? null;
-
-  const validCount = availableDocuments.filter((doc) => doc.validation_status === "valid").length;
-  const invalidCount = availableDocuments.filter((doc) => doc.validation_status === "invalid").length;
-  const unclearCount = availableDocuments.filter((doc) => doc.validation_status === "unclear").length;
 
   const approvedAmount = toNumber(outcomeResult.data?.approved_amount, toNumber(application.requested_amount, 0));
   const approvedTenure = toNumber(outcomeResult.data?.approved_tenure_months, toNumber(application.preferred_tenure_months, 0));
@@ -446,9 +445,6 @@ export async function generateLoanProposal(
     checksResult.data?.completeness_score,
     requiredDocs.length === 0 ? 100 : Number((((requiredDocs.length - missingDocs.length) / requiredDocs.length) * 100).toFixed(2)),
   );
-
-  const qualityDenominator = validCount + invalidCount + unclearCount;
-  const documentQuality = qualityDenominator === 0 ? 0 : Number((((validCount + unclearCount * 0.5) / qualityDenominator) * 100).toFixed(2));
 
   const finalProbability = toNumber(
     resultResult.data?.final_probability,
@@ -529,14 +525,11 @@ export async function generateLoanProposal(
     },
     verification: {
       required_count: requiredDocs.length,
+      ready_count: availableDocuments.length,
       uploaded_count: documents.length,
       missing_count: missingDocs.length,
       missing_documents: missingDocs,
-      valid_count: validCount,
-      invalid_count: invalidCount,
-      unclear_count: unclearCount,
       completeness_score: documentCompleteness,
-      quality_score: documentQuality,
       available_documents: availableDocuments,
     },
     repayment: {
@@ -554,7 +547,7 @@ export async function generateLoanProposal(
     formal_request: {
       subject: `Credit Facility Request - ${String(profile.full_name ?? "Applicant")} - ${String(product.name)}`,
       statement:
-        "This proposal is generated from the applicant profile, selected scheme details, and latest verification checks.",
+        "This proposal is generated from the applicant profile, selected scheme details, and the latest document readiness information.",
     },
     email_draft: {
       to: bankEmail,

@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "numeric_stats": {
+    "requested_amount": {
+      "mean": 983387.09677419,
+      "std": 363693.2797963
+    },
+    "preferred_tenure_months": {
+      "mean": 42,
+      "std": 12.1708271
+    },
+    "years_active": {
+      "mean": 4.96774194,
+      "std": 0.1766847
+    },
+    "annual_turnover": {
+      "mean": 970967.74193548,
+      "std": 159016.22637247
+    },
+    "amount_turnover_ratio": {
+      "mean": 1.27370968,
+      "std": 1.63417717
+    },
+    "eligibility_score": {
+      "mean": 65.12903226,
+      "std": 17.71183664
+    },
+    "bank_match_score": {
+      "mean": 65.66129032,
+      "std": 12.53021323
+    },
+    "document_completeness_score": {
+      "mean": 75.80645161,
+      "std": 16.75712531
+    },
+    "document_quality_score": {
+      "mean": 67.35483871,
+      "std": 21.01542964
+    },
+    "missing_docs_count": {
+      "mean": 1.12903226,
+      "std": 0.90667544
+    },
+    "invalid_docs_count": {
+      "mean": 1.12903226,
+      "std": 1.21128925
+    },
+    "unclear_docs_count": {
+      "mean": 0.25806452,
+      "std": 0.43756968
+    },
+    "rate_min": {
+      "mean": 12.35806452,
+      "std": 0.60416522
+    },
+    "rate_max": {
+      "mean": 16.13548387,
+      "std": 0.83937319
+    },
+    "product_min_amount": {
+      "mean": 590322.58064516,
+      "std": 233976.61684888
+    },
+    "product_max_amount": {
+      "mean": 28935483.87096774,
+      "std": 12002514.47814694
+    },
+    "product_tenure_min": {
+      "mean": 10.4516129,
+      "std": 2.62541806
+    },
+    "product_tenure_max": {
+      "mean": 67.74193548,
+      "std": 12.7683271
+    },
+    "collateral_available": {
+      "mean": 0.5483871,
+      "std": 0.49765318
+    },
+    "product_collateral_required": {
+      "mean": 0.61290323,
+      "std": 0.48708609
+    }
+  },
+  "categorical_vocabulary": {
+    "business_type": [
+      "private_limited_company"
+    ],
+    "industry": [
+      "it_technology"
+    ],
+    "turnover_band": [
+      "1m_5m",
+      "below_1m"
+    ],
+    "district": [
+      "kandy"
+    ],
+    "purpose": [
+      "business_expansion",
+      "equipment_purchase",
+      "inventory_financing",
+      "working_capital"
+    ],
+    "collateral_type": [
+      "inventory",
+      "property",
+      "unknown",
+      "vehicle"
+    ],
+    "bank_id": [
+      "5689b1a1-3251-428b-adb6-964e18be20b5",
+      "c5874b0b-6808-46f2-8bc0-87d323e42bb7",
+      "cf8c3842-bf54-4eea-8b98-d3d7c5b42131",
+      "d945b14b-e030-4ac8-bc51-d869fc6139e8",
+      "dfe7a329-d380-4d86-bf1c-099e7064d5a0",
+      "e0be2537-f39e-434d-9744-4453fc769578",
+      "f3a99fa4-1772-4170-a73d-6b19ca734b76"
+    ],
+    "product_id": [
+      "61399476-479a-47c3-8e4f-0069ae152177",
+      "9a1d436d-37e5-400c-9af0-991d1906fa42",
+      "a128812e-b72b-45cf-8cc6-dd29b7286dda",
+      "dc92ea3c-0005-488d-9aab-ef403b2eb57c",
+      "e6f919bf-4ea3-4f18-b352-d8d2b8185e8b",
+      "f1e6f1f5-b220-4eeb-921d-c0c0feebc221",
+      "fef29322-4d6a-46c2-b049-00bda77d72c8"
+    ]
+  },
+  "numeric_feature_order": [
+    "requested_amount",
+    "preferred_tenure_months",
+    "years_active",
+    "annual_turnover",
+    "amount_turnover_ratio",
+    "eligibility_score",
+    "bank_match_score",
+    "document_completeness_score",
+    "document_quality_score",
+    "missing_docs_count",
+    "invalid_docs_count",
+    "unclear_docs_count",
+    "rate_min",
+    "rate_max",
+    "product_min_amount",
+    "product_max_amount",
+    "product_tenure_min",
+    "product_tenure_max",
+    "collateral_available",
+    "product_collateral_required"
+  ],
+  "categorical_feature_order": [
+    "business_type",
+    "industry",
+    "turnover_band",
+    "district",
+    "purpose",
+    "collateral_type",
+    "bank_id",
+    "product_id"
+  ],
+  "input_size": 55,
+  "class_weights": {
+    "0": 1.03333333,
+    "1": 0.96875
+  },
+  "fitted_at": "2026-03-07T23:42:20.188Z"
+}

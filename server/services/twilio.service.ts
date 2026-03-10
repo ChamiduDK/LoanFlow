@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Request } from "express";
 import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
+import { normalizeWhatsAppAddress } from "../lib/whatsapp";
 
 type TwilioMessageInput = {
   to: string;
@@ -14,15 +15,6 @@ type DownloadedMedia = {
   mimeType: string;
   fileName: string;
 };
-
-function normalizeWhatsAppAddress(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.toLowerCase().startsWith("whatsapp:")) {
-    return trimmed;
-  }
-
-  return `whatsapp:${trimmed}`;
-}
 
 function sanitizeFileName(input: string): string {
   return input.replace(/[^a-zA-Z0-9._-]/g, "_");

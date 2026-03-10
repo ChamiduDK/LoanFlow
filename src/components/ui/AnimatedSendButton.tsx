@@ -2,9 +2,7 @@ import React from 'react';
 import { Send } from 'lucide-react';
 import './AnimatedSendButton.css';
 
-interface AnimatedSendButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  // Add any custom props here if needed
-}
+type AnimatedSendButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 export const AnimatedSendButton = React.forwardRef<HTMLButtonElement, AnimatedSendButtonProps>(
   ({ className, disabled, ...props }, ref) => {

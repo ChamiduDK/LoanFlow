@@ -1,4 +1,4 @@
-import { forbidden, internalError, notFound } from "../lib/errors";
+import { badRequest, forbidden, internalError, notFound } from "../lib/errors";
 import { supabaseAdmin } from "../lib/supabase/client";
 import { logAudit } from "./audit.service";
 
@@ -159,6 +159,62 @@ export async function getOutcome(userId: string, applicationId: string): Promise
   if (error) {
     throw internalError("Failed to fetch outcome", error);
   }
+
+  return data;
+}
+
+export async function updateOutcomeTrainingConsent(
+  userId: string,
+  applicationId: string,
+  consentForTraining: boolean,
+  ipAddress?: string | null,
+): Promise<Record<string, unknown>> {
+  await assertApplication(userId, applicationId);
+
+  const { data: existingOutcome, error: outcomeError } = await supabaseAdmin
+    .from("outcomes")
+    .select("*")
+    .eq("application_id", applicationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (outcomeError) {
+    throw internalError("Failed to load outcome for training consent", outcomeError);
+  }
+
+  if (!existingOutcome) {
+    throw notFound("Outcome not found");
+  }
+
+  const status = String(existingOutcome.status);
+  if (status !== "approved" && status !== "rejected") {
+    throw badRequest("Training consent can only be updated after a final approved or rejected outcome.");
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("outcomes")
+    .update({
+      consent_for_training: consentForTraining,
+    })
+    .eq("id", existingOutcome.id)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw internalError("Failed to update outcome training consent", error);
+  }
+
+  await logAudit({
+    actorUserId: userId,
+    action: "outcome.training_consent.updated",
+    entityType: "outcomes",
+    entityId: String(data.id),
+    payloadSummary: {
+      applicationId,
+      consent_for_training: consentForTraining,
+    },
+    ipAddress: ipAddress ?? null,
+  });
 
   return data;
 }

@@ -1,73 +1,76 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  AlertCircle,
+  CheckCircle2,
+  FilePlus,
+  RefreshCw,
+  Upload,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Circle,
-  ClipboardCheck,
-  Clock3,
-  FileCheck2,
-  FileText,
-  FilePlus,
-  Upload,
-  XCircle,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import PageHeader from "@/components/shared/PageHeader";
-import StatusBadge from "@/components/shared/StatusBadge";
-import { apiFetch, apiUpload } from "@/lib/api/client";
-import type { DocumentChecklistResponse, DocumentRow, LoanApplication } from "@/types/backend";
-import { useToast } from "@/hooks/use-toast";
 import EmptyState from "@/components/shared/EmptyState";
+import { apiFetch, apiUpload } from "@/lib/api/client";
+import { parseDocumentAnalysis, type ParsedDocumentAnalysis } from "@/lib/document-analysis";
+import type {
+  DocumentChecklistResponse,
+  DocumentRow,
+  DocumentScanResponse,
+  EvaluationResult,
+  LoanApplication,
+} from "@/types/backend";
+import { useToast } from "@/hooks/use-toast";
 
-type DocStatus = "uploaded" | "missing" | "needs_review" | "verified" | "processing" | "rejected" | "available";
-type ValidationStatus = "valid" | "invalid" | "unclear";
-
-const statusConfig: Record<DocStatus, { icon: typeof CheckCircle2 }> = {
-  verified: { icon: CheckCircle2 },
-  available: { icon: ClipboardCheck },
-  uploaded: { icon: FileCheck2 },
-  processing: { icon: Clock3 },
-  needs_review: { icon: Clock3 },
-  missing: { icon: AlertCircle },
-  rejected: { icon: XCircle },
+type UploadDocumentResponse = {
+  document: DocumentRow;
+  scan_result?: DocumentScanResponse;
 };
 
-function normalizeStatus(value: string): DocStatus {
-  const lowered = value.toLowerCase();
-  if (lowered === "verified") return "verified";
-  if (lowered === "available") return "available";
-  if (lowered === "uploaded") return "uploaded";
-  if (lowered === "processing") return "processing";
-  if (lowered === "needs_review") return "needs_review";
-  if (lowered === "rejected") return "rejected";
-  return "missing";
-}
+type AggregatedChecklistRow = {
+  document_type: string;
+  display_name: string;
+  required: boolean;
+  is_available: boolean;
+  has_uploaded_record: boolean;
+};
 
-function normalizeValidationStatus(value: string | null | undefined): ValidationStatus {
-  const lowered = String(value ?? "").trim().toLowerCase();
-  if (lowered === "valid" || lowered === "invalid") {
-    return lowered;
-  }
+type DocumentAnalysisCard = {
+  id: string;
+  file_name: string;
+  document_type: string;
+  signed_url: string | null;
+  analysis: ParsedDocumentAnalysis | null;
+  created_at: string;
+};
 
-  return "unclear";
-}
+type UploadRequirementOption = {
+  value: string;
+  product_id: string;
+  product_name: string;
+  bank_name: string | null;
+  document_type: string;
+  display_name: string;
+  required: boolean;
+};
 
-function deriveDocStatus(workflowStatus: string | null | undefined, validationStatus: string | null | undefined, isAvailable?: boolean): DocStatus {
-  const normalizedValidation = normalizeValidationStatus(validationStatus);
-  if (normalizedValidation === "valid") return "verified";
-  if (normalizedValidation === "invalid") return "rejected";
-  const st = normalizeStatus(workflowStatus ?? "");
-  if (st === "missing" && isAvailable) return "available";
-  return st;
+type SaveAvailabilityResult = {
+  refreshedEvaluation: EvaluationResult | null;
+  evaluationRefreshFailed: boolean;
+};
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 export default function DocumentUpload() {
@@ -77,16 +80,17 @@ export default function DocumentUpload() {
   const { toast } = useToast();
 
   const applicationIdFromUrl = searchParams.get("applicationId") ?? "";
-  const [selectedDocumentType, setSelectedDocumentType] = useState<string>("");
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [pendingAvailability, setPendingAvailability] = useState<Record<string, boolean>>({});
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  const [selectedUploadDocumentType, setSelectedUploadDocumentType] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [latestScanResult, setLatestScanResult] = useState<DocumentScanResponse | null>(null);
+  const [availabilityState, setAvailabilityState] = useState<Record<string, boolean>>({});
 
   const applicationsQuery = useQuery({
     queryKey: ["applications"],
     queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
     staleTime: 30_000,
   });
+
   const fallbackApplicationId = applicationsQuery.data?.[0]?.id ?? "";
   const applicationId = applicationIdFromUrl || fallbackApplicationId;
   const selectedApplication = useMemo(
@@ -103,7 +107,8 @@ export default function DocumentUpload() {
   }, [applicationIdFromUrl, fallbackApplicationId, searchParams, setSearchParams]);
 
   useEffect(() => {
-    setSelectedDocumentType("");
+    setSelectedUploadDocumentType("");
+    setLatestScanResult(null);
   }, [applicationId]);
 
   const documentsQuery = useQuery({
@@ -121,30 +126,240 @@ export default function DocumentUpload() {
     enabled: Boolean(applicationId),
   });
 
+  const checklistRows = useMemo<AggregatedChecklistRow[]>(() => {
+    const aggregated = new Map<string, AggregatedChecklistRow>();
+
+    for (const scheme of checklistQuery.data?.by_scheme ?? []) {
+      for (const item of scheme.checklist) {
+        const key = item.document_type.trim().toLowerCase();
+        if (!key) {
+          continue;
+        }
+
+        const existing = aggregated.get(key);
+        if (existing) {
+          existing.required = existing.required || item.required;
+          existing.is_available = existing.is_available || item.is_available === true;
+          existing.has_uploaded_record = existing.has_uploaded_record || item.has_uploaded_record === true;
+          continue;
+        }
+
+        aggregated.set(key, {
+          document_type: item.document_type,
+          display_name: item.display_name,
+          required: item.required,
+          is_available: item.is_available === true,
+          has_uploaded_record: item.has_uploaded_record === true,
+        });
+      }
+    }
+
+    return Array.from(aggregated.values()).sort((left, right) => {
+      if (left.required !== right.required) {
+        return left.required ? -1 : 1;
+      }
+      return left.display_name.localeCompare(right.display_name);
+    });
+  }, [checklistQuery.data?.by_scheme]);
+
+  useEffect(() => {
+    if (checklistRows.length === 0) {
+      return;
+    }
+
+    setAvailabilityState(
+      Object.fromEntries(
+        checklistRows.map((row) => [row.document_type, row.is_available]),
+      ),
+    );
+  }, [checklistRows]);
+
+  const uploadTargets = useMemo<UploadRequirementOption[]>(() => {
+    const options: UploadRequirementOption[] = [];
+    const seen = new Set<string>();
+    const selectedProductId = selectedApplication?.selected_product_id ?? "";
+
+    for (const scheme of checklistQuery.data?.by_scheme ?? []) {
+      for (const item of scheme.checklist) {
+        const normalizedType = item.document_type.trim().toLowerCase();
+        if (!normalizedType) {
+          continue;
+        }
+
+        const value = `${scheme.product_id}::${normalizedType}`;
+        if (seen.has(value)) {
+          continue;
+        }
+
+        seen.add(value);
+        options.push({
+          value,
+          product_id: scheme.product_id,
+          product_name: scheme.product_name,
+          bank_name: scheme.bank_name,
+          document_type: item.document_type,
+          display_name: item.display_name,
+          required: item.required,
+        });
+      }
+    }
+
+    return options.sort((left, right) => {
+      const leftSelected = left.product_id === selectedProductId;
+      const rightSelected = right.product_id === selectedProductId;
+      if (leftSelected !== rightSelected) {
+        return leftSelected ? -1 : 1;
+      }
+
+      if (left.required !== right.required) {
+        return left.required ? -1 : 1;
+      }
+
+      const leftSchemeLabel = `${left.bank_name ?? "Bank"} - ${left.product_name}`;
+      const rightSchemeLabel = `${right.bank_name ?? "Bank"} - ${right.product_name}`;
+      return leftSchemeLabel.localeCompare(rightSchemeLabel) || left.display_name.localeCompare(right.display_name);
+    });
+  }, [checklistQuery.data?.by_scheme, selectedApplication?.selected_product_id]);
+
+  const selectedUploadTarget = useMemo(() => {
+    const normalizedSelectedType = selectedUploadDocumentType.trim().toLowerCase();
+    if (!normalizedSelectedType) {
+      return null;
+    }
+
+    return uploadTargets.find(
+      (option) => option.document_type.trim().toLowerCase() === normalizedSelectedType,
+    ) ?? null;
+  }, [selectedUploadDocumentType, uploadTargets]);
+
+  const selectedUploadMatchesMultipleSchemes = useMemo(() => {
+    if (!selectedUploadTarget) {
+      return false;
+    }
+
+    const normalizedSelectedType = selectedUploadTarget.document_type.trim().toLowerCase();
+    return uploadTargets.filter(
+      (option) => option.document_type.trim().toLowerCase() === normalizedSelectedType,
+    ).length > 1;
+  }, [selectedUploadTarget, uploadTargets]);
+
+  const shouldRefreshRecommendations = useMemo(() => {
+    const status = selectedApplication?.status ?? "draft";
+    return Boolean(selectedApplication?.selected_product_id) || [
+      "evaluated",
+      "applied",
+      "under_review",
+      "approved",
+      "rejected",
+    ].includes(status);
+  }, [selectedApplication?.selected_product_id, selectedApplication?.status]);
+
+  const uploadDocumentOptions = useMemo(
+    () => checklistRows.map((row) => ({
+      value: row.document_type,
+      label: row.display_name,
+    })),
+    [checklistRows],
+  );
+
+  useEffect(() => {
+    if (!selectedUploadDocumentType) {
+      return;
+    }
+
+    if (!uploadTargets.some((option) => option.document_type.trim().toLowerCase() === selectedUploadDocumentType.trim().toLowerCase())) {
+      setSelectedUploadDocumentType("");
+    }
+  }, [selectedUploadDocumentType, uploadTargets]);
+
+  const saveAvailabilityMutation = useMutation({
+    mutationFn: async (): Promise<SaveAvailabilityResult> => {
+      await apiFetch(`/api/applications/${applicationId}/documents/availability`, {
+        method: "POST",
+        body: JSON.stringify({
+          availabilities: checklistRows.map((row) => ({
+            document_type: row.document_type,
+            is_available: availabilityState[row.document_type] === true,
+          })),
+        }),
+      });
+
+      if (!shouldRefreshRecommendations) {
+        return {
+          refreshedEvaluation: null,
+          evaluationRefreshFailed: false,
+        };
+      }
+
+      try {
+        const refreshedEvaluation = await apiFetch<EvaluationResult>(`/api/applications/${applicationId}/evaluate`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+
+        return {
+          refreshedEvaluation,
+          evaluationRefreshFailed: false,
+        };
+      } catch {
+        return {
+          refreshedEvaluation: null,
+          evaluationRefreshFailed: true,
+        };
+      }
+    },
+    onSuccess: (result) => {
+      if (result.refreshedEvaluation) {
+        queryClient.setQueryData(["application-evaluation", applicationId], result.refreshedEvaluation);
+      }
+
+      toast({
+        title: "Document availability saved",
+        description: result.refreshedEvaluation
+          ? "Loan recommendations were refreshed with your latest document readiness."
+          : result.evaluationRefreshFailed
+            ? "Availability was saved, but recommendations could not be refreshed automatically. Re-run evaluation from Loan Recommendations."
+            : "Document readiness was saved. Re-run evaluation when you want refreshed lender recommendations.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
+      void queryClient.invalidateQueries({ queryKey: ["application-evaluation", applicationId] });
+      void queryClient.invalidateQueries({ queryKey: ["tracker-page", applicationId] });
+      void queryClient.invalidateQueries({ queryKey: ["tracker-re-evaluation", applicationId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Could not save availability",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const uploadMutation = useMutation({
-    mutationFn: async ({ file, documentType }: { file: File; documentType: string }) => {
+    mutationFn: async ({ file, requirement }: { file: File; requirement: UploadRequirementOption }) => {
       if (file.size > MAX_FILE_SIZE) {
-        throw new Error("File size exceeds 10MB limit. Please compress the file and try again.");
+        throw new Error("File size exceeds 10MB. Please upload a smaller file.");
       }
 
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("document_type", documentType);
-      if (selectedApplication?.selected_product_id) {
-        formData.append("product_id", selectedApplication.selected_product_id);
-      }
+      formData.append("document_type", requirement.document_type);
+      formData.append("product_id", requirement.product_id);
 
       setUploadProgress(0);
-      return apiUpload(`/api/applications/${applicationId}/documents/upload`, formData, (progress) => {
-        setUploadProgress(progress);
-      });
+      return apiUpload<UploadDocumentResponse>(
+        `/api/applications/${applicationId}/documents/upload`,
+        formData,
+        (progress) => setUploadProgress(progress),
+      );
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
+      setUploadProgress(0);
+      setLatestScanResult(payload.scan_result ?? null);
       toast({
         title: "Document uploaded",
-        description: "Checklist was refreshed.",
+        description: "AI analysis is ready. This is guidance only and does not change prediction.",
       });
-      setUploadProgress(0);
       void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
       void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
     },
@@ -152,165 +367,49 @@ export default function DocumentUpload() {
       setUploadProgress(0);
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Could not upload document",
+        description: error instanceof Error ? error.message : "Could not upload document.",
         variant: "destructive",
       });
     },
   });
 
-  const availabilityMutation = useMutation({
-    mutationFn: async (availabilities: Array<{ document_type: string; is_available: boolean }>) => {
-      return apiFetch(`/api/applications/${applicationId}/documents/availability`, {
-        method: "POST",
-        body: JSON.stringify({ availabilities }),
-      });
-    },
-    onSuccess: () => {
-      toast({ title: "Availability updated", description: "Your changes have been saved." });
-      void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
-      void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
-      setPendingAvailability({});
-    },
-    onError: (error) => {
-      toast({
-        title: "Failed to update availability",
-        description: error instanceof Error ? error.message : "Could not update status",
-        variant: "destructive",
-      });
-    },
-  });
+  const requiredRows = checklistRows.filter((row) => row.required);
+  const selectedAvailableCount = requiredRows.filter((row) => availabilityState[row.document_type] === true).length;
+  const readinessScore = requiredRows.length === 0
+    ? 0
+    : Math.round((selectedAvailableCount / requiredRows.length) * 100);
+  const remainingRequired = Math.max(requiredRows.length - selectedAvailableCount, 0);
 
-  const checklistRows = useMemo(() => {
-    const latestUploadedByType = new Map<string, DocumentRow>();
+  const analysisCards = useMemo<DocumentAnalysisCard[]>(() => {
+    const latestDocumentsByType = new Map<string, DocumentRow>();
     for (const row of documentsQuery.data ?? []) {
       const key = row.document_type.trim().toLowerCase();
-      if (!latestUploadedByType.has(key)) {
-        latestUploadedByType.set(key, row);
+      if (!key || latestDocumentsByType.has(key)) {
+        continue;
       }
+      latestDocumentsByType.set(key, row);
     }
 
-    const aggregated = new Map<string, {
-      document_type: string;
-      name: string;
-      required: boolean;
-      requiredCount: number;
-      satisfiedRequiredCount: number;
-      hasUploadedRecord: boolean;
-      hasRejectedSignal: boolean;
-      latestStatus: string | null;
-      latestValidationStatus: string | null;
-      isAvailable: boolean;
-    }>();
-
-    for (const scheme of checklistQuery.data?.by_scheme ?? []) {
-      for (const item of scheme.checklist) {
-        const key = item.document_type.trim().toLowerCase();
-        const existing = aggregated.get(key) ?? {
-          document_type: item.document_type,
-          name: item.display_name,
-          required: false,
-          requiredCount: 0,
-          satisfiedRequiredCount: 0,
-          hasUploadedRecord: false,
-          hasRejectedSignal: false,
-          latestStatus: null,
-          latestValidationStatus: null,
-          isAvailable: false,
-        };
-
-        existing.name = existing.name || item.display_name;
-        existing.required = existing.required || item.required;
-        if (item.required) {
-          existing.requiredCount += 1;
-          if (item.uploaded) {
-            existing.satisfiedRequiredCount += 1;
-          }
-        }
-        existing.hasUploadedRecord = existing.hasUploadedRecord || Boolean(item.has_uploaded_record);
-        existing.hasRejectedSignal =
-          existing.hasRejectedSignal ||
-          item.latest_status === "rejected" ||
-          item.latest_validation_status === "invalid";
-        existing.latestStatus = existing.latestStatus ?? item.latest_status ?? null;
-        existing.latestValidationStatus = existing.latestValidationStatus ?? item.latest_validation_status ?? null;
-        existing.isAvailable = existing.isAvailable || Boolean(item.is_available);
-
-        aggregated.set(key, existing);
-      }
-    }
-
-    for (const row of documentsQuery.data ?? []) {
-      const key = row.document_type.trim().toLowerCase();
-      if (!aggregated.has(key)) {
-        aggregated.set(key, {
-          document_type: row.document_type,
-          name: row.document_type,
-          required: false,
-          requiredCount: 0,
-          satisfiedRequiredCount: 0,
-          hasUploadedRecord: true,
-          hasRejectedSignal: row.validation_status === "invalid" || normalizeStatus(row.status) === "rejected",
-          latestStatus: row.status,
-          latestValidationStatus: row.validation_status ?? null,
-          isAvailable: false,
-        });
-      }
-    }
-
-    return Array.from(aggregated.entries()).map(([key, item]) => {
-      const latestDoc = latestUploadedByType.get(key);
-      const effectiveWorkflowStatus = latestDoc?.status ?? item.latestStatus;
-      const effectiveValidationStatus = latestDoc?.validation_status ?? item.latestValidationStatus;
-      const requiredMissingCount = Math.max(item.requiredCount - item.satisfiedRequiredCount, 0);
-      const hasUploadedRecord = item.hasUploadedRecord || Boolean(latestDoc);
-      const hasRejectedSignal =
-        item.hasRejectedSignal ||
-        normalizeValidationStatus(effectiveValidationStatus) === "invalid" ||
-        normalizeStatus(effectiveWorkflowStatus ?? "") === "rejected";
-
-      const status = requiredMissingCount > 0
-        ? (hasRejectedSignal || hasUploadedRecord ? "rejected" : (item.isAvailable ? "available" : "missing"))
-        : deriveDocStatus(effectiveWorkflowStatus, effectiveValidationStatus, item.isAvailable);
-
-      return {
-        document_type: item.document_type,
-        name: item.name,
-        required: item.required,
-        uploaded: requiredMissingCount === 0 && (item.requiredCount > 0 ? true : hasUploadedRecord),
-        isAvailable:
-          item.isAvailable ||
-          item.latestStatus === "verified" ||
-          pendingAvailability[item.document_type] === true ||
-          checklistQuery.data?.by_scheme.some((scheme) =>
-            scheme.checklist.some((checklistItem) => checklistItem.document_type === item.document_type && checklistItem.is_available),
-          ),
-        status,
-        fileName: latestDoc?.file_name ?? null,
-        signedUrl: latestDoc?.signed_url ?? null,
-      };
-    });
-  }, [checklistQuery.data?.by_scheme, documentsQuery.data, pendingAvailability]);
-
-  const fallbackRequired = checklistRows.filter((d) => d.required).length;
-  const fallbackMissing = checklistRows.filter((d) => d.required && (d.status === "missing" || d.status === "rejected")).length;
-  const totalRequired = checklistQuery.data?.summary.total_required ?? fallbackRequired;
-  const missingRequired = checklistQuery.data?.summary.total_missing ?? fallbackMissing;
-  const completedRequired = Math.max(totalRequired - missingRequired, 0);
-  const completeness = Math.round(
-    checklistQuery.data?.summary.overall_completeness ??
-    (totalRequired > 0 ? (completedRequired / totalRequired) * 100 : 0),
-  );
+    return Array.from(latestDocumentsByType.values()).map((row) => ({
+      id: row.id,
+      file_name: row.file_name,
+      document_type: row.document_type,
+      signed_url: row.signed_url,
+      analysis: parseDocumentAnalysis(toRecord(row.extracted_json).ai_document_analysis),
+      created_at: row.created_at,
+    }));
+  }, [documentsQuery.data]);
 
   if (!applicationId) {
     return (
       <div className="space-y-6 px-2 md:px-6">
         <PageHeader
-          title="Document Upload & Verification"
-          subtitle="Select an application before uploading lender-required documents."
+          title="Documents & Optional Verification"
+          subtitle="Select an application before reviewing document readiness."
         />
         <EmptyState
           title="No applications found"
-          description="Create your first application before uploading documents."
+          description="Create your first application before managing document readiness."
           action={<Button onClick={() => navigate("/apply")}>Create Application</Button>}
         />
       </div>
@@ -320,8 +419,8 @@ export default function DocumentUpload() {
   return (
     <div className="space-y-6 px-2 md:px-6">
       <PageHeader
-        title="Document Upload & Verification"
-        subtitle="Upload required files, check verification status, and complete missing items quickly."
+        title="Documents & Optional Verification"
+        subtitle="Mark the documents you already have, then upload files only if you want AI guidance against bank requirements."
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             <Select
@@ -343,371 +442,286 @@ export default function DocumentUpload() {
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={() => {
-              void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
-              void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
-            }}>
-              <Upload className="h-4 w-4" />
+            <Button
+              variant="outline"
+              onClick={() => {
+                void queryClient.invalidateQueries({ queryKey: ["documents", applicationId] });
+                void queryClient.invalidateQueries({ queryKey: ["document-checklist", applicationId] });
+              }}
+            >
+              <RefreshCw className="h-4 w-4" />
               Refresh
             </Button>
           </div>
         )}
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Guidance only</AlertTitle>
+        <AlertDescription>
+          Document availability improves prediction accuracy. Uploaded files are optional and AI analysis does not change eligibility scoring.
+        </AlertDescription>
+      </Alert>
+
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardContent className="space-y-3 p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-foreground">Document Completeness</p>
-              <p className="text-lg font-semibold text-primary">{completeness}%</p>
-            </div>
-            <Progress value={completeness} />
-            <p className="text-xs text-muted-foreground">
-              {completedRequired} of {totalRequired} required documents ready for submission.
-            </p>
+          <CardContent className="space-y-2 p-5">
+            <p className="text-sm font-semibold text-foreground">Document Readiness</p>
+            <p className="text-3xl font-semibold text-primary">{readinessScore}%</p>
+            <Progress value={readinessScore} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="space-y-2 p-5">
-            <p className="text-sm font-semibold text-foreground">Missing Required Documents</p>
-            <p className="text-2xl font-semibold text-destructive">{missingRequired}</p>
-            <p className="text-xs text-muted-foreground">
-              Complete all required files to avoid underwriting delays.
-            </p>
+            <p className="text-sm font-semibold text-foreground">Preferred Docs Ready</p>
+            <p className="text-3xl font-semibold text-foreground">{selectedAvailableCount}</p>
+            <p className="text-xs text-muted-foreground">{requiredRows.length} preferred document(s) for the current bank list.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-2 p-5">
+            <p className="text-sm font-semibold text-foreground">Still Missing</p>
+            <p className="text-3xl font-semibold text-foreground">{remainingRequired}</p>
+            <p className="text-xs text-muted-foreground">Missing items reduce prediction confidence, but uploads are still optional.</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="upload" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
-          <TabsTrigger value="upload" className="flex items-center gap-2">
-            <FilePlus className="h-4 w-4" />
-            Upload Center
-          </TabsTrigger>
-          <TabsTrigger value="checklist" className="flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4" />
-            Quick Checklist
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="upload" className="mt-6">
-          <div className="grid gap-6 md:grid-cols-1 xl:grid-cols-3">
-            <div className="space-y-4 xl:col-span-2">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="subtle-grid rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-10 text-center">
-                    <Upload className="mx-auto h-10 w-10 text-primary" />
-                    <p className="mt-3 text-base font-semibold text-foreground">Upload document files</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Select the document type first, then choose the matching file.</p>
-                    <div className="mx-auto mt-4 max-w-sm space-y-3">
-                      <Select value={selectedDocumentType} onValueChange={setSelectedDocumentType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select document type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {checklistRows.map((doc) => (
-                            <SelectItem key={doc.document_type} value={doc.document_type}>{doc.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {selectedDocumentType ? (
-                        <p className="rounded-md border border-border/70 bg-background px-3 py-2 text-left text-xs text-muted-foreground">
-                          Selected type:{" "}
-                          <span className="font-semibold text-foreground">
-                            {checklistRows.find((item) => item.document_type === selectedDocumentType)?.name ?? selectedDocumentType}
-                          </span>
-                        </p>
-                      ) : null}
-                      <input
-                        type="file"
-                        className="block w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm"
-                        accept=".pdf,.png,.jpg,.jpeg"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (!file) {
-                            return;
-                          }
-                          if (!selectedDocumentType) {
-                            toast({
-                              title: "Select a document type first",
-                              description: "Choose the matching requirement before uploading the file.",
-                              variant: "destructive",
-                            });
-                            event.currentTarget.value = "";
-                            return;
-                          }
-                          uploadMutation.mutate({ file, documentType: selectedDocumentType });
-                          event.currentTarget.value = "";
-                        }}
-                        disabled={uploadMutation.isPending || !selectedDocumentType}
-                      />
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">Step 1 - Document Availability</CardTitle>
+            <p className="text-sm text-muted-foreground">Select what you already have. No files are required here.</p>
+          </div>
+          <Button
+            onClick={() => saveAvailabilityMutation.mutate()}
+            disabled={saveAvailabilityMutation.isPending || checklistRows.length === 0}
+          >
+            {saveAvailabilityMutation.isPending ? "Saving..." : "Save Availability"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {checklistRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No bank document requirements are available yet for this application.</p>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-2">
+                {checklistRows.map((row) => (
+                  <label
+                    key={row.document_type}
+                    className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-card px-4 py-3"
+                  >
+                    <Checkbox
+                      checked={availabilityState[row.document_type] === true}
+                      onCheckedChange={(checked) =>
+                        setAvailabilityState((current) => ({
+                          ...current,
+                          [row.document_type]: checked === true,
+                        }))
+                      }
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground">{row.display_name}</p>
+                        <Badge variant={row.required ? "default" : "secondary"}>
+                          {row.required ? "Preferred" : "Optional"}
+                        </Badge>
+                        {row.has_uploaded_record ? <Badge variant="outline">Uploaded</Badge> : null}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{row.document_type}</p>
                     </div>
-                    {uploadMutation.isPending && uploadProgress > 0 && (
-                      <div className="mx-auto mt-4 max-w-sm space-y-1">
-                        <div className="flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
-                          <span>Uploading...</span>
-                          <span>{uploadProgress}%</span>
-                        </div>
-                        <Progress value={uploadProgress} className="h-1" />
-                      </div>
-                    )}
-                    <p className="mt-3 text-xs text-muted-foreground">Supported: PDF, JPG, PNG up to 10MB</p>
-                  </div>
-                </CardContent>
-              </Card>
+                  </label>
+                ))}
+              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Verification Status</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {checklistRows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No document checklist found for this application yet.</p>
-                  ) : checklistRows.map((doc) => {
-                    const status = doc.status;
-                    const alreadySaved = doc.isAvailable || status === "verified" || status === "uploaded";
-                    const isPending = pendingAvailability[doc.document_type] !== undefined;
-                    const currentVal = isPending ? pendingAvailability[doc.document_type] : alreadySaved;
-                    const isDisabled = status === "verified" || status === "uploaded" || availabilityMutation.isPending;
-                    
-                    const config = statusConfig[status];
-                    const Icon = config.icon;
-                    return (
-                      <div
-                        key={doc.document_type}
-                        className={cn(
-                          "flex items-center justify-between rounded-xl border border-border/70 p-4 transition-all duration-200",
-                          status === "missing" && "border-destructive/25 bg-destructive/5",
-                          status === "available" && "border-info/25 bg-info/5",
-                          isPending && "border-primary/40 bg-primary/5 shadow-sm",
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            id={`available-${doc.document_type}`}
-                            checked={currentVal}
-                            disabled={isDisabled}
-                            onCheckedChange={(checked) => {
-                              setPendingAvailability(prev => {
-                                const next = { ...prev };
-                                const newVal = checked === true;
-                                if (newVal === alreadySaved) delete next[doc.document_type];
-                                else next[doc.document_type] = newVal;
-                                return next;
-                              });
-                            }}
-                          />
-                          <div className="rounded-lg bg-muted/60 p-2">
-                            <Icon className={cn("h-4 w-4",
-                              status === "verified" && "text-success",
-                              status === "available" && "text-info",
-                              status === "uploaded" && "text-primary",
-                              (status === "needs_review" || status === "processing") && "text-warning",
-                              status === "missing" && "text-destructive",
-                              status === "rejected" && "text-destructive",
-                            )} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{doc.name}</p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              {doc.required ? "Required" : "Optional"}
-                              {doc.fileName ? ` | ${doc.fileName}` : ""}
-                              {isPending && <span className="ml-1 font-medium text-primary">| Pending Save</span>}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {doc.signedUrl ? (
-                            <Button variant="outline" size="sm" asChild>
-                              <a href={doc.signedUrl} target="_blank" rel="noreferrer">Preview</a>
-                            </Button>
-                          ) : null}
-                          <StatusBadge status={status} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
+              {(checklistQuery.data?.by_scheme ?? []).length > 0 ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {(checklistQuery.data?.by_scheme ?? []).map((scheme) => (
+                    <div key={scheme.product_id} className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                      <p className="text-sm font-semibold text-foreground">{scheme.bank_name ?? "Bank"} - {scheme.product_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Preferred documents: {scheme.checklist.filter((item) => item.required).length} | Ready: {scheme.checklist.filter((item) => item.is_available).length}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Step 2 - Optional Document Verification</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Upload a file only if you want Gemini AI to compare it with the bank requirement and summarize what it contains.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+              <p className="text-sm font-semibold text-foreground">Upload for AI analysis</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose the document you want to upload. We will compare it against the best matching bank requirement automatically.
+              </p>
+              <div className="mt-4 grid gap-3">
+                <Select value={selectedUploadDocumentType} onValueChange={setSelectedUploadDocumentType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose document to upload" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {uploadDocumentOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedUploadTarget ? (
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p>
+                      Comparing against {(selectedUploadTarget.bank_name ?? "Bank")} - {selectedUploadTarget.product_name}.
+                    </p>
+                    {selectedUploadMatchesMultipleSchemes ? (
+                      <p>The current selected product is used first when more than one bank asks for the same document.</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      return;
+                    }
+                    if (!selectedUploadTarget) {
+                      toast({
+                        title: "Select a document first",
+                        description: "Choose which document you are uploading before selecting the file.",
+                        variant: "destructive",
+                      });
+                      event.currentTarget.value = "";
+                      return;
+                    }
+                    uploadMutation.mutate({ file, requirement: selectedUploadTarget });
+                    event.currentTarget.value = "";
+                  }}
+                />
+                {uploadMutation.isPending ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Uploading and analyzing</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <Progress value={uploadProgress} className="h-1" />
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            <div className="space-y-4">
-              <Alert variant={missingRequired > 0 ? "warning" : "success"}>
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>{missingRequired > 0 ? "Action Required" : "All Required Files Uploaded"}</AlertTitle>
-                <AlertDescription>
-                  {missingRequired > 0
-                    ? "Required documents are still missing for one or more lender schemes."
-                    : "Required document set is complete and ready for review."}
-                </AlertDescription>
-              </Alert>
-
-              {(checklistQuery.data?.by_scheme ?? []).map((scheme) => (
-                <Card key={scheme.product_id}>
-                  <CardHeader>
-                    <CardTitle className="text-base">{scheme.bank_name ?? "Bank"} Checklist</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Progress value={scheme.completeness_score} />
-                    {scheme.checklist.map((item) => (
-                      <div key={`${scheme.product_id}-${item.document_type}`} className="flex items-center gap-2 text-sm">
-                        {item.uploaded ? (
-                          <CheckCircle2 className="h-4 w-4 text-success" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-destructive" />
-                        )}
-                        <span className={item.uploaded ? "text-foreground" : "text-muted-foreground"}>{item.display_name}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              ))}
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Verification Notes</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                    <p className="text-xs text-muted-foreground">System</p>
-                    <p className="mt-1 text-sm text-foreground">Document checks are generated directly from lender-required document definitions.</p>
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="rounded-xl border border-border/70 bg-card p-4">
+              <p className="text-sm font-semibold text-foreground">Latest AI run</p>
+              {latestScanResult ? (
+                <div className="mt-3 space-y-2 text-sm">
+                  <p className="text-muted-foreground">{latestScanResult.summary.total_documents} uploaded document(s) analyzed.</p>
+                  <p className="text-muted-foreground">Informational summaries are ready below.</p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No new analysis in this session yet.</p>
+              )}
             </div>
           </div>
-        </TabsContent>
 
-        <TabsContent value="checklist" className="mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Requirement Checklist</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Tick the documents you have available. You can upload them later.
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right mr-4">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Completeness</p>
-                  <p className="text-xl font-bold text-primary leading-none mt-1">{completeness}%</p>
-                </div>
-                {Object.keys(pendingAvailability).length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPendingAvailability({})}
-                    disabled={availabilityMutation.isPending}
-                    className="text-muted-foreground"
-                  >
-                    Undo All
-                  </Button>
-                )}
-                <Button 
-                  onClick={() => {
-                    const updates = Object.entries(pendingAvailability).map(([type, val]) => ({
-                      document_type: type,
-                      is_available: val
-                    }));
-                    if (updates.length > 0) {
-                      availabilityMutation.mutate(updates);
-                    }
-                  }} 
-                  disabled={Object.keys(pendingAvailability).length === 0 || availabilityMutation.isPending}
-                  className="bg-primary hover:bg-primary/90 min-w-[120px]"
-                >
-                  {availabilityMutation.isPending ? "Saving..." : `Save ${Object.keys(pendingAvailability).length} Changes`}
+          {analysisCards.length === 0 ? (
+            <EmptyState
+              title="No uploaded documents yet"
+              description="If you want optional AI guidance, upload a document and review the analysis here."
+              action={(
+                <Button variant="outline" disabled>
+                  <FilePlus className="h-4 w-4" />
+                  Waiting for upload
                 </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1">
-                {checklistRows.map((doc) => {
-                  const alreadySaved = doc.isAvailable || doc.status === "verified" || doc.status === "uploaded";
-                  const isPending = pendingAvailability[doc.document_type] !== undefined;
-                  const currentVal = isPending ? pendingAvailability[doc.document_type] : alreadySaved;
-                  const isDisabled = doc.status === "verified" || doc.status === "uploaded" || availabilityMutation.isPending;
-                  
-                  return (
-                    <div 
-                      key={doc.document_type}
-                      className={cn(
-                        "group flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-muted/30",
-                        currentVal && !isDisabled && "bg-primary/5",
-                        isDisabled && "opacity-70"
-                      )}
-                    >
-                      <div className="flex items-center gap-4">
-                        <Checkbox
-                          id={`quick-${doc.document_type}`}
-                          checked={currentVal}
-                          disabled={isDisabled}
-                          onCheckedChange={(checked) => {
-                            setPendingAvailability(prev => {
-                              const next = { ...prev };
-                              const newVal = checked === true;
-                              // Only track if it's different from what we already have (approximate check)
-                              if (newVal === alreadySaved) {
-                                delete next[doc.document_type];
-                              } else {
-                                next[doc.document_type] = newVal;
-                              }
-                              return next;
-                            });
-                          }}
-                          className="h-5 w-5 border-2"
-                        />
-                        <div>
-                          <label 
-                            htmlFor={`quick-${doc.document_type}`}
-                            className={cn(
-                              "text-sm font-semibold cursor-pointer",
-                              currentVal && "text-primary"
-                            )}
-                          >
-                            {doc.name}
-                          </label>
-                          <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                            {doc.required ? (
-                              <span className="text-destructive font-medium">Required</span>
+              )}
+            />
+          ) : (
+            <div className="grid gap-4">
+              {analysisCards.map((card) => (
+                <div key={card.id} className="rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{card.file_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {card.analysis?.document_type ?? card.document_type} | Uploaded {new Date(card.created_at).toLocaleDateString("en-LK")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">Guidance Only</Badge>
+                      {card.signed_url ? (
+                        <Button asChild variant="outline" size="sm">
+                          <a href={card.signed_url} target="_blank" rel="noreferrer">
+                            <Upload className="h-4 w-4" />
+                            View File
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {card.analysis ? (
+                    <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                      <div className="rounded-lg border border-border/70 bg-muted/20 p-3 lg:col-span-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Summary</p>
+                        <p className="mt-2 text-sm text-foreground">{card.analysis.summary}</p>
+                        <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Eligibility Hint</p>
+                        <p className="mt-2 text-sm text-muted-foreground">{card.analysis.eligibility_hint}</p>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Extracted Information</p>
+                          <div className="mt-2 space-y-2">
+                            {card.analysis.extracted_information.length > 0 ? (
+                              card.analysis.extracted_information.map((item) => (
+                                <div key={`${card.id}-${item.label}`} className="text-sm">
+                                  <span className="font-medium text-foreground">{item.label}:</span>{" "}
+                                  <span className="text-muted-foreground">{item.value}</span>
+                                </div>
+                              ))
                             ) : (
-                              <span>Optional</span>
+                              <p className="text-sm text-muted-foreground">No structured details were extracted.</p>
                             )}
-                            {isPending && (
-                              <>
-                                <span>|</span>
-                                <span className="text-primary font-medium">Modified (Pending Save)</span>
-                              </>
-                            )}
-                            {!isPending && (
-                              <>
-                                <span>|</span>
-                                <span>{doc.status.replace("_", " ")}</span>
-                              </>
-                            )}
-                          </p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Requirement Match</p>
+                          <div className="mt-2 space-y-2">
+                            {card.analysis.requirement_match.map((item, index) => (
+                              <div key={`${card.id}-${index}`} className="flex items-start gap-2 text-sm">
+                                {item.status === "match" ? (
+                                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
+                                ) : (
+                                  <AlertCircle className="mt-0.5 h-4 w-4 text-amber-600" />
+                                )}
+                                <span className="text-muted-foreground">{item.message}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-3">
-                        {doc.status === "verified" && (
-                          <CheckCircle2 className="h-5 w-5 text-success" />
-                        )}
-                        {(doc.status === "available" || (currentVal && !alreadySaved)) && (
-                          <ClipboardCheck className={cn("h-5 w-5", currentVal && !alreadySaved ? "text-primary animate-pulse" : "text-info")} />
-                        )}
-                        {!currentVal && (
-                          <Circle className="h-5 w-5 text-muted-foreground/30" />
-                        )}
-                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  ) : (
+                    <p className="mt-4 text-sm text-muted-foreground">AI analysis is not available for this file yet.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

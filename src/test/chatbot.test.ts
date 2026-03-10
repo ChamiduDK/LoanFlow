@@ -26,6 +26,10 @@ vi.mock("../../server/lib/supabase/client", () => ({
     from: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    ilike: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
+    lte: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
     single: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
@@ -44,6 +48,7 @@ import { chatbotService } from "../../server/services/chatbot.service";
 import { supabaseAdmin } from "../../server/lib/supabase/client";
 
 const mockedSupabaseAdmin = supabaseAdmin as unknown as {
+  from: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
 };
@@ -51,6 +56,7 @@ const mockedSupabaseAdmin = supabaseAdmin as unknown as {
 describe("ChatbotService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedSupabaseAdmin.from.mockReturnThis();
     embedContentMock.mockResolvedValue([0, 0, 0]);
     mockedSupabaseAdmin.maybeSingle.mockResolvedValue({
       data: { id: "session-1" },
@@ -146,5 +152,62 @@ describe("ChatbotService", () => {
 
     await expect(chatbotService.handleChat("customer-1", "customer", "Predict for app-others"))
       .rejects.toThrow(/Not authorized/);
+  });
+
+  it("looks up applications by short display id without relying on a relation join", async () => {
+    const applicationBuilder = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      then: (onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) =>
+        Promise.resolve({
+          data: [
+            {
+              id: "3b08a2b6-1111-2222-3333-444444444444",
+              user_id: "user-1",
+              requested_amount: 2500000,
+              status: "under_review",
+              purpose: "Working capital",
+              created_at: "2026-03-01T10:00:00.000Z",
+            },
+          ],
+          error: null,
+        }).then(onFulfilled, onRejected),
+    };
+
+    const profilesBuilder = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      then: (onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) =>
+        Promise.resolve({
+          data: [{ id: "user-1", full_name: "Test User" }],
+          error: null,
+        }).then(onFulfilled, onRejected),
+    };
+
+    mockedSupabaseAdmin.from.mockImplementation((table: string) => {
+      if (table === "loan_applications") {
+        return applicationBuilder;
+      }
+      if (table === "profiles") {
+        return profilesBuilder;
+      }
+      throw new Error(`Unexpected table in test: ${table}`);
+    });
+
+    const data = await (chatbotService as any).lookupData("user-1", "customer", "application", "#3b08a2b6");
+
+    expect(applicationBuilder.gte).toHaveBeenCalledWith("id", "3b08a2b6-0000-0000-0000-000000000000");
+    expect(applicationBuilder.lte).toHaveBeenCalledWith("id", "3b08a2b6-ffff-ffff-ffff-ffffffffffff");
+    expect(profilesBuilder.in).toHaveBeenCalledWith("id", ["user-1"]);
+    expect(data).toEqual([
+      expect.objectContaining({
+        id: "3b08a2b6-1111-2222-3333-444444444444",
+        applicant: "Test User",
+        status: "under_review",
+      }),
+    ]);
   });
 });

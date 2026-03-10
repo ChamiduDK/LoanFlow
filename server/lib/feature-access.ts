@@ -18,7 +18,7 @@ export const DEFAULT_USER_FEATURE_ACCESS: UserFeatureAccess = {
 export const USER_FEATURE_LABELS: Record<UserFeatureKey, string> = {
   ai_chat: "LoanFlow Smart Assistant",
   new_application: "New Loan Application",
-  upload_documents: "Upload Documents",
+  upload_documents: "Documents & Guidance",
   track_application: "Track Application",
   emi_calculator: "EMI Calculator",
 };

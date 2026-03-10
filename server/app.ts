@@ -25,6 +25,7 @@ import { chatbotRouter } from "./routes/chatbot.routes";
 import { knowledgeRouter } from "./routes/knowledge.routes";
 import { bankAgentRouter } from "./routes/bank-agent.routes";
 import { whatsappRouter } from "./routes/whatsapp.routes";
+import { telegramRouter } from "./routes/telegram.routes";
 
 const app = express();
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -101,6 +102,7 @@ app.use("/api", mlRouter);
 app.use("/api", chatbotRouter);
 app.use("/api", knowledgeRouter);
 app.use("/api", whatsappRouter);
+app.use("/api", telegramRouter);
 
 app.use(express.static(distDir));
 

@@ -165,7 +165,7 @@ adminRouter.get(
     }
 
     const activeMlVersion = mlModelResult.data?.version ?? null;
-    const activeMlAccuracy = (mlModelResult.data?.metrics_json as Record<string, any>)?.accuracy ?? null;
+    const activeMlAccuracy = (mlModelResult.data?.metrics_json as Record<string, unknown>)?.accuracy ?? null;
 
     const pendingUserApprovals = (profilesResult.data ?? []).reduce((count, row) => {
       const profile = row as ProfileRecord;
@@ -959,9 +959,8 @@ adminRouter.put(
         payload.documents.map((doc) => ({
           ...doc,
           product_id: params.productId,
-          accepted_formats: doc.accepted_formats ?? ["pdf", "jpg", "png"],
+          accepted_formats: doc.accepted_formats ?? ["pdf", "jpg", "jpeg", "png"],
           is_required: doc.is_required ?? true,
-          verification_rules_json: doc.verification_rules_json ?? {},
         })),
       )
       .select("*");

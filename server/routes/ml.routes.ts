@@ -6,7 +6,7 @@ import { requireApprovedUser, requireAuth, requireAdmin } from "../middleware/au
 import { unauthorized } from "../lib/errors";
 import { activateMlModelParamsSchema, predictMlSchema, trainMlSchema } from "../schemas/ml";
 import { predictApprovalProbability } from "../services/ml/prediction.service";
-import { activateMlModel, listMlModels, trainMlApprovalModel } from "../services/ml/training.service";
+import { activateMlModel, getMlTrainingReadiness, listMlModels, trainMlApprovalModel } from "../services/ml/training.service";
 
 export const mlRouter = Router();
 
@@ -58,6 +58,15 @@ mlRouter.get(
   asyncHandler(async (_req, res) => {
     const models = await listMlModels();
     sendSuccess(res, models);
+  }),
+);
+
+mlRouter.get(
+  "/ml/readiness",
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const readiness = await getMlTrainingReadiness();
+    sendSuccess(res, readiness);
   }),
 );
 

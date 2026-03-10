@@ -149,28 +149,45 @@ authRouter.get(
       throw unauthorized();
     }
 
-    const { data: profile, error } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
+    const [profileResult, telegramLinkResult] = await Promise.all([
+      supabaseAdmin.from("profiles").select("*").eq("id", userId).maybeSingle(),
+      supabaseAdmin
+        .from("user_channel_links")
+        .select("id, channel_user_id, is_verified, metadata, updated_at")
+        .eq("user_id", userId)
+        .eq("channel_type", "telegram")
+        .maybeSingle(),
+    ]);
 
-    if (error) {
-      throw internalError("Failed to load profile", error);
+    if (profileResult.error) {
+      throw internalError("Failed to load profile", profileResult.error);
+    }
+
+    if (telegramLinkResult.error) {
+      throw internalError("Failed to load Telegram link", telegramLinkResult.error);
     }
 
     res.setHeader("Cache-Control", "no-store");
 
-    const normalizedProfile = profile
+    const normalizedProfile = profileResult.data
       ? {
-          ...profile,
-          feature_access: normalizeFeatureAccess((profile as Record<string, unknown>).feature_access),
+          ...profileResult.data,
+          feature_access: normalizeFeatureAccess((profileResult.data as Record<string, unknown>).feature_access),
         }
       : null;
 
     sendSuccess(res, {
       user: req.auth?.user,
       profile: normalizedProfile,
+      telegram_link: telegramLinkResult.data
+        ? {
+            id: telegramLinkResult.data.id,
+            chat_id: telegramLinkResult.data.channel_user_id,
+            is_verified: telegramLinkResult.data.is_verified,
+            metadata: telegramLinkResult.data.metadata,
+            updated_at: telegramLinkResult.data.updated_at,
+          }
+        : null,
     });
   }),
 );

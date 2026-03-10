@@ -30,12 +30,16 @@ const FEATURE_DESCRIPTIONS: Record<string, { positive: string; negative: string 
     negative: "Your profile differs from this bank's typical lending preferences."
   },
   document_completeness_score: {
-    positive: "Your document checklist is highly complete.",
-    negative: "Additional documentation would strengthen your application."
+    positive: "You already have most of the bank-preferred documents available.",
+    negative: "Marking more available documents would improve this estimate."
   },
   document_quality_score: {
-    positive: "The uploaded documents are clear and valid.",
-    negative: "Some documents require better clarity or verification."
+    positive: "Your current document-readiness profile supports the application well.",
+    negative: "Document readiness is still a weak signal for this application."
+  },
+  missing_docs_count: {
+    positive: "You already have the preferred document set for this bank.",
+    negative: "Several preferred documents are still not marked as available."
   },
   years_active: {
     positive: "Your business has a stable operating history.",
@@ -46,8 +50,8 @@ const FEATURE_DESCRIPTIONS: Record<string, { positive: string; negative: string 
     negative: "Lack of collateral increases the risk assessment for this product."
   },
   invalid_docs_count: {
-    positive: "Clean document validation record.",
-    negative: "Validation issues in some documents have decreased the score."
+    positive: "There are no extra document-risk penalties in this estimate.",
+    negative: "Document risk signals have reduced confidence in this estimate."
   },
   business_type: {
     positive: "Your business entity type is preferred for this category.",

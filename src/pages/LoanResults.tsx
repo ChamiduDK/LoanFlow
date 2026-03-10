@@ -32,6 +32,7 @@ import EmptyState from "@/components/shared/EmptyState";
 import { Progress } from "@/components/ui/progress";
 import { apiFetch } from "@/lib/api/client";
 import { formatLKR } from "@/lib/currency";
+import { formatMlModelShortLabel } from "@/lib/ml-display";
 import type { Bank, EvaluationResult, LoanApplication, TrackApplicationResponse } from "@/types/backend";
 import { useToast } from "@/hooks/use-toast";
 
@@ -39,6 +40,11 @@ type RankedScheme = EvaluationResult["ranked_results"][number];
 type IneligibleScheme = EvaluationResult["ineligible_results"][number];
 type FilterableScheme = Pick<RankedScheme, "bankId" | "emi" | "approvalProbability" | "eligibilityScore"> & {
   rankingScore?: number;
+};
+type VisibleRecommendation = {
+  scheme: RankedScheme | IneligibleScheme;
+  outcome: "eligible" | "needs_review";
+  label: string;
 };
 
 function formatPercent(value: unknown, digits = 1): string {
@@ -63,6 +69,39 @@ function getBankInitials(value: unknown): string {
     .join("")
     .slice(0, 3)
     .toUpperCase() || "BNK";
+}
+
+function getPredictionSummary(scheme: RankedScheme | IneligibleScheme): string {
+  if (!scheme.prediction) {
+    return "Prediction details unavailable";
+  }
+
+  if (scheme.prediction.source === "ml_model") {
+    return `${formatMlModelShortLabel(scheme.prediction.model_version)} | ${scheme.prediction.confidence.level} confidence`;
+  }
+
+  return "Rule-based fallback";
+}
+
+function getRankingScoreValue(scheme: RankedScheme | IneligibleScheme): number | null {
+  const parsed = "rankingScore" in scheme ? Number(scheme.rankingScore) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatRankingScore(scheme: RankedScheme | IneligibleScheme): string {
+  const rankingScore = getRankingScoreValue(scheme);
+  return rankingScore === null ? "-" : rankingScore.toFixed(2);
+}
+
+function getReasonHighlights(
+  scheme: RankedScheme | IneligibleScheme,
+  outcome: VisibleRecommendation["outcome"],
+): string[] {
+  if (outcome === "eligible") {
+    return scheme.whyRecommended.length ? scheme.whyRecommended : scheme.reasons.slice(0, 3);
+  }
+
+  return scheme.reasons.length ? scheme.reasons : scheme.whyRecommended.slice(0, 3);
 }
 
 function filterAndSortSchemes<T extends FilterableScheme>(
@@ -113,9 +152,12 @@ export default function LoanResults() {
     queryFn: () => apiFetch<LoanApplication[]>("/api/applications"),
     staleTime: 30_000,
   });
+  const applications = applicationsQuery.data ?? [];
   const fallbackApplicationId = applicationsQuery.data?.[0]?.id ?? "";
-  const hasRequestedApplication = (applicationsQuery.data ?? []).some((application) => application.id === applicationIdFromUrl);
-  const applicationId = hasRequestedApplication ? applicationIdFromUrl : (applicationIdFromUrl || fallbackApplicationId);
+  const hasRequestedApplication = applications.some((application) => application.id === applicationIdFromUrl);
+  const applicationId = applicationIdFromUrl
+    ? (hasRequestedApplication ? applicationIdFromUrl : fallbackApplicationId)
+    : fallbackApplicationId;
 
   useEffect(() => {
     if ((!applicationIdFromUrl || !hasRequestedApplication) && fallbackApplicationId) {
@@ -208,12 +250,31 @@ export default function LoanResults() {
   }, [bankFilter, evaluationQuery.data?.ineligible_results, maxEmiFilter, minProbabilityFilter, sortBy]);
 
   const hasStoredEvaluation = (evaluationQuery.data?.summary.total_products ?? 0) > 0;
-  const hasEligibleResults = (evaluationQuery.data?.ranked_results.length ?? 0) > 0;
-  const hasIneligibleResults = (evaluationQuery.data?.ineligible_results.length ?? 0) > 0;
+  const totalEligibleCount = evaluationQuery.data?.ranked_results.length ?? 0;
+  const totalIneligibleCount = evaluationQuery.data?.ineligible_results.length ?? 0;
+  const hasEligibleResults = totalEligibleCount > 0;
+  const hasIneligibleResults = totalIneligibleCount > 0;
   const hasActiveFilters = bankFilter !== "all" || maxEmiFilter > 0 || minProbabilityFilter > 0;
   const totalVisibleResults = rankedSchemes.length + ineligibleSchemes.length;
-  const filtersHidEligibleResults = hasActiveFilters && hasEligibleResults && rankedSchemes.length === 0;
+  const hasVisibleResults = totalVisibleResults > 0;
+  const filtersHidAllResults = hasActiveFilters && !hasVisibleResults && (hasEligibleResults || hasIneligibleResults);
+  const filtersHidEligibleResults = hasActiveFilters && hasEligibleResults && rankedSchemes.length === 0 && ineligibleSchemes.length > 0;
   const noEligibleRecommendations = hasStoredEvaluation && !hasEligibleResults && hasIneligibleResults;
+  const visibleRecommendations = useMemo<VisibleRecommendation[]>(
+    () => [
+      ...rankedSchemes.map((scheme, index) => ({
+        scheme,
+        outcome: "eligible" as const,
+        label: `#${index + 1}`,
+      })),
+      ...ineligibleSchemes.map((scheme, index) => ({
+        scheme,
+        outcome: "needs_review" as const,
+        label: `Review ${index + 1}`,
+      })),
+    ],
+    [ineligibleSchemes, rankedSchemes],
+  );
 
   const resetFilters = () => {
     setBankFilter("all");
@@ -221,6 +282,35 @@ export default function LoanResults() {
     setMinProbabilityFilter(0);
     setSortBy("score");
   };
+
+  if (applicationsQuery.isLoading && applications.length === 0) {
+    return (
+      <div className="space-y-6 px-2 md:px-6">
+        <PageHeader
+          title="Loan Recommendations"
+          subtitle="Compare lender options, apply simple filters, and track the best match."
+        />
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">Loading your applications...</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (applicationsQuery.isError && applications.length === 0) {
+    return (
+      <div className="space-y-6 px-2 md:px-6">
+        <PageHeader
+          title="Loan Recommendations"
+          subtitle="Compare lender options, apply simple filters, and track the best match."
+        />
+        <EmptyState
+          title="Could not load applications"
+          description="Refresh the page and try again before running lender evaluation."
+        />
+      </div>
+    );
+  }
 
   if (!applicationId) {
     return (
@@ -379,19 +469,24 @@ export default function LoanResults() {
             <Card>
               <CardContent className="p-4">
                 <p className="label-xs">Eligible Matches</p>
-                <p className="mt-1 text-2xl font-semibold text-success">{rankedSchemes.length}</p>
+                <p className="mt-1 text-2xl font-semibold text-success">{totalEligibleCount}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Visible now: {rankedSchemes.length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="label-xs">Needs Review</p>
-                <p className="mt-1 text-2xl font-semibold text-warning-foreground">{ineligibleSchemes.length}</p>
+                <p className="mt-1 text-2xl font-semibold text-warning-foreground">{totalIneligibleCount}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Visible now: {ineligibleSchemes.length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <p className="label-xs">Visible Results</p>
                 <p className="mt-1 text-2xl font-semibold text-foreground">{totalVisibleResults}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {hasActiveFilters ? "Current filters are applied." : "Showing every evaluated lender."}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -410,297 +505,357 @@ export default function LoanResults() {
                 </Button>
               )}
             />
-          ) : filtersHidEligibleResults ? (
+          ) : !hasVisibleResults ? (
             <EmptyState
-              title="No matches for current filters"
-              description="Eligible recommendations exist, but your current filters hide them."
+              title={filtersHidAllResults ? "No matches for current filters" : "No recommendations found"}
+              description={filtersHidAllResults
+                ? "Current filters hide all eligible and review-only lenders."
+                : "Evaluation completed, but no lender results are available for this application."}
               action={(
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Button variant="outline" onClick={resetFilters}>Reset Filters</Button>
+                  {hasActiveFilters ? <Button variant="outline" onClick={resetFilters}>Reset Filters</Button> : null}
                   <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
                     {evaluateMutation.isPending ? "Evaluating..." : "Re-run Evaluation"}
                   </Button>
                 </div>
               )}
             />
-          ) : noEligibleRecommendations ? (
+          ) : (
             <div className="space-y-4">
-              <Alert variant="warning">
-                <Info className="h-4 w-4" />
-                <AlertTitle>No lenders are currently eligible</AlertTitle>
-                <AlertDescription>
-                  We evaluated available schemes, but this application did not meet current eligibility criteria.
-                  Review the reasons below, update your profile/application details, or upload documents and re-run evaluation.
-                </AlertDescription>
-              </Alert>
+              {noEligibleRecommendations ? (
+                <Alert variant="warning">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>No lenders are currently eligible</AlertTitle>
+                  <AlertDescription>
+                    We evaluated available schemes, but this application did not meet current eligibility criteria.
+                    Review the reasons below and update your profile or application details. Document availability can improve readiness and probability estimates, but it does not override core bank eligibility rules.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
-              {ineligibleSchemes.length === 0 ? (
-                <EmptyState
-                  title="No visible lenders after filters"
-                  description="Evaluation found only ineligible lenders, but your current filters hide them."
-                  action={<Button variant="outline" onClick={resetFilters}>Reset Filters</Button>}
-                />
-              ) : (
-                <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
-                  {ineligibleSchemes.map((scheme, i) => (
-                    <Card key={scheme.productId} className="border-warning/25">
-                      <CardHeader className="space-y-4 pb-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warning/10 text-sm font-semibold text-warning-foreground">
-                              {getBankInitials(scheme.bankName)}
+              {filtersHidEligibleResults ? (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Eligible matches are hidden by your current filters</AlertTitle>
+                  <AlertDescription>
+                    You still have eligible lenders for this application, but the current filters only leave review-only options visible.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {rankedSchemes.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">Eligible matches</p>
+                    <p className="text-sm text-muted-foreground">
+                      These lenders passed the current eligibility rules and are ranked by best fit.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
+                    {rankedSchemes.map((scheme, i) => (
+                      <Card
+                        key={scheme.productId}
+                        className={i === 0 ? "border-primary/25 shadow-lg" : undefined}
+                      >
+                        <CardHeader className="space-y-4 pb-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                                {getBankInitials(scheme.bankName)}
+                              </div>
+                              <div>
+                                <CardTitle>{scheme.bankName}</CardTitle>
+                                <p className="text-xs text-muted-foreground">{scheme.productName}</p>
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                              #{i + 1}
+                            </div>
+                          </div>
+                          {i === 0 ? (
+                            <div className="inline-flex w-fit items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+                              <Medal className="h-3.5 w-3.5" />
+                              Top Recommendation
+                            </div>
+                          ) : null}
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                              <p className="label-xs">Monthly EMI</p>
+                              <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(scheme.emi)}</p>
+                            </div>
+                            <div className="rounded-lg border border-border/70 bg-primary/5 p-3">
+                              <p className="label-xs">Approval probability</p>
+                              <p className="mt-1 text-xl font-semibold text-primary">{formatPercent(scheme.approvalProbability)}</p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">{getPredictionSummary(scheme)}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Ranking score</span>
+                              <span className="font-semibold text-foreground">{formatRankingScore(scheme)}</span>
+                            </div>
+                            <Progress value={getRankingScoreValue(scheme) ?? 0} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <p className="label-xs">Estimated rate</p>
+                              <p className="mt-1 font-semibold">{scheme.estimatedRate}%</p>
                             </div>
                             <div>
-                              <CardTitle>{scheme.bankName}</CardTitle>
-                              <p className="text-xs text-muted-foreground">{scheme.productName}</p>
+                              <p className="label-xs">Eligibility</p>
+                              <p className="mt-1 font-semibold">{formatScore(scheme.eligibilityScore)} / 100</p>
+                            </div>
+                            <div>
+                              <p className="label-xs">Total interest</p>
+                              <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(scheme.totalInterest)}</p>
+                            </div>
+                            <div>
+                              <p className="label-xs">Total payable</p>
+                              <p className="mt-1 font-semibold">{formatLKR(scheme.totalPayable)}</p>
                             </div>
                           </div>
-                          <div className="rounded-lg border border-warning/20 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning-foreground">
-                            Ineligible
-                          </div>
-                        </div>
-                        <div className="inline-flex w-fit items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning-foreground">
-                          Review Required #{i + 1}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                            <p className="label-xs">Monthly EMI</p>
-                            <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(scheme.emi)}</p>
-                          </div>
-                          <div className="rounded-lg border border-border/70 bg-warning/5 p-3">
-                            <p className="label-xs">Approval probability</p>
-                            <p className="mt-1 text-xl font-semibold text-warning-foreground">{formatPercent(scheme.approvalProbability)}</p>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="label-xs">Estimated rate</p>
-                            <p className="mt-1 font-semibold">{scheme.estimatedRate}%</p>
-                          </div>
-                          <div>
-                            <p className="label-xs">Eligibility</p>
-                            <p className="mt-1 font-semibold">{formatScore(scheme.eligibilityScore)} / 100</p>
-                          </div>
-                          <div>
-                            <p className="label-xs">Total interest</p>
-                            <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(scheme.totalInterest)}</p>
-                          </div>
-                          <div>
-                            <p className="label-xs">Total payable</p>
-                            <p className="mt-1 font-semibold">{formatLKR(scheme.totalPayable)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <StatusBadge status="needs_review" />
-                          <p className="text-xs text-muted-foreground">
-                            Document completeness {formatPercent(scheme.docCompleteness)}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          {(scheme.reasons.length ? scheme.reasons : scheme.whyRecommended).slice(0, 3).map((reason, idx) => (
-                            <p key={`${scheme.productId}-${idx}`} className="text-xs text-muted-foreground">
-                              {idx + 1}. {reason}
+                          <div className="flex items-center justify-between">
+                            <StatusBadge status={scheme.eligibilityPassed ? "valid" : "needs_review"} />
+                            <p className="text-xs text-muted-foreground">
+                              Document readiness {formatPercent(scheme.docCompleteness)}
                             </p>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            className="flex-1"
-                            variant="outline"
-                            disabled={trackMutation.isPending}
-                            onClick={() => trackMutation.mutate(scheme.productId)}
-                          >
-                            {trackMutation.isPending ? "Starting..." : "Track Anyway"}
-                          </Button>
-                          <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Upload Docs</Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="flex-1"
+                              disabled={trackMutation.isPending}
+                              onClick={() => trackMutation.mutate(scheme.productId)}
+                            >
+                              {trackMutation.isPending ? "Starting..." : "Track This"}
+                            </Button>
+                            <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Review Docs</Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 </div>
-              )}
+              ) : null}
+
+              {ineligibleSchemes.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">Needs review</p>
+                    <p className="text-sm text-muted-foreground">
+                      These lenders were evaluated, but one or more policy rules blocked current eligibility.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
+                    {ineligibleSchemes.map((scheme, i) => (
+                      <Card key={scheme.productId} className="border-warning/25">
+                        <CardHeader className="space-y-4 pb-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-warning/10 text-sm font-semibold text-warning-foreground">
+                                {getBankInitials(scheme.bankName)}
+                              </div>
+                              <div>
+                                <CardTitle>{scheme.bankName}</CardTitle>
+                                <p className="text-xs text-muted-foreground">{scheme.productName}</p>
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-warning/20 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning-foreground">
+                              Ineligible
+                            </div>
+                          </div>
+                          <div className="inline-flex w-fit items-center gap-1 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning-foreground">
+                            Review Required #{i + 1}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
+                              <p className="label-xs">Monthly EMI</p>
+                              <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(scheme.emi)}</p>
+                            </div>
+                            <div className="rounded-lg border border-border/70 bg-warning/5 p-3">
+                              <p className="label-xs">Approval probability</p>
+                              <p className="mt-1 text-xl font-semibold text-warning-foreground">{formatPercent(scheme.approvalProbability)}</p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">{getPredictionSummary(scheme)}</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <p className="label-xs">Estimated rate</p>
+                              <p className="mt-1 font-semibold">{scheme.estimatedRate}%</p>
+                            </div>
+                            <div>
+                              <p className="label-xs">Eligibility</p>
+                              <p className="mt-1 font-semibold">{formatScore(scheme.eligibilityScore)} / 100</p>
+                            </div>
+                            <div>
+                              <p className="label-xs">Total interest</p>
+                              <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(scheme.totalInterest)}</p>
+                            </div>
+                            <div>
+                              <p className="label-xs">Total payable</p>
+                              <p className="mt-1 font-semibold">{formatLKR(scheme.totalPayable)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <StatusBadge status="needs_review" />
+                            <p className="text-xs text-muted-foreground">
+                              Document readiness {formatPercent(scheme.docCompleteness)}
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            {getReasonHighlights(scheme, "needs_review").map((reason, idx) => (
+                              <p key={`${scheme.productId}-${idx}`} className="text-xs text-muted-foreground">
+                                {idx + 1}. {reason}
+                              </p>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="flex-1"
+                              variant="outline"
+                              disabled={trackMutation.isPending}
+                              onClick={() => trackMutation.mutate(scheme.productId)}
+                            >
+                              {trackMutation.isPending ? "Starting..." : "Track Anyway"}
+                            </Button>
+                            <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Review Docs</Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : rankedSchemes.length === 0 ? (
+          )}
+        </TabsContent>
+
+        <TabsContent value="table">
+          {evaluationQuery.isLoading ? (
+            <Card><CardContent className="p-6 text-sm text-muted-foreground">Loading lender recommendations...</CardContent></Card>
+          ) : !hasStoredEvaluation ? (
             <EmptyState
-              title="No recommendations found"
-              description="Run evaluation for this application or adjust your filters."
+              title="No evaluation results yet"
+              description="Run evaluation for this application to generate lender recommendations."
               action={(
                 <Button onClick={() => evaluateMutation.mutate()} disabled={evaluateMutation.isPending}>
                   {evaluateMutation.isPending ? "Evaluating..." : "Run Evaluation"}
                 </Button>
               )}
             />
+          ) : !hasVisibleResults ? (
+            <EmptyState
+              title={filtersHidAllResults ? "No matches for current filters" : "No recommendations found"}
+              description={filtersHidAllResults
+                ? "Current filters hide all eligible and review-only lenders."
+                : "Evaluation completed, but no lender results are available for this application."}
+              action={hasActiveFilters ? <Button variant="outline" onClick={resetFilters}>Reset Filters</Button> : undefined}
+            />
           ) : (
-            <div className="grid gap-4 md:grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3">
-              {rankedSchemes.map((scheme, i) => (
-                <Card
-                  key={scheme.productId}
-                  className={i === 0 ? "border-primary/25 shadow-lg" : undefined}
-                >
-                  <CardHeader className="space-y-4 pb-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
-                          {getBankInitials(scheme.bankName)}
-                        </div>
-                        <div>
-                          <CardTitle>{scheme.bankName}</CardTitle>
-                          <p className="text-xs text-muted-foreground">{scheme.productName}</p>
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                        #{i + 1}
-                      </div>
-                    </div>
-                    {i === 0 ? (
-                      <div className="inline-flex w-fit items-center gap-1 rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
-                        <Medal className="h-3.5 w-3.5" />
-                        Top Recommendation
-                      </div>
-                    ) : null}
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                        <p className="label-xs">Monthly EMI</p>
-                        <p className="mt-1 text-xl font-semibold text-foreground">{formatLKR(scheme.emi)}</p>
-                      </div>
-                      <div className="rounded-lg border border-border/70 bg-primary/5 p-3">
-                        <p className="label-xs">Approval probability</p>
-                        <p className="mt-1 text-xl font-semibold text-primary">{formatPercent(scheme.approvalProbability)}</p>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Ranking score</span>
-                        <span className="font-semibold text-foreground">{formatScore(scheme.rankingScore, 2)}</span>
-                      </div>
-                      <Progress value={scheme.approvalProbability} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p className="label-xs">Estimated rate</p>
-                        <p className="mt-1 font-semibold">{scheme.estimatedRate}%</p>
-                      </div>
-                      <div>
-                        <p className="label-xs">Eligibility</p>
-                        <p className="mt-1 font-semibold">{formatScore(scheme.eligibilityScore)} / 100</p>
-                      </div>
-                      <div>
-                        <p className="label-xs">Total interest</p>
-                        <p className="mt-1 font-semibold text-muted-foreground">{formatLKR(scheme.totalInterest)}</p>
-                      </div>
-                      <div>
-                        <p className="label-xs">Total payable</p>
-                        <p className="mt-1 font-semibold">{formatLKR(scheme.totalPayable)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <StatusBadge status={scheme.eligibilityPassed ? "valid" : "needs_review"} />
-                      <p className="text-xs text-muted-foreground">
-                        Document completeness {formatPercent(scheme.docCompleteness)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1"
-                        disabled={trackMutation.isPending}
-                        onClick={() => trackMutation.mutate(scheme.productId)}
-                      >
-                        {trackMutation.isPending ? "Starting..." : "Track This"}
-                      </Button>
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/documents?applicationId=${applicationId}`)}>Upload Docs</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="table">
-          <Card className="data-table-wrap">
-            <CardHeader className="flex flex-row items-center justify-between gap-3">
-              <div>
-                <CardTitle>Comparison Table</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">Side-by-side view of ranked recommendations.</p>
-              </div>
-
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Rank</TableHead>
-                    <TableHead>Bank</TableHead>
-                    <TableHead>Scheme</TableHead>
-                    <TableHead>Rate</TableHead>
-                    <TableHead>EMI</TableHead>
-                    <TableHead>Approval</TableHead>
-                    <TableHead>Eligibility</TableHead>
-                    <TableHead>Total Payable</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rankedSchemes.map((scheme, i) => (
-                    <TableRow key={scheme.productId}>
-                      <TableCell className="font-semibold text-muted-foreground">#{i + 1}</TableCell>
-                      <TableCell className="font-medium">{scheme.bankName}</TableCell>
-                      <TableCell>{scheme.productName}</TableCell>
-                      <TableCell>{scheme.estimatedRate}%</TableCell>
-                      <TableCell>{formatLKR(scheme.emi)}</TableCell>
-                      <TableCell>
-                        <StatusBadge status={scheme.approvalProbability >= 80 ? "approved" : "under_review"} />
-                      </TableCell>
-                      <TableCell>{formatScore(scheme.eligibilityScore)}</TableCell>
-                      <TableCell className="text-muted-foreground">{formatLKR(scheme.totalPayable)}</TableCell>
+            <Card className="data-table-wrap">
+              <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <div>
+                  <CardTitle>Comparison Table</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">Side-by-side view of all visible lender outcomes.</p>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Label</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Bank</TableHead>
+                      <TableHead>Scheme</TableHead>
+                      <TableHead>Rate</TableHead>
+                      <TableHead>EMI</TableHead>
+                      <TableHead>Approval</TableHead>
+                      <TableHead>Ranking Score</TableHead>
+                      <TableHead>Eligibility</TableHead>
+                      <TableHead>Doc Readiness</TableHead>
+                      <TableHead>Total Payable</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {visibleRecommendations.map(({ scheme, outcome, label }) => (
+                      <TableRow key={`${outcome}-${scheme.productId}`}>
+                        <TableCell className="font-semibold text-muted-foreground">{label}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={outcome === "eligible" ? "valid" : "needs_review"} />
+                        </TableCell>
+                        <TableCell className="font-medium">{scheme.bankName}</TableCell>
+                        <TableCell>{scheme.productName}</TableCell>
+                        <TableCell>{scheme.estimatedRate}%</TableCell>
+                        <TableCell>{formatLKR(scheme.emi)}</TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">{formatPercent(scheme.approvalProbability)}</p>
+                            <p className="text-[11px] text-muted-foreground">{getPredictionSummary(scheme)}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatRankingScore(scheme)}</TableCell>
+                        <TableCell>{formatScore(scheme.eligibilityScore)}</TableCell>
+                        <TableCell>{formatPercent(scheme.docCompleteness)}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatLKR(scheme.totalPayable)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
-      {(rankedSchemes.length > 0 || (noEligibleRecommendations && ineligibleSchemes.length > 0)) ? (
+      {visibleRecommendations.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Info className="h-4 w-4 text-primary" />
-              {rankedSchemes.length > 0 ? "Why these were recommended" : "Why lenders were not eligible"}
+              {rankedSchemes.length > 0 && ineligibleSchemes.length > 0
+                ? "Why each lender is shown"
+                : rankedSchemes.length > 0
+                  ? "Why these were recommended"
+                  : "Why lenders were not eligible"}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              {rankedSchemes.length > 0
-                ? "Expand each lender to view ranking factors and eligibility drivers."
-                : "Expand each lender to review the main eligibility gaps and underwriting blockers."}
+              {rankedSchemes.length > 0 && ineligibleSchemes.length > 0
+                ? "Expand each lender to view ranking strengths or the main eligibility blockers."
+                : rankedSchemes.length > 0
+                  ? "Expand each lender to view ranking factors and eligibility drivers."
+                  : "Expand each lender to review the main eligibility gaps and underwriting blockers."}
             </p>
           </CardHeader>
           <CardContent className="pt-0">
             <Accordion type="single" collapsible className="rounded-xl border border-border/70">
-              {(rankedSchemes.length > 0 ? rankedSchemes : ineligibleSchemes).map((scheme, i) => (
-                <AccordionItem key={scheme.productId} value={`scheme-${scheme.productId}`} className="px-4">
+              {visibleRecommendations.map(({ scheme, outcome, label }) => (
+                <AccordionItem key={`${outcome}-${scheme.productId}`} value={`scheme-${scheme.productId}`} className="px-4">
                   <AccordionTrigger className="py-3">
                     <div className="flex items-center gap-3 text-left">
                       <div className="rounded-md bg-muted/70 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                        #{i + 1}
+                        {label}
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-foreground">{scheme.bankName} - {scheme.productName}</p>
-                        <p className="text-xs text-muted-foreground">Eligibility score {formatScore(scheme.eligibilityScore)} / 100</p>
+                        <p className="text-xs text-muted-foreground">
+                          {getRankingScoreValue(scheme) !== null
+                            ? `Ranking score ${formatRankingScore(scheme)} | Eligibility score ${formatScore(scheme.eligibilityScore)} / 100`
+                            : `Eligibility score ${formatScore(scheme.eligibilityScore)} / 100`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{getPredictionSummary(scheme)}</p>
                       </div>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pb-4">
                     <div className="grid gap-4 md:grid-cols-3">
-                      {(rankedSchemes.length > 0
-                        ? (scheme.whyRecommended.length ? scheme.whyRecommended : scheme.reasons.slice(0, 3))
-                        : (scheme.reasons.length ? scheme.reasons : scheme.whyRecommended.slice(0, 3))
-                      ).map((reason, idx) => (
+                      {getReasonHighlights(scheme, outcome).map((reason, idx) => (
                         <div key={`${scheme.productId}-${idx}`} className="rounded-lg border border-border/70 bg-muted/30 p-3">
                           <p className="label-xs">Reason {idx + 1}</p>
                           <p className="mt-1 text-sm text-foreground">{reason}</p>

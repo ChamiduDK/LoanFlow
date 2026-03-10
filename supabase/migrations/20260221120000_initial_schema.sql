@@ -150,7 +150,7 @@ create table if not exists public.required_documents (
   display_name text not null,
   is_required boolean not null default true,
   notes text,
-  accepted_formats text[] not null default array['pdf', 'jpg', 'png']::text[],
+  accepted_formats text[] not null default array['pdf', 'jpg', 'jpeg', 'png']::text[],
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (product_id, document_type)

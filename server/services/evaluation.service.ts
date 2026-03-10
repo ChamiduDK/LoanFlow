@@ -5,7 +5,8 @@ import { checkDocumentCompleteness } from "./document.service";
 import { calculateEmi } from "./emi.service";
 import { evaluateEligibility } from "./eligibility.service";
 import { logAudit } from "./audit.service";
-import { calculateApprovalProbability, rankRecommendations } from "./ranking.service";
+import { blendApprovalProbabilities, calculateApprovalProbability, rankRecommendations } from "./ranking.service";
+import { predictApprovalProbability } from "./ml/prediction.service";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -79,6 +80,42 @@ function toNumber(input: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+type StoredPredictionSummary = {
+  source: "ml_model" | "rule_based_fallback";
+  fallback_mode: boolean;
+  model_id: string | null;
+  model_version: string | null;
+  confidence: {
+    score: number;
+    level: "low" | "medium" | "high";
+  };
+  rule_based_probability: number;
+  ml_probability: number | null;
+};
+
+function buildFallbackPredictionSummary(ruleBasedProbability: number): {
+  probabilityPercent: number;
+  explainabilityReasons: string[];
+  summary: StoredPredictionSummary;
+} {
+  return {
+    probabilityPercent: ruleBasedProbability,
+    explainabilityReasons: ["ML prediction is unavailable for this scheme, so the rule-based estimate was used."],
+    summary: {
+      source: "rule_based_fallback",
+      fallback_mode: true,
+      model_id: null,
+      model_version: null,
+      confidence: {
+        score: 0.4,
+        level: "low",
+      },
+      rule_based_probability: ruleBasedProbability,
+      ml_probability: null,
+    },
+  };
+}
+
 export async function evaluateApplicationRecommendations(
   userId: string,
   applicationId: string,
@@ -145,12 +182,19 @@ export async function evaluateApplicationRecommendations(
     (rulesResult.data ?? []).map((item) => [String(item.product_id), (item.rules_json ?? {}) as EligibilityRulePayload]),
   );
 
-  const docsByProduct = new Map<string, number>();
+  const docsByProduct = new Map<string, { completeness: number; missingDocs: string[] }>();
   for (const scheme of (docsResult.by_scheme as Array<Record<string, unknown>> | undefined) ?? []) {
-    docsByProduct.set(String(scheme.product_id), Number(scheme.completeness_score ?? 0));
+    docsByProduct.set(String(scheme.product_id), {
+      completeness: Number(scheme.completeness_score ?? 0),
+      missingDocs: toStringArray(scheme.missing_docs),
+    });
   }
 
-  const candidates: Array<Omit<RecommendationItem, "rankingScore" | "rankPosition">> = [];
+  const candidates: Array<
+    Omit<RecommendationItem, "rankingScore" | "rankPosition"> & {
+      prediction: StoredPredictionSummary;
+    }
+  > = [];
 
   for (const product of products) {
     const rulePayload = rulesByProduct.get(String(product.id)) ?? {};
@@ -190,22 +234,80 @@ export async function evaluateApplicationRecommendations(
     const turnoverRatio =
       (profile.annual_turnover ?? 0) > 0 ? application.requested_amount / Number(profile.annual_turnover) : 0;
 
-    const docCompleteness = docsByProduct.get(String(product.id)) ?? 0;
+    const schemeDocuments = docsByProduct.get(String(product.id)) ?? {
+      completeness: 0,
+      missingDocs: [],
+    };
+    const documentReadiness = schemeDocuments.completeness;
+    const missingDocs = schemeDocuments.missingDocs;
 
-    const probability = calculateApprovalProbability({
+    const ruleBasedProbability = calculateApprovalProbability({
       eligibilityScore,
       yearsActive: profile.years_active ?? 0,
       turnoverRatio,
       collateralAvailable: application.collateral_available,
-      documentCompleteness: docCompleteness,
+      documentReadiness,
+    });
+
+    const mlPrediction = await (async () => {
+      try {
+        const prediction = await predictApprovalProbability({
+          applicationId,
+          viewerUserId: userId,
+          productId: String(product.id),
+          fallbackProbabilityOverride: ruleBasedProbability.probability,
+          featureOverrides: {
+            eligibility_score: Number(eligibilityScore.toFixed(2)),
+            bank_match_score: Number(eligibilityScore.toFixed(2)),
+            document_completeness_score: Number(documentReadiness.toFixed(2)),
+            document_quality_score: Number(documentReadiness.toFixed(2)),
+            missing_docs_count: missingDocs.length,
+            invalid_docs_count: 0,
+            unclear_docs_count: 0,
+          },
+        });
+
+        return {
+          probabilityPercent: prediction.probability_percent,
+          explainabilityReasons: prediction.explainability.reasons,
+          summary: {
+            source: prediction.source,
+            fallback_mode: prediction.fallback_mode,
+            model_id: prediction.model.id,
+            model_version: prediction.model.version,
+            confidence: prediction.confidence,
+            rule_based_probability: ruleBasedProbability.probability,
+            ml_probability: prediction.fallback_mode ? null : prediction.probability_percent,
+          } satisfies StoredPredictionSummary,
+        };
+      } catch {
+        return buildFallbackPredictionSummary(ruleBasedProbability.probability);
+      }
+    })();
+
+    const calibratedProbability = blendApprovalProbabilities({
+      modelProbability: mlPrediction.summary.ml_probability,
+      ruleBasedProbability: ruleBasedProbability.probability,
     });
 
     const whyRecommended = [
       eligibilityPassed ? "Eligibility criteria largely satisfied" : "Eligibility gaps exist",
       `Estimated EMI LKR ${emi.monthlyEmi.toLocaleString("en-LK")}`,
-      `Approval probability ${probability.probability.toFixed(1)}%`,
-      `Document completeness ${docCompleteness.toFixed(1)}%`,
+      mlPrediction.summary.source === "ml_model"
+        ? `Calibrated approval probability ${calibratedProbability.probability.toFixed(1)}%`
+        : `Fallback approval probability ${calibratedProbability.probability.toFixed(1)}%`,
+      `Document readiness ${documentReadiness.toFixed(1)}%`,
     ];
+
+    const recommendationReasons = [
+      ...ruleReasons,
+      ...ruleBasedProbability.reasons,
+      ...mlPrediction.explainabilityReasons.slice(0, 3),
+    ];
+
+    if (mlPrediction.summary.source === "ml_model" && calibratedProbability.divergence !== null && calibratedProbability.divergence >= 40) {
+      recommendationReasons.push("An extreme ML output was moderated using bank-fit and document-readiness scoring.");
+    }
 
     candidates.push({
       productId: String(product.id),
@@ -216,14 +318,15 @@ export async function evaluateApplicationRecommendations(
       productName: String(product.name),
       eligibilityPassed,
       eligibilityScore: Number(eligibilityScore.toFixed(2)),
-      reasons: [...ruleReasons, ...probability.reasons],
+      reasons: recommendationReasons,
       emi: emi.monthlyEmi,
       totalInterest: emi.totalInterest,
       totalPayable: emi.totalPayable,
       estimatedRate: effectiveRate,
-      approvalProbability: probability.probability,
-      docCompleteness,
+      approvalProbability: calibratedProbability.probability,
+      docCompleteness: documentReadiness,
       whyRecommended,
+      prediction: mlPrediction.summary,
     });
   }
 
@@ -265,6 +368,7 @@ export async function evaluateApplicationRecommendations(
       rank_position: item.rankPosition,
     result_payload: {
       whyRecommended: item.whyRecommended,
+      prediction: item.prediction,
       generatedAt: new Date().toISOString(),
     },
   }));
@@ -372,6 +476,28 @@ export async function getStoredEvaluationResults(userId: string, applicationId: 
       approvalProbability: toNumber(row.initial_probability ?? row.approval_probability),
       docCompleteness: toNumber(row.document_completeness),
       whyRecommended,
+      prediction: (() => {
+        const prediction = payload.prediction as Record<string, unknown> | undefined;
+        if (!prediction) {
+          return undefined;
+        }
+
+        return {
+          source: prediction.source === "ml_model" ? "ml_model" : "rule_based_fallback",
+          fallback_mode: prediction.fallback_mode === true,
+          model_id: prediction.model_id ? String(prediction.model_id) : null,
+          model_version: prediction.model_version ? String(prediction.model_version) : null,
+          confidence: {
+            score: toNumber((prediction.confidence as Record<string, unknown> | undefined)?.score),
+            level: ((prediction.confidence as Record<string, unknown> | undefined)?.level === "high"
+              || (prediction.confidence as Record<string, unknown> | undefined)?.level === "medium")
+              ? String((prediction.confidence as Record<string, unknown> | undefined)?.level) as "medium" | "high"
+              : "low",
+          },
+          rule_based_probability: toNumber(prediction.rule_based_probability),
+          ml_probability: prediction.ml_probability == null ? null : toNumber(prediction.ml_probability),
+        } satisfies StoredPredictionSummary;
+      })(),
       rankingScore: toNumber(row.ranking_score),
       rankPosition: row.rank_position ? Number(row.rank_position) : 0,
     };
@@ -402,7 +528,7 @@ export async function getStoredEvaluationResults(userId: string, applicationId: 
   ) as Array<Record<string, unknown>>;
 
   const requiredRows = checklistRows.filter((row) => row.required === true);
-  const missingRows = requiredRows.filter((row) => row.uploaded !== true);
+  const missingRows = requiredRows.filter((row) => row.is_available !== true && row.available !== true);
 
   const completenessFromChecks =
     checks.length > 0

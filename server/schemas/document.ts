@@ -5,6 +5,11 @@ export const applicationDocumentParamsSchema = z.object({
   id: uuidSchema,
 });
 
+export const applicationDocumentDeleteParamsSchema = z.object({
+  id: uuidSchema,
+  documentId: uuidSchema,
+});
+
 export const documentUploadBodySchema = z.object({
   document_type: z.string().min(2).max(120),
   product_id: uuidSchema.optional(),

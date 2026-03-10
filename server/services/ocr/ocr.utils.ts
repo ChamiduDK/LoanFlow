@@ -133,7 +133,7 @@ export async function downloadStorageObjectContent(input: {
       exists: false,
       byteLength: null,
       detectedMimeType: null,
-      issues: ["Document storage metadata is incomplete. Manual review required."],
+      issues: ["Document storage metadata is incomplete. AI guidance could not be completed for this file."],
       bytes: null,
     };
   }
@@ -147,7 +147,7 @@ export async function downloadStorageObjectContent(input: {
       exists: false,
       byteLength: null,
       detectedMimeType: null,
-      issues: ["Unable to read the uploaded file from storage. Manual review required."],
+      issues: ["Unable to read the uploaded file from storage. AI guidance could not be completed for this file."],
       bytes: null,
     };
   }

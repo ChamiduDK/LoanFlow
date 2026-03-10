@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock3, Search, Shield, ShieldCheck, User, Users } from "lucide-react";
+import { CheckCheck, CheckCircle2, Clock3, RotateCcw, Save, Search, Shield, ShieldCheck, User, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import { apiFetch } from "@/lib/api/client";
 import { Switch } from "@/components/ui/switch";
-import { USER_FEATURE_META, USER_FEATURE_ORDER, type UserFeatureKey } from "@/lib/feature-access";
+import { USER_FEATURE_META, USER_FEATURE_ORDER, type UserFeatureAccess, type UserFeatureKey } from "@/lib/feature-access";
 import type { AdminUser } from "@/types/admin";
 
 function formatDate(value: string): string {
@@ -23,7 +23,15 @@ function formatDate(value: string): string {
 }
 
 function getEnabledFeatureCount(user: AdminUser): number {
-  return USER_FEATURE_ORDER.filter((featureKey) => user.feature_access?.[featureKey]).length;
+  return getEnabledFeatureCountFromAccess(user.feature_access);
+}
+
+function getEnabledFeatureCountFromAccess(featureAccess: UserFeatureAccess): number {
+  return USER_FEATURE_ORDER.filter((featureKey) => featureAccess[featureKey]).length;
+}
+
+function hasFeatureAccessChanges(user: AdminUser, featureAccess: UserFeatureAccess): boolean {
+  return USER_FEATURE_ORDER.some((featureKey) => featureAccess[featureKey] !== user.feature_access[featureKey]);
 }
 
 function RoleBadge({ isAdmin }: { isAdmin: boolean }) {
@@ -56,13 +64,27 @@ function ApprovalBadge({ isApproved }: { isApproved: boolean }) {
 
 function FeatureAccessPanel({
   user,
+  featureAccess,
   disabled,
   onToggle,
+  onSelectAll,
+  onClearAll,
+  onReset,
+  onSave,
+  dirty,
+  saving,
   compact = false,
 }: {
   user: AdminUser;
+  featureAccess: UserFeatureAccess;
   disabled: boolean;
   onToggle: (featureKey: UserFeatureKey, enabled: boolean) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  onReset: () => void;
+  onSave: () => void;
+  dirty: boolean;
+  saving: boolean;
   compact?: boolean;
 }) {
   if (user.is_admin) {
@@ -74,28 +96,55 @@ function FeatureAccessPanel({
   }
 
   return (
-    <div className={compact ? "grid gap-2" : "grid gap-2 md:grid-cols-2"}>
-      {USER_FEATURE_ORDER.map((featureKey) => (
-        <div
-          key={featureKey}
-          className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5"
-        >
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-foreground">{USER_FEATURE_META[featureKey].shortTitle}</p>
-            {!compact ? (
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {user.feature_access?.[featureKey] ? "Enabled" : "Locked until admin grants access"}
-              </p>
-            ) : null}
-          </div>
-          <Switch
-            checked={Boolean(user.feature_access?.[featureKey])}
-            disabled={disabled}
-            onCheckedChange={(checked) => onToggle(featureKey, checked)}
-            aria-label={`Toggle ${USER_FEATURE_META[featureKey].shortTitle} access`}
-          />
+    <div className="space-y-3">
+      <div className={`flex ${compact ? "flex-col items-stretch" : "flex-wrap items-center justify-between"} gap-2`}>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={onSelectAll} disabled={disabled}>
+            <CheckCheck className="h-4 w-4" />
+            Select All
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={onClearAll} disabled={disabled}>
+            <X className="h-4 w-4" />
+            Clear All
+          </Button>
         </div>
-      ))}
+        <Badge variant="outline" className="w-fit">
+          {getEnabledFeatureCountFromAccess(featureAccess)} / {USER_FEATURE_ORDER.length} selected
+        </Badge>
+      </div>
+
+      <div className={compact ? "grid gap-2" : "grid gap-2 md:grid-cols-2"}>
+        {USER_FEATURE_ORDER.map((featureKey) => (
+          <div
+            key={featureKey}
+            className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-foreground">{USER_FEATURE_META[featureKey].shortTitle}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {featureAccess[featureKey] ? "Selected for this user" : "Not selected"}
+              </p>
+            </div>
+            <Switch
+              checked={featureAccess[featureKey]}
+              disabled={disabled}
+              onCheckedChange={(checked) => onToggle(featureKey, checked)}
+              aria-label={`Toggle ${USER_FEATURE_META[featureKey].shortTitle} access`}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className={`flex ${compact ? "flex-col" : "justify-end"} gap-2`}>
+        <Button type="button" size="sm" variant="outline" onClick={onReset} disabled={disabled || !dirty}>
+          <RotateCcw className="h-4 w-4" />
+          Reset
+        </Button>
+        <Button type="button" size="sm" onClick={onSave} disabled={disabled || !dirty}>
+          <Save className="h-4 w-4" />
+          {saving ? "Saving..." : "Save Access"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -170,6 +219,7 @@ export default function AdminUsers() {
   const { toast } = useToast();
   const sessionQuery = useAuthSession();
   const [search, setSearch] = useState("");
+  const [featureDrafts, setFeatureDrafts] = useState<Record<string, UserFeatureAccess>>({});
 
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
@@ -215,12 +265,17 @@ export default function AdminUsers() {
     },
   });
   const featureAccessMutation = useMutation({
-    mutationFn: ({ userId, featureKey, enabled }: { userId: string; featureKey: UserFeatureKey; enabled: boolean }) =>
+    mutationFn: ({ userId, featureAccess }: { userId: string; featureAccess: UserFeatureAccess }) =>
       apiFetch(`/api/admin/users/${userId}/feature-access`, {
         method: "PUT",
-        body: JSON.stringify({ feature_access: { [featureKey]: enabled } }),
+        body: JSON.stringify({ feature_access: featureAccess }),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      setFeatureDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.userId];
+        return next;
+      });
       void queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       void queryClient.invalidateQueries({ queryKey: ["me-profile"] });
       toast({ title: "User feature access updated" });
@@ -244,6 +299,52 @@ export default function AdminUsers() {
   });
   const currentUserId = sessionQuery.data?.user.id ?? null;
   const adminCount = (usersQuery.data ?? []).filter((user) => user.is_admin).length;
+  const updateFeatureDraft = (user: AdminUser, updater: (current: UserFeatureAccess) => UserFeatureAccess) => {
+    setFeatureDrafts((current) => {
+      const base = current[user.id] ? { ...current[user.id] } : { ...user.feature_access };
+      const nextDraft = updater(base);
+
+      if (!hasFeatureAccessChanges(user, nextDraft)) {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      }
+
+      return {
+        ...current,
+        [user.id]: nextDraft,
+      };
+    });
+  };
+
+  const resetFeatureDraft = (userId: string) => {
+    setFeatureDrafts((current) => {
+      const next = { ...current };
+      delete next[userId];
+      return next;
+    });
+  };
+
+  const selectAllFeatures = (user: AdminUser) => {
+    updateFeatureDraft(user, (current) => ({
+      ...current,
+      ...Object.fromEntries(USER_FEATURE_ORDER.map((featureKey) => [featureKey, true])),
+    }));
+  };
+
+  const clearAllFeatures = (user: AdminUser) => {
+    updateFeatureDraft(user, (current) => ({
+      ...current,
+      ...Object.fromEntries(USER_FEATURE_ORDER.map((featureKey) => [featureKey, false])),
+    }));
+  };
+
+  const saveFeatureDraft = (userId: string, featureAccess: UserFeatureAccess) => {
+    featureAccessMutation.mutate({ userId, featureAccess });
+  };
+
+  const getFeatureDraft = (user: AdminUser): UserFeatureAccess => featureDrafts[user.id] ?? user.feature_access;
+
   const summary = useMemo(() => {
     const users = usersQuery.data ?? [];
     const approvedUsers = users.filter((user) => user.is_approved).length;
@@ -306,7 +407,7 @@ export default function AdminUsers() {
                 User Directory
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Search a user, review account status, and update feature permissions without leaving the page.
+                Search a user, choose any combination of features, then save the whole access set in one action.
               </p>
             </div>
             <div className="relative w-full lg:max-w-sm">
@@ -352,30 +453,42 @@ export default function AdminUsers() {
                               <p className="mt-1 break-all text-sm text-muted-foreground">{user.email || "-"}</p>
                               <p className="mt-1 text-xs text-muted-foreground">Joined {formatDate(user.created_at)}</p>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 sm:min-w-[180px]">
-                              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                                <p className="label-xs">Applications</p>
-                                <p className="mt-1 text-lg font-semibold">{user.applications_total}</p>
-                              </div>
-                              <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                                <p className="label-xs">Active</p>
-                                <p className="mt-1 text-lg font-semibold">{user.applications_active}</p>
-                              </div>
-                            </div>
                           </div>
 
                           <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-sm font-semibold text-foreground">Feature Access</p>
-                              <Badge variant="outline">{user.is_admin ? "All Features" : `${getEnabledFeatureCount(user)} / ${USER_FEATURE_ORDER.length} enabled`}</Badge>
+                              <Badge variant="outline">
+                                {user.is_admin ? "All Features" : `${getEnabledFeatureCountFromAccess(getFeatureDraft(user))} / ${USER_FEATURE_ORDER.length} enabled`}
+                              </Badge>
                             </div>
                             <div className="mt-3">
-                              <FeatureAccessPanel
-                                user={user}
-                                disabled={featureAccessMutation.isPending}
-                                compact
-                                onToggle={(featureKey, enabled) => featureAccessMutation.mutate({ userId: user.id, featureKey, enabled })}
-                              />
+                              {(() => {
+                                const draft = getFeatureDraft(user);
+                                const dirty = hasFeatureAccessChanges(user, draft);
+                                const saving = featureAccessMutation.isPending && featureAccessMutation.variables?.userId === user.id;
+
+                                return (
+                                  <FeatureAccessPanel
+                                    user={user}
+                                    featureAccess={draft}
+                                    dirty={dirty}
+                                    saving={saving}
+                                    disabled={featureAccessMutation.isPending}
+                                    compact
+                                    onToggle={(featureKey, enabled) =>
+                                      updateFeatureDraft(user, (current) => ({
+                                        ...current,
+                                        [featureKey]: enabled,
+                                      }))
+                                    }
+                                    onSelectAll={() => selectAllFeatures(user)}
+                                    onClearAll={() => clearAllFeatures(user)}
+                                    onReset={() => resetFeatureDraft(user.id)}
+                                    onSave={() => saveFeatureDraft(user.id, draft)}
+                                  />
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -405,8 +518,6 @@ export default function AdminUsers() {
                       <TableHead>User</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Feature Access</TableHead>
-                      <TableHead>Total Apps</TableHead>
-                      <TableHead>Active Apps</TableHead>
                       <TableHead>Joined</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -439,16 +550,34 @@ export default function AdminUsers() {
                           <TableCell className="min-w-[360px]">
                             <div className="mb-2 flex items-center justify-between gap-2">
                               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Access Control</p>
-                              <Badge variant="outline">{user.is_admin ? "All Features" : `${getEnabledFeatureCount(user)} enabled`}</Badge>
+                              <Badge variant="outline">{user.is_admin ? "All Features" : `${getEnabledFeatureCountFromAccess(getFeatureDraft(user))} enabled`}</Badge>
                             </div>
-                            <FeatureAccessPanel
-                              user={user}
-                              disabled={featureAccessMutation.isPending}
-                              onToggle={(featureKey, enabled) => featureAccessMutation.mutate({ userId: user.id, featureKey, enabled })}
-                            />
+                            {(() => {
+                              const draft = getFeatureDraft(user);
+                              const dirty = hasFeatureAccessChanges(user, draft);
+                              const saving = featureAccessMutation.isPending && featureAccessMutation.variables?.userId === user.id;
+
+                              return (
+                                <FeatureAccessPanel
+                                  user={user}
+                                  featureAccess={draft}
+                                  dirty={dirty}
+                                  saving={saving}
+                                  disabled={featureAccessMutation.isPending}
+                                  onToggle={(featureKey, enabled) =>
+                                    updateFeatureDraft(user, (current) => ({
+                                      ...current,
+                                      [featureKey]: enabled,
+                                    }))
+                                  }
+                                  onSelectAll={() => selectAllFeatures(user)}
+                                  onClearAll={() => clearAllFeatures(user)}
+                                  onReset={() => resetFeatureDraft(user.id)}
+                                  onSave={() => saveFeatureDraft(user.id, draft)}
+                                />
+                              );
+                            })()}
                           </TableCell>
-                          <TableCell>{user.applications_total}</TableCell>
-                          <TableCell>{user.applications_active}</TableCell>
                           <TableCell>{formatDate(user.created_at)}</TableCell>
                           <TableCell className="min-w-[220px]">
                             <UserActions

@@ -9,6 +9,8 @@ import { internalError, forbidden, notFound } from "../lib/errors";
 import { knowledgeService } from "./knowledge.service";
 
 const POLICY_DIR = path.join(process.cwd(), "server", "data", "policy");
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PREFIX_PATTERN = /^[0-9a-f-]{1,36}$/i;
 
 export type ChatIntent = "policy" | "lookup" | "prediction" | "unknown";
 
@@ -334,6 +336,51 @@ Guidelines:
     }
   }
 
+  private normalizeApplicationLookupId(value?: string): string | null {
+    const raw = String(value ?? "").trim();
+    if (!raw) {
+      return null;
+    }
+
+    const extracted = raw.match(/[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?/i)?.[0];
+    const normalized = (
+      extracted
+      ?? raw
+        .replace(/^application\s*id/i, "")
+        .replace(/[^0-9a-f-]+/gi, "")
+        .trim()
+    ).toLowerCase();
+
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private buildUuidPrefixRange(value: string): { lower: string; upper: string } | null {
+    if (!UUID_PREFIX_PATTERN.test(value)) {
+      return null;
+    }
+
+    const compact = value.replace(/-/g, "");
+    if (!/^[0-9a-f]{1,32}$/i.test(compact) || compact.length === 32) {
+      return null;
+    }
+
+    const formatUuid = (fill: "0" | "f") => {
+      const padded = `${compact}${fill.repeat(32 - compact.length)}`;
+      return [
+        padded.slice(0, 8),
+        padded.slice(8, 12),
+        padded.slice(12, 16),
+        padded.slice(16, 20),
+        padded.slice(20, 32),
+      ].join("-");
+    };
+
+    return {
+      lower: formatUuid("0"),
+      upper: formatUuid("f"),
+    };
+  }
+
   private async lookupData(userId: string, role: string, dataType: string, appId?: string): Promise<any> {
     const isAdmin = role === "admin";
 
@@ -355,12 +402,24 @@ Guidelines:
     }
 
     if (dataType === "application") {
-      let query = supabaseAdmin.from("loan_applications").select("*, profiles(full_name)");
+      let query = supabaseAdmin
+        .from("loan_applications")
+        .select("id, user_id, requested_amount, status, purpose, created_at")
+        .order("created_at", { ascending: false });
       if (!isAdmin) {
         query = query.eq("user_id", userId);
       }
-      if (appId) {
-        query = query.eq("id", appId);
+
+      const normalizedAppId = this.normalizeApplicationLookupId(appId);
+      if (normalizedAppId) {
+        if (UUID_PATTERN.test(normalizedAppId)) {
+          query = query.eq("id", normalizedAppId);
+        } else {
+          const prefixRange = this.buildUuidPrefixRange(normalizedAppId);
+          if (prefixRange) {
+            query = query.gte("id", prefixRange.lower).lte("id", prefixRange.upper);
+          }
+        }
       }
 
       const { data, error } = await query;
@@ -368,14 +427,35 @@ Guidelines:
         console.error(`[ChatbotService.lookupData] Application lookup error:`, error);
         throw internalError("DB error", error);
       }
-      if (!data || data.length === 0) throw notFound("Application(s) not found");
 
-      return data.map(app => ({
+      const filteredApplications = (data ?? []).filter((app) => {
+        if (!normalizedAppId || UUID_PATTERN.test(normalizedAppId)) {
+          return true;
+        }
+
+        return String(app.id).replace(/-/g, "").toLowerCase().startsWith(normalizedAppId.replace(/-/g, ""));
+      });
+
+      if (filteredApplications.length === 0) throw notFound("Application(s) not found");
+
+      const userIds = Array.from(new Set(filteredApplications.map((app) => String(app.user_id)).filter((value) => value.length > 0)));
+      const profilesResult = userIds.length > 0
+        ? await supabaseAdmin.from("profiles").select("id, full_name").in("id", userIds)
+        : { data: [], error: null };
+
+      if (profilesResult.error) {
+        console.error(`[ChatbotService.lookupData] Application profile lookup error:`, profilesResult.error);
+        throw internalError("DB error", profilesResult.error);
+      }
+
+      const profileById = new Map((profilesResult.data ?? []).map((profile) => [String(profile.id), profile]));
+
+      return filteredApplications.map(app => ({
         id: app.id,
         requested_amount: app.requested_amount,
         status: app.status,
         purpose: app.purpose,
-        applicant: app.profiles?.full_name,
+        applicant: profileById.get(String(app.user_id))?.full_name ?? null,
         created_at: app.created_at
       }));
     }

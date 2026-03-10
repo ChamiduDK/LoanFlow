@@ -93,9 +93,7 @@ function AppRoutes() {
                 <Route element={<RequireFeatureAccess featureKey="emi_calculator" />}>
                   <Route path="/calculator" element={<EMICalculator />} />
                 </Route>
-                <Route element={<RequireFeatureAccess featureKey="upload_documents" />}>
-                  <Route path="/documents" element={<DocumentUpload />} />
-                </Route>
+                <Route path="/documents" element={<DocumentUpload />} />
                 <Route element={<RequireFeatureAccess featureKey="track_application" />}>
                   <Route path="/tracker" element={<ApplicationTracker />} />
                 </Route>

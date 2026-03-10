@@ -1,1 +1,0 @@
-import{m}from"./react-core-BEbsbyoD.js";import{c as o}from"./App-C6Gn2MFy.js";function r({className:e,...s}){return m.jsxDEV("div",{className:o("animate-pulse rounded-md bg-muted/70",e),...s},void 0,!1,{fileName:"C:/Users/user/Documents/GitHub/SME_LoanHub/src/components/ui/skeleton.tsx",lineNumber:4,columnNumber:10},this)}export{r as S};

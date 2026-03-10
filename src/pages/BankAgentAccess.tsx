@@ -288,12 +288,12 @@ export default function BankAgentAccess() {
 
           <Card className="border-border/70">
             <CardHeader>
-              <CardTitle className="text-base">Document Availability</CardTitle>
+              <CardTitle className="text-base">Document Readiness</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-border/70 p-3">
-                  <p className="text-xs text-muted-foreground">Completeness</p>
+                  <p className="text-xs text-muted-foreground">Readiness</p>
                   <p className="mt-1 text-sm font-semibold">
                     {formatPercent(accessData.document_checklist.summary.overall_completeness)}
                   </p>
@@ -314,14 +314,14 @@ export default function BankAgentAccess() {
                     <div key={scheme.product_id} className="rounded-lg border border-border/70 p-3">
                       <p className="text-sm font-semibold">{scheme.bank_name ?? "Bank"} - {scheme.product_name}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Completeness: {formatPercent(scheme.completeness_score)} | Missing: {scheme.missing_docs.length}
+                        Readiness: {formatPercent(scheme.completeness_score)} | Missing: {scheme.missing_docs.length}
                       </p>
                       {scheme.missing_docs.length > 0 ? (
                         <p className="mt-1 text-xs text-destructive">
                           Missing docs: {scheme.missing_docs.join(", ")}
                         </p>
                       ) : (
-                        <p className="mt-1 text-xs text-emerald-600">All required documents available.</p>
+                        <p className="mt-1 text-xs text-emerald-600">All preferred documents marked available.</p>
                       )}
                     </div>
                   ))}

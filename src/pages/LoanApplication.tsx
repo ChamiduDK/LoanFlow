@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
@@ -24,12 +25,13 @@ import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
 import { formatLKR } from "@/lib/currency";
 import type { LoanApplication } from "@/types/backend";
+import { COMMON_DOCUMENT_AVAILABILITY_OPTIONS } from "@/data/documentPresets";
 
 const stepLabels = [
   { title: "Business Profile", hint: "Entity, sector, location", icon: Building2 },
   { title: "Loan Details", hint: "Amount and purpose", icon: Landmark },
   { title: "Financial Snapshot", hint: "Turnover and cash flow", icon: TrendingUp },
-  { title: "Collateral & Docs", hint: "Security and uploads", icon: ShieldCheck },
+  { title: "Collateral & Docs", hint: "Security and document readiness", icon: ShieldCheck },
   { title: "Review & Submit", hint: "Final confirmation", icon: ClipboardCheck },
 ];
 
@@ -48,6 +50,7 @@ type FormState = {
   existing_loan_obligations: string;
   collateral_available: boolean;
   collateral_type: string;
+  available_documents: string[];
 };
 
 const initialForm: FormState = {
@@ -65,6 +68,7 @@ const initialForm: FormState = {
   existing_loan_obligations: "",
   collateral_available: false,
   collateral_type: "",
+  available_documents: [],
 };
 
 export default function LoanApplication() {
@@ -195,6 +199,28 @@ export default function LoanApplication() {
           },
         }),
       });
+
+      if (form.available_documents.length > 0) {
+        try {
+          await apiFetch(`/api/applications/${application.id}/documents/availability`, {
+            method: "POST",
+            body: JSON.stringify({
+              availabilities: form.available_documents.map((documentType) => ({
+                document_type: documentType,
+                is_available: true,
+              })),
+            }),
+          });
+        } catch (availabilityError) {
+          toast({
+            title: "Document availability was not saved",
+            description: availabilityError instanceof Error
+              ? `${availabilityError.message}. The application was still created, but prediction used business data only.`
+              : "The application was created, but document availability was not saved.",
+            variant: "destructive",
+          });
+        }
+      }
 
       await apiFetch(`/api/applications/${application.id}/evaluate`, {
         method: "POST",
@@ -452,8 +478,43 @@ export default function LoanApplication() {
                 {!form.collateral_available ? (
                   <p className="text-xs text-muted-foreground">Collateral type will be enabled if you select "Yes".</p>
                 ) : null}
-                <div className="rounded-xl border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-                  Document upload is handled after application creation in the Document Upload module.
+                <div className="space-y-3 rounded-xl border border-border/70 bg-muted/30 p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Which documents do you currently have?</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      This improves prediction accuracy. Uploading files is optional and happens later only if you want AI guidance.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {COMMON_DOCUMENT_AVAILABILITY_OPTIONS.map((option) => {
+                      const checked = form.available_documents.includes(option.document_type);
+                      return (
+                        <label
+                          key={option.document_type}
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 bg-background px-3 py-3"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(nextChecked) =>
+                              setForm((current) => ({
+                                ...current,
+                                available_documents: nextChecked
+                                  ? Array.from(new Set([...current.available_documents, option.document_type]))
+                                  : current.available_documents.filter((item) => item !== option.document_type),
+                              }))
+                            }
+                          />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{option.label}</p>
+                            <p className="text-xs text-muted-foreground">{option.description}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Selected now: {form.available_documents.length} document{form.available_documents.length === 1 ? "" : "s"}.
+                  </p>
                 </div>
               </>
             )}
@@ -477,6 +538,7 @@ export default function LoanApplication() {
                     <div className="flex justify-between"><span className="text-muted-foreground">Purpose</span><span className="font-medium">{form.purpose || "-"}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Tenure</span><span className="font-medium">{parsedSummary.tenure || 0} months</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Collateral</span><span className="font-medium">{form.collateral_available ? "Yes" : "No"}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">Documents Ready</span><span className="font-medium">{form.available_documents.length}</span></div>
                   </div>
                 </div>
               </div>
@@ -491,7 +553,7 @@ export default function LoanApplication() {
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             <p>Complete all mandatory fields to improve recommendation quality.</p>
             <p>Use accurate turnover and liabilities to get better approval probability predictions.</p>
-            <p>Upload verification documents after submission to improve approval confidence.</p>
+            <p>Mark the documents you already have. File uploads are optional and used only for AI guidance later.</p>
           </CardContent>
         </Card>
       </div>

@@ -122,20 +122,12 @@ export const upsertEligibilityRuleSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-const documentVerificationRulesSchema = z.object({
-  required_keywords: z.array(z.string().min(1).max(120)).max(30).optional(),
-  forbidden_keywords: z.array(z.string().min(1).max(120)).max(30).optional(),
-  min_text_length: z.number().int().min(0).max(20000).optional(),
-  ai_instructions: z.string().min(1).max(800).nullable().optional(),
-});
-
 export const requiredDocumentItemSchema = z.object({
   document_type: z.string().min(2).max(120),
   display_name: z.string().min(2).max(160),
   is_required: z.boolean().optional(),
   notes: z.string().max(500).nullable().optional(),
   accepted_formats: z.array(z.string().min(2).max(20)).optional(),
-  verification_rules_json: documentVerificationRulesSchema.optional(),
 });
 
 export const upsertRequiredDocumentsSchema = z.object({

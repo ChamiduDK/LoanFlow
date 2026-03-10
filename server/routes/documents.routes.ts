@@ -2,12 +2,13 @@ import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../lib/async-handler";
 import { parseWithSchema } from "../lib/validation";
-import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middleware/auth";
+import { requireApprovedUser, requireAuth } from "../middleware/auth";
 import { uploadRateLimiter } from "../middleware/rate-limiter";
 import { unauthorized, badRequest } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
 import {
   applicationDocumentParamsSchema,
+  applicationDocumentDeleteParamsSchema,
   documentCheckBodySchema,
   documentScanBodySchema,
   documentUploadBodySchema,
@@ -15,6 +16,7 @@ import {
 } from "../schemas/document";
 import {
   checkDocumentCompleteness,
+  deleteDocumentForApplication,
   listDocumentsForApplication,
   uploadDocumentForApplication,
   updateDocumentAvailability,
@@ -94,7 +96,6 @@ documentsRouter.use(requireAuth, requireApprovedUser);
 
 documentsRouter.post(
   "/applications/:id/documents/upload",
-  requireFeatureAccess("upload_documents"),
   uploadRateLimiter,
   upload.single("file"),
   asyncHandler(async (req, res) => {
@@ -140,13 +141,21 @@ documentsRouter.post(
       ipAddress: req.ip,
     });
 
-    sendSuccess(res, document, undefined, 201);
+    const scanResult = await scanDocumentsForApplication(userId, params.id, {
+      productId: payload.product_id,
+      forceRescan: true,
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, {
+      document,
+      scan_result: scanResult,
+    }, undefined, 201);
   }),
 );
 
 documentsRouter.get(
   "/applications/:id/documents",
-  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const userId = req.auth?.user.id;
@@ -161,9 +170,24 @@ documentsRouter.get(
   }),
 );
 
+documentsRouter.delete(
+  "/applications/:id/documents/:documentId",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(applicationDocumentDeleteParamsSchema, req.params);
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    await deleteDocumentForApplication(userId, params.id, params.documentId, req.ip);
+
+    sendSuccess(res, { deleted: true });
+  }),
+);
+
 documentsRouter.post(
   "/applications/:id/documents/check",
-  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const payload = parseWithSchema(documentCheckBodySchema, req.body ?? {});
@@ -181,7 +205,6 @@ documentsRouter.post(
 
 documentsRouter.post(
   "/applications/:id/documents/scan",
-  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const payload = parseWithSchema(documentScanBodySchema, req.body ?? {});
@@ -203,7 +226,6 @@ documentsRouter.post(
 
 documentsRouter.post(
   "/applications/:id/documents/availability",
-  requireFeatureAccess("upload_documents"),
   asyncHandler(async (req, res) => {
     const params = parseWithSchema(applicationDocumentParamsSchema, req.params);
     const payload = parseWithSchema(bulkDocumentAvailabilitySchema, req.body ?? {});

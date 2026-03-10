@@ -17,6 +17,7 @@ type ChecklistItem = {
   document_type: string;
   display_name: string;
   required: boolean;
+  available: boolean;
   uploaded: boolean;
   is_available: boolean;
   has_uploaded_record: boolean;
@@ -39,8 +40,35 @@ function getFileExtension(fileName: string): string | null {
   return fileName.slice(dotIndex + 1).trim().toLowerCase();
 }
 
+function expandAcceptedFormats(formats: string[]): string[] {
+  const expanded = new Set<string>();
+  let allowsRasterImage = false;
+
+  for (const format of formats.map((value) => String(value).trim().toLowerCase()).filter(Boolean)) {
+    if (format === "jpg" || format === "jpeg" || format === "png") {
+      allowsRasterImage = true;
+      expanded.add(format);
+      continue;
+    }
+
+    expanded.add(format);
+  }
+
+  if (allowsRasterImage) {
+    expanded.add("jpg");
+    expanded.add("jpeg");
+    expanded.add("png");
+  }
+
+  return Array.from(expanded);
+}
+
 function normalizeDocumentType(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function normalizeDocumentWorkflowStatus(value: unknown): string {
@@ -49,7 +77,7 @@ function normalizeDocumentWorkflowStatus(value: unknown): string {
     return status;
   }
 
-  return "needs_review";
+  return "rejected";
 }
 
 function normalizeValidationStatus(value: unknown): "valid" | "invalid" | "unclear" {
@@ -97,7 +125,7 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
     throw badRequest("Uploaded file is empty");
   }
 
-  const normalizedDocumentType = input.documentType.trim().toLowerCase();
+  const normalizedDocumentType = normalizeDocumentType(input.documentType);
   if (!normalizedDocumentType) {
     throw badRequest("Document type is required");
   }
@@ -105,21 +133,24 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
   if (input.productId) {
     const requiredDocResult = await supabaseAdmin
       .from("required_documents")
-      .select("id, accepted_formats")
+      .select("id, document_type, accepted_formats")
       .eq("product_id", input.productId)
-      .eq("document_type", normalizedDocumentType)
-      .maybeSingle();
+      .order("document_type", { ascending: true });
 
     if (requiredDocResult.error) {
       throw internalError("Failed to validate required document type", requiredDocResult.error);
     }
 
-    if (!requiredDocResult.data) {
+    const matchedRequiredDocument = (requiredDocResult.data ?? []).find(
+      (row) => normalizeDocumentType(row.document_type) === normalizedDocumentType,
+    );
+
+    if (!matchedRequiredDocument) {
       throw badRequest("Document type is not configured for the selected product");
     }
 
-    const allowedFormats = Array.isArray(requiredDocResult.data.accepted_formats)
-      ? requiredDocResult.data.accepted_formats.map((value) => String(value).trim().toLowerCase())
+    const allowedFormats = Array.isArray(matchedRequiredDocument.accepted_formats)
+      ? expandAcceptedFormats(matchedRequiredDocument.accepted_formats)
       : [];
     const fileExtension = getFileExtension(input.file.originalname);
 
@@ -130,6 +161,42 @@ export async function uploadDocumentForApplication(input: UploadInput): Promise<
 
   const safeName = sanitizeFilename(input.file.originalname);
   const path = `${input.userId}/${input.applicationId}/${Date.now()}-${randomUUID()}-${safeName}`;
+
+  const existingDocsResult = await supabaseAdmin
+    .from("documents")
+    .select("id, storage_bucket, storage_path")
+    .eq("application_id", input.applicationId)
+    .eq("user_id", input.userId)
+    .eq("document_type", normalizedDocumentType);
+
+  if (existingDocsResult.error) {
+    throw internalError("Failed to verify existing documents for replacement", existingDocsResult.error);
+  }
+
+  const existingDocs = existingDocsResult.data ?? [];
+  if (existingDocs.length > 0) {
+    const storagePaths = existingDocs
+      .filter((row) => String(row.storage_bucket) === env.SUPABASE_DOCS_BUCKET)
+      .map((row) => String(row.storage_path));
+
+    if (storagePaths.length > 0) {
+      const storageRemove = await supabaseAdmin.storage.from(env.SUPABASE_DOCS_BUCKET).remove(storagePaths);
+      if (storageRemove.error) {
+        throw internalError("Failed to replace existing document file", storageRemove.error);
+      }
+    }
+
+    const deleteExisting = await supabaseAdmin
+      .from("documents")
+      .delete()
+      .eq("application_id", input.applicationId)
+      .eq("user_id", input.userId)
+      .eq("document_type", normalizedDocumentType);
+
+    if (deleteExisting.error) {
+      throw internalError("Failed to replace existing document metadata", deleteExisting.error);
+    }
+  }
 
   const upload = await supabaseAdmin.storage.from(env.SUPABASE_DOCS_BUCKET).upload(path, input.file.buffer, {
     contentType: input.file.mimetype,
@@ -223,6 +290,65 @@ export async function listDocumentsForApplication(userId: string, applicationId:
   return withSignedUrls;
 }
 
+export async function deleteDocumentForApplication(
+  userId: string,
+  applicationId: string,
+  documentId: string,
+  ipAddress?: string | null,
+): Promise<void> {
+  await assertApplicationOwnership(userId, applicationId);
+
+  const { data, error } = await supabaseAdmin
+    .from("documents")
+    .select("id, user_id, application_id, storage_bucket, storage_path")
+    .eq("id", documentId)
+    .eq("application_id", applicationId)
+    .maybeSingle();
+
+  if (error) {
+    throw internalError("Failed to load document", error);
+  }
+
+  if (!data) {
+    throw notFound("Document not found");
+  }
+
+  if (String(data.user_id) !== userId) {
+    throw forbidden("You cannot delete this document");
+  }
+
+  const storageRemove = await supabaseAdmin
+    .storage
+    .from(String(data.storage_bucket))
+    .remove([String(data.storage_path)]);
+
+  if (storageRemove.error) {
+    throw internalError("Failed to remove document from storage", storageRemove.error);
+  }
+
+  const removeResult = await supabaseAdmin
+    .from("documents")
+    .delete()
+    .eq("id", documentId)
+    .eq("application_id", applicationId)
+    .eq("user_id", userId);
+
+  if (removeResult.error) {
+    throw internalError("Failed to delete document metadata", removeResult.error);
+  }
+
+  await logAudit({
+    actorUserId: userId,
+    action: "document.deleted",
+    entityType: "documents",
+    entityId: documentId,
+    payloadSummary: {
+      applicationId,
+    },
+    ipAddress: ipAddress ?? null,
+  });
+}
+
 export async function checkDocumentCompleteness(
   userId: string,
   applicationId: string,
@@ -257,13 +383,18 @@ export async function checkDocumentCompleteness(
     targetProductIds = [ownedApplication.selected_product_id];
   }
 
-  const [uploadedDocsResult, productsResult, availabilityResult] = await Promise.all([
+  const [uploadedDocsResult, availabilityResult, productsResult] = await Promise.all([
     supabaseAdmin
       .from("documents")
       .select("id, document_type, product_id, status, validation_status, created_at")
       .eq("application_id", applicationId)
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("document_availability")
+      .select("document_type, is_available")
+      .eq("application_id", applicationId)
+      .eq("user_id", userId),
     targetProductIds.length > 0
       ? supabaseAdmin
         .from("loan_products")
@@ -271,23 +402,18 @@ export async function checkDocumentCompleteness(
         .in("id", targetProductIds)
         .eq("is_active", true)
       : supabaseAdmin.from("loan_products").select("id, name, bank_id, banks(name)").eq("is_active", true),
-    supabaseAdmin
-      .from("document_availability")
-      .select("document_type, is_available")
-      .eq("application_id", applicationId)
-      .eq("user_id", userId),
   ]);
 
   if (uploadedDocsResult.error) {
     throw internalError("Failed to load uploaded documents", uploadedDocsResult.error);
   }
 
-  if (productsResult.error) {
-    throw internalError("Failed to load loan products", productsResult.error);
-  }
-
   if (availabilityResult.error) {
     throw internalError("Failed to load document availability", availabilityResult.error);
+  }
+
+  if (productsResult.error) {
+    throw internalError("Failed to load loan products", productsResult.error);
   }
 
   const products = productsResult.data ?? [];
@@ -318,10 +444,16 @@ export async function checkDocumentCompleteness(
 
   const requiredDocs = requiredResult.data ?? [];
   const uploadedDocs = uploadedDocsResult.data ?? [];
-  const availabilities = availabilityResult.data ?? [];
-  const availabilityMap = new Map(
-    availabilities.map((item) => [String(item.document_type).trim().toLowerCase(), Boolean(item.is_available)]),
-  );
+  const availabilityRows = availabilityResult.data ?? [];
+  const availabilityByType = new Map<string, boolean>();
+
+  for (const row of availabilityRows) {
+    const normalizedType = normalizeDocumentType(row.document_type);
+    if (!normalizedType) {
+      continue;
+    }
+    availabilityByType.set(normalizedType, row.is_available === true);
+  }
 
   const checks: Array<Record<string, unknown>> = [];
   const upsertRows: Array<Record<string, unknown>> = [];
@@ -362,17 +494,17 @@ export async function checkDocumentCompleteness(
     const checklist: ChecklistItem[] = perProduct.map((doc) => {
       const normalizedType = normalizeDocumentType(doc.document_type);
       const latestDoc = latestDocByType.get(normalizedType);
-      const isAvailable = availabilityMap.get(normalizedType) ?? false;
       const hasUploadedRecord = Boolean(latestDoc);
+      const isAvailable = availabilityByType.get(normalizedType) === true;
       const workflowStatus = latestDoc?.status ?? null;
       const validationStatus = latestDoc?.validation_status ?? null;
-      const uploaded = (hasUploadedRecord && workflowStatus !== "rejected" && validationStatus !== "invalid") || isAvailable;
 
       return {
         document_type: String(doc.document_type),
         display_name: String(doc.display_name),
         required: Boolean(doc.is_required),
-        uploaded,
+        available: isAvailable,
+        uploaded: hasUploadedRecord,
         is_available: isAvailable,
         has_uploaded_record: hasUploadedRecord,
         latest_document_id: latestDoc?.id ?? null,
@@ -383,7 +515,7 @@ export async function checkDocumentCompleteness(
     });
 
     const requiredOnly = checklist.filter((item) => item.required);
-    const missingDocs = requiredOnly.filter((item) => !item.uploaded);
+    const missingDocs = requiredOnly.filter((item) => !item.available);
     const completeness =
       requiredOnly.length === 0 ? 100 : Number((((requiredOnly.length - missingDocs.length) / requiredOnly.length) * 100).toFixed(2));
 

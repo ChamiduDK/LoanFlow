@@ -5,7 +5,7 @@ export const trainMlSchema = z.object({
   epochs: z.number().int().min(10).max(500).optional(),
   batch_size: z.number().int().min(8).max(512).optional(),
   validation_split: z.number().min(0.1).max(0.4).optional(),
-  min_samples: z.number().int().min(20).max(50000).optional(),
+  min_samples: z.number().int().min(50).max(50000).optional(),
 });
 
 export const predictMlSchema = z.object({

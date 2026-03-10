@@ -32,7 +32,7 @@ const navItems = [
     group: "Tools",
     items: [
       { label: "EMI Calculator", description: "Estimate monthly repayment", icon: Calculator, path: "/calculator", featureKey: "emi_calculator" as UserFeatureKey },
-      { label: "Documents", description: "Upload & verify required files", icon: Upload, path: "/documents", featureKey: "upload_documents" as UserFeatureKey },
+      { label: "Documents", description: "Availability and optional AI guidance", icon: Upload, path: "/documents" },
       { label: "Tracker", description: "Track bank decision flow", icon: GitBranch, path: "/tracker", featureKey: "track_application" as UserFeatureKey },
       { label: "Loan Management", description: "Manage approved repayments", icon: Wallet, path: "/management" },
     ],

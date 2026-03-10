@@ -53,10 +53,10 @@ export const USER_FEATURE_META: Record<
     adminMessage: "Admin must enable new application access for this user.",
   },
   upload_documents: {
-    title: "Upload Documents",
-    shortTitle: "Upload Documents",
+    title: "Documents & Guidance",
+    shortTitle: "Documents",
     path: "/documents",
-    adminMessage: "Admin must enable document upload access for this user.",
+    adminMessage: "Admin must enable document guidance access for this user.",
   },
   track_application: {
     title: "Track Application",

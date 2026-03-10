@@ -28,7 +28,7 @@ const USER_QUICK_LINKS: QuickLink[] = [
   { label: "Loan Application", path: "/apply", keywords: ["new", "create", "form"], featureKey: "new_application" },
   { label: "Loan Recommendations", path: "/results", keywords: ["results", "matches", "banks"] },
   { label: "EMI Calculator", path: "/calculator", keywords: ["emi", "repayment", "calculate"], featureKey: "emi_calculator" },
-  { label: "Document Upload", path: "/documents", keywords: ["files", "verification", "checklist"], featureKey: "upload_documents" },
+  { label: "Documents", path: "/documents", keywords: ["files", "guidance", "availability"] },
   { label: "Application Tracker", path: "/tracker", keywords: ["timeline", "status", "progress"], featureKey: "track_application" },
   { label: "Loan Management", path: "/management", keywords: ["repayment", "installments", "dues"] },
 ];

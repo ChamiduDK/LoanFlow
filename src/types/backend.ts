@@ -64,6 +64,18 @@ export type EvaluationResult = {
     rankingScore: number;
     rankPosition: number;
     whyRecommended: string[];
+    prediction?: {
+      source: "ml_model" | "rule_based_fallback";
+      fallback_mode: boolean;
+      model_id: string | null;
+      model_version: string | null;
+      confidence: {
+        score: number;
+        level: "low" | "medium" | "high";
+      };
+      rule_based_probability: number;
+      ml_probability: number | null;
+    };
   }>;
   ineligible_results: Array<{
     productId: string;
@@ -80,6 +92,18 @@ export type EvaluationResult = {
     approvalProbability: number;
     docCompleteness: number;
     whyRecommended: string[];
+    prediction?: {
+      source: "ml_model" | "rule_based_fallback";
+      fallback_mode: boolean;
+      model_id: string | null;
+      model_version: string | null;
+      confidence: {
+        score: number;
+        level: "low" | "medium" | "high";
+      };
+      rule_based_probability: number;
+      ml_probability: number | null;
+    };
   }>;
   docs_summary: {
     overall_completeness: number;
@@ -136,24 +160,21 @@ export type TrackerReEvaluationResponse = {
     reasons: string[];
   };
   documents: {
-    completeness_score: number;
-    quality_score: number;
+    readiness_score: number;
     required_count: number;
+    available_count: number;
     missing_count: number;
-    invalid_count: number;
-    unclear_count: number;
     missing_docs: string[];
-    validation_notes: Array<{
+    availability_notes: Array<{
       document_type: string;
       display_name: string;
       note: string;
-      status: "valid" | "invalid" | "unclear";
+      status: "available" | "missing";
     }>;
   };
   scoring: {
     bank_match_score: number;
-    document_completeness_score: number;
-    document_quality_score: number;
+    document_readiness_score: number;
     initial_probability: number;
     rule_based_final_probability?: number;
     model_probability?: number | null;
@@ -192,7 +213,7 @@ export type DocumentScanResponse = {
     file_name: string;
     detected_doc_type: string | null;
     validation_status: "valid" | "invalid" | "unclear";
-    final_verification_status?: "Verified" | "Needs Review" | "Rejected";
+    final_verification_status?: "Verified" | "Rejected" | "Needs Review";
     confidence_score: number;
     notes: string[];
     extracted_fields: Record<string, unknown>;
@@ -227,7 +248,21 @@ export type DocumentScanResponse = {
       significance: "none" | "minor" | "critical";
       minor_discrepancies: number;
       critical_discrepancies: number;
-      recommended_status: "Verified" | "Needs Review" | "Rejected";
+      recommended_status: "Verified" | "Rejected" | "Needs Review";
+      source: "rule_engine" | "gemini";
+    };
+    ai_document_analysis?: {
+      document_type: string;
+      extracted_information: Array<{
+        label: string;
+        value: string;
+      }>;
+      requirement_match: Array<{
+        status: "match" | "warning";
+        message: string;
+      }>;
+      summary: string;
+      eligibility_hint: string;
       source: "rule_engine" | "gemini";
     };
     scanned: boolean;
@@ -285,6 +320,7 @@ export type DocumentChecklistResponse = {
       document_type: string;
       display_name: string;
       required: boolean;
+      available?: boolean;
       uploaded: boolean;
       is_available?: boolean;
       has_uploaded_record?: boolean;

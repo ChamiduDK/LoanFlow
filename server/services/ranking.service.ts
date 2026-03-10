@@ -5,7 +5,20 @@ type ProbabilityInput = {
   yearsActive: number;
   turnoverRatio: number;
   collateralAvailable: boolean;
-  documentCompleteness: number;
+  documentReadiness: number;
+};
+
+type ProbabilityBlendInput = {
+  modelProbability?: number | null;
+  ruleBasedProbability: number;
+  previousProbability?: number | null;
+};
+
+type ProbabilityBlendResult = {
+  probability: number;
+  strategy: "rule_based_only" | "ml_blended";
+  modelWeight: number;
+  divergence: number | null;
 };
 
 const WEIGHTS = {
@@ -38,13 +51,60 @@ export function calculateApprovalProbability(input: ProbabilityInput): { probabi
     reasons.push("Collateral support increases underwriting confidence");
   }
 
-  score += (input.documentCompleteness / 100) * 12;
-  if (input.documentCompleteness >= 80) {
-    reasons.push("Document checklist is mostly complete");
+  score += (input.documentReadiness / 100) * 12;
+  if (input.documentReadiness >= 80) {
+    reasons.push("Key bank documents are already available");
+  } else if (input.documentReadiness >= 50) {
+    reasons.push("Some bank-preferred documents are already available");
   }
 
   const bounded = Math.max(0, Math.min(100, Number(score.toFixed(2))));
   return { probability: bounded, reasons };
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+export function blendApprovalProbabilities(input: ProbabilityBlendInput): ProbabilityBlendResult {
+  const ruleBased = clampPercent(Number(input.ruleBasedProbability) || 0);
+  const hasModelProbability =
+    input.modelProbability !== null &&
+    input.modelProbability !== undefined;
+  const rawModel = hasModelProbability ? Number(input.modelProbability) : Number.NaN;
+  const model = hasModelProbability && Number.isFinite(rawModel) ? clampPercent(rawModel) : null;
+
+  if (model === null) {
+    return {
+      probability: Number(ruleBased.toFixed(2)),
+      strategy: "rule_based_only",
+      modelWeight: 0,
+      divergence: null,
+    };
+  }
+
+  const divergence = Math.abs(model - ruleBased);
+  const modelWeight =
+    divergence >= 60 ? 0.2 :
+    divergence >= 40 ? 0.35 :
+    divergence >= 20 ? 0.5 :
+    0.65;
+
+  let probability = model * modelWeight + ruleBased * (1 - modelWeight);
+
+  const rawPrevious = Number(input.previousProbability);
+  const previous = Number.isFinite(rawPrevious) && rawPrevious > 0 ? clampPercent(rawPrevious) : null;
+  if (previous !== null) {
+    const previousWeight = divergence >= 40 ? 0.1 : 0.15;
+    probability = probability * (1 - previousWeight) + previous * previousWeight;
+  }
+
+  return {
+    probability: Number(clampPercent(probability).toFixed(2)),
+    strategy: "ml_blended",
+    modelWeight,
+    divergence: Number(divergence.toFixed(2)),
+  };
 }
 
 function normalizeInverse(values: number[], target: number): number {

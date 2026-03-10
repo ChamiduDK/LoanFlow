@@ -29,6 +29,16 @@ import { hasFeatureAccess, type UserFeatureKey } from "@/lib/feature-access";
 
 const EMPTY_APPLICATIONS: LoanApplication[] = [];
 
+type QuickAction = {
+  title: string;
+  desc: string;
+  lockedDesc: string;
+  icon: typeof Bot;
+  path: string;
+  featureKey: UserFeatureKey;
+  color: string;
+};
+
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString("en-LK", {
     year: "numeric",
@@ -44,12 +54,12 @@ function getStatusIcon(status: string) {
   return <AlertCircle className="h-4 w-4 text-blue-500" />;
 }
 
-const quickActions = [
-  { title: "AI Chat", desc: "Ask LoanFlow AI anything", lockedDesc: "Admin access required for this feature.", icon: Bot, path: "/chat", featureKey: "ai_chat" as UserFeatureKey, color: "from-primary/10 to-primary/5 border-primary/20 hover:border-primary/40" },
-  { title: "New Application", desc: "Start a new loan request", lockedDesc: "Admin access required for this feature.", icon: Plus, path: "/apply", featureKey: "new_application" as UserFeatureKey, color: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-500/40" },
-  { title: "Upload Documents", desc: "Complete your document checklist", lockedDesc: "Admin access required for this feature.", icon: Upload, path: "/documents", featureKey: "upload_documents" as UserFeatureKey, color: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-500/40" },
-  { title: "Track Application", desc: "Check bank review progress", lockedDesc: "Admin access required for this feature.", icon: GitBranch, path: "/tracker", featureKey: "track_application" as UserFeatureKey, color: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-500/40" },
-  { title: "EMI Calculator", desc: "Estimate your repayments", lockedDesc: "Admin access required for this feature.", icon: Calculator, path: "/calculator", featureKey: "emi_calculator" as UserFeatureKey, color: "from-amber-500/10 to-amber-600/5 border-amber-500/20 hover:border-amber-500/40" },
+const quickActions: QuickAction[] = [
+  { title: "AI Chat", desc: "Ask LoanFlow AI anything", lockedDesc: "Admin access required for this feature.", icon: Bot, path: "/chat", featureKey: "ai_chat", color: "from-primary/10 to-primary/5 border-primary/20 hover:border-primary/40" },
+  { title: "New Application", desc: "Start a new loan request", lockedDesc: "Admin access required for this feature.", icon: Plus, path: "/apply", featureKey: "new_application", color: "from-blue-500/10 to-blue-600/5 border-blue-500/20 hover:border-blue-500/40" },
+  { title: "Documents", desc: "Mark availability or upload for AI guidance", lockedDesc: "Admin access required for this feature.", icon: Upload, path: "/documents", featureKey: "upload_documents", color: "from-violet-500/10 to-violet-600/5 border-violet-500/20 hover:border-violet-500/40" },
+  { title: "Track Application", desc: "Check bank review progress", lockedDesc: "Admin access required for this feature.", icon: GitBranch, path: "/tracker", featureKey: "track_application", color: "from-emerald-500/10 to-emerald-600/5 border-emerald-500/20 hover:border-emerald-500/40" },
+  { title: "EMI Calculator", desc: "Estimate your repayments", lockedDesc: "Admin access required for this feature.", icon: Calculator, path: "/calculator", featureKey: "emi_calculator", color: "from-amber-500/10 to-amber-600/5 border-amber-500/20 hover:border-amber-500/40" },
 ];
 
 export default function Dashboard() {

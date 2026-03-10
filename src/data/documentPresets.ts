@@ -1,0 +1,51 @@
+export type SriLankaDocumentPreset = {
+  document_type: string;
+  display_name: string;
+  notes: string;
+  accepted_formats: string[];
+};
+
+export const SRI_LANKA_DOCUMENT_PRESETS: SriLankaDocumentPreset[] = [
+  {
+    document_type: "nic",
+    display_name: "NIC",
+    notes: "Prefer a clear front-side copy of the Sri Lankan NIC.",
+    accepted_formats: ["pdf", "jpg", "jpeg", "png"],
+  },
+  {
+    document_type: "business_registration",
+    display_name: "Business Registration Certificate",
+    notes: "Use the latest registration document that matches the legal business name.",
+    accepted_formats: ["pdf", "jpg", "jpeg", "png"],
+  },
+  {
+    document_type: "bank_statement",
+    display_name: "Bank Statements",
+    notes: "Recent statements are preferred. Most lenders ask for the latest 3 to 6 months.",
+    accepted_formats: ["pdf", "jpg", "jpeg", "png"],
+  },
+  {
+    document_type: "utility_bill",
+    display_name: "Proof of Address",
+    notes: "Use a recent utility or telecom bill that shows the applicant or business address.",
+    accepted_formats: ["pdf", "jpg", "jpeg", "png"],
+  },
+  {
+    document_type: "tin_tax",
+    display_name: "Tax File Number",
+    notes: "Provide the Inland Revenue or tax registration document where available.",
+    accepted_formats: ["pdf", "jpg", "jpeg", "png"],
+  },
+  {
+    document_type: "financial_statements",
+    display_name: "Business Financial Statements",
+    notes: "Latest signed or management financial statements are preferred.",
+    accepted_formats: ["pdf", "jpg", "jpeg", "png"],
+  },
+];
+
+export const COMMON_DOCUMENT_AVAILABILITY_OPTIONS = SRI_LANKA_DOCUMENT_PRESETS.map((preset) => ({
+  document_type: preset.document_type,
+  label: preset.display_name,
+  description: preset.notes,
+}));

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
   TrendingUp,
   DollarSign,
   Calendar,
+  Bot,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api/client";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +44,12 @@ type ProfileData = {
 
 type MePayload = {
   profile?: ProfileData | null;
+  telegram_link?: {
+    id?: string;
+    chat_id?: string | null;
+    is_verified?: boolean;
+    updated_at?: string | null;
+  } | null;
 };
 
 export default function Profile() {
@@ -50,6 +57,7 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ProfileData>>({});
+  const [telegramChatId, setTelegramChatId] = useState("");
 
   const meQuery = useQuery({
     queryKey: ["me-profile"],
@@ -63,10 +71,15 @@ export default function Profile() {
   });
 
   const profile = meQuery.data?.profile;
+  const telegramLink = meQuery.data?.telegram_link;
   const applications = useMemo(
     () => applicationsQuery.data ?? [],
     [applicationsQuery.data],
   );
+
+  useEffect(() => {
+    setTelegramChatId(telegramLink?.chat_id?.trim() ?? "");
+  }, [telegramLink?.chat_id]);
 
   const stats = useMemo(() => {
     const approved = applications.filter((a) => a.status === "approved").length;
@@ -97,6 +110,28 @@ export default function Profile() {
     },
   });
 
+  const telegramLinkMutation = useMutation({
+    mutationFn: (chatId: string) =>
+      apiFetch<{ chat_id: string; status: string; instructions: string }>("/api/agent/link-telegram", {
+        method: "POST",
+        body: JSON.stringify({ chat_id: chatId }),
+      }),
+    onSuccess: (data) => {
+      toast({
+        title: "Telegram chat saved",
+        description: data.instructions,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["me-profile"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Telegram chat save failed",
+        description: error instanceof Error ? error.message : "Could not save Telegram chat ID",
+        variant: "destructive",
+      });
+    },
+  });
+
   const startEdit = () => {
     setEditForm({
       full_name: profile?.full_name ?? "",
@@ -122,6 +157,20 @@ export default function Profile() {
       years_active: editForm.years_active ?? null,
       annual_turnover: editForm.annual_turnover ?? null,
     });
+  };
+
+  const handleTelegramSave = () => {
+    const trimmed = telegramChatId.trim();
+    if (!trimmed) {
+      toast({
+        title: "Telegram chat ID is required",
+        description: "Paste the chat_id from your Telegram bot conversation first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    telegramLinkMutation.mutate(trimmed);
   };
 
   return (
@@ -299,6 +348,65 @@ export default function Profile() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-border/70 bg-card shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Bot className="h-4 w-4 text-primary" />
+            Telegram AI Chat
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+            Send a message to your LoanFlow Telegram bot, copy the shown <span className="font-semibold text-foreground">chat_id</span>, paste it here, and save it. After that, your Telegram chat can use the full AI assistant flow.
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+            <div className="space-y-1.5">
+              <Label htmlFor="telegram_chat_id" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Telegram Chat ID
+              </Label>
+              <Input
+                id="telegram_chat_id"
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                placeholder="e.g. 123456789"
+              />
+            </div>
+            <Button onClick={handleTelegramSave} disabled={telegramLinkMutation.isPending}>
+              <Save className="h-4 w-4" />
+              {telegramLinkMutation.isPending ? "Saving..." : "Save Chat ID"}
+            </Button>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Saved Chat ID</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{telegramLink?.chat_id || "Not saved"}</p>
+            </div>
+            <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+              <div className="mt-1">
+                {telegramLink?.chat_id ? (
+                  <Badge variant={telegramLink.is_verified ? "default" : "secondary"}>
+                    {telegramLink.is_verified ? "Verified" : "Pending verification"}
+                  </Badge>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Not linked</span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Next Step</p>
+              <p className="mt-1 text-sm text-foreground">
+                {telegramLink?.is_verified ? "Message the bot to use AI chat." : "Send one private message to the bot after saving."}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -30,7 +30,7 @@ type ScanOptions = {
 
 type DiscrepancySeverity = "minor" | "critical";
 type DiscrepancySource = "ocr" | "rule" | "cross_document" | "system_record" | "ai";
-type FinalVerificationStatus = "Verified" | "Needs Review" | "Rejected";
+type FinalVerificationStatus = "Verified" | "Rejected" | "Needs Review";
 
 type DiscrepancyItem = {
   code: string;
@@ -55,7 +55,8 @@ type RequiredDocumentRule = {
   document_type: string;
   display_name: string;
   required: boolean;
-  verification_rules: VerificationRuleConfig;
+  notes: string | null;
+  accepted_formats: string[];
 };
 
 type DocumentDbRow = {
@@ -120,6 +121,35 @@ type AiDiscrepancySummary = {
   source: "rule_engine" | "gemini";
 };
 
+type AiDocumentAnalysis = {
+  document_type: string;
+  extracted_information: Array<{
+    label: string;
+    value: string;
+  }>;
+  requirement_match: Array<{
+    status: "match" | "warning";
+    message: string;
+  }>;
+  summary: string;
+  eligibility_hint: string;
+  source: "rule_engine" | "gemini";
+};
+
+type AiComputedMetrics = {
+  bank_statement?: {
+    total_deposits: number | null;
+    monthly_average_balance: number | null;
+    period_months: number | null;
+    source: "rule_engine" | "gemini";
+  };
+  financial_statements?: {
+    annual_net_profit: number | null;
+    fiscal_year: string | null;
+    source: "rule_engine" | "gemini";
+  };
+};
+
 type ScanDocumentSummary = {
   document_id: string;
   document_type: string;
@@ -134,6 +164,7 @@ type ScanDocumentSummary = {
   ocr_preview: string | null;
   discrepancy_report: DocumentDiscrepancyReport;
   ai_discrepancy_summary: AiDiscrepancySummary;
+  ai_document_analysis: AiDocumentAnalysis;
   scanned: boolean;
 };
 
@@ -235,7 +266,7 @@ const REQUIRED_FIELDS_BY_TYPE: Record<string, string[]> = {
   financial_statements: ["issue_date"],
   form_20: ["registration_number", "issue_date"],
   form_1: ["registration_number", "issue_date"],
-  collateral_deed: ["owner_name", "issue_date"],
+  collateral_deed: [],
 };
 
 const CRITICAL_FIELDS = new Set([
@@ -266,6 +297,32 @@ function clamp(value: number, min: number, max: number): number {
 function rounded(value: number, precision = 2): number {
   const factor = 10 ** precision;
   return Math.round(value * factor) / factor;
+}
+
+function extractJsonObject(raw: string): Record<string, unknown> | null {
+  const direct = raw.trim();
+  try {
+    const parsed = JSON.parse(direct) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // no-op
+  }
+
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+
+  try {
+    const parsed = JSON.parse(match[0]) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -307,6 +364,106 @@ function canonicalizeDocumentType(value: string | null): string | null {
   return normalized || null;
 }
 
+function formatDocumentTypeLabel(value: string | null): string {
+  const normalized = canonicalizeDocumentType(value) ?? normalizeKey(value ?? "");
+  if (!normalized) {
+    return "Unknown Document";
+  }
+
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => String(item).trim())
+    .filter((item) => item.length > 0);
+}
+
+function summarizeExtractedInformation(
+  declaredType: string,
+  extractedFields: Record<string, unknown>,
+): Array<{ label: string; value: string }> {
+  const preferredKeysByType: Record<string, Array<{ key: string; label: string }>> = {
+    nic: [
+      { key: "full_name", label: "Holder Name" },
+      { key: "nic_number", label: "NIC Number" },
+      { key: "date_of_birth", label: "Date of Birth" },
+    ],
+    business_registration: [
+      { key: "business_name", label: "Business Name" },
+      { key: "registration_number", label: "Registration Number" },
+      { key: "issue_date", label: "Issue Date" },
+    ],
+    bank_statement: [
+      { key: "bank_name", label: "Bank" },
+      { key: "account_holder", label: "Account Holder" },
+      { key: "statement_period", label: "Period" },
+      { key: "account_number", label: "Account Number" },
+    ],
+    utility_bill: [
+      { key: "service_provider", label: "Provider" },
+      { key: "address", label: "Address" },
+      { key: "issue_date", label: "Issue Date" },
+    ],
+    tin_tax: [
+      { key: "taxpayer_name", label: "Taxpayer" },
+      { key: "tin_number", label: "Tax File Number" },
+      { key: "issue_date", label: "Issue Date" },
+    ],
+    financial_statements: [
+      { key: "business_name", label: "Business Name" },
+      { key: "fiscal_year", label: "Fiscal Year" },
+      { key: "annual_net_profit", label: "Annual Net Profit" },
+    ],
+  };
+
+  const canonical = canonicalizeDocumentType(declaredType) ?? declaredType;
+  const preferredKeys = preferredKeysByType[canonical] ?? [];
+  const extracted: Array<{ label: string; value: string }> = [];
+
+  for (const field of preferredKeys) {
+    const value = toStringOrNull(extractedFields[field.key]);
+    if (!value) {
+      continue;
+    }
+    extracted.push({ label: field.label, value });
+  }
+
+  if (extracted.length > 0) {
+    return extracted.slice(0, 4);
+  }
+
+  return Object.entries(extractedFields)
+    .filter(([key, value]) => {
+      if (key.includes("discrepancy") || key.includes("summary") || key.includes("validated")) {
+        return false;
+      }
+      if (value == null) {
+        return false;
+      }
+      if (typeof value === "object") {
+        return false;
+      }
+      return String(value).trim().length > 0;
+    })
+    .slice(0, 4)
+    .map(([key, value]) => ({
+      label: key
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" "),
+      value: String(value).trim(),
+    }));
+}
+
 function isKnownDocumentType(value: string): boolean {
   const canonical = canonicalizeDocumentType(value);
   if (!canonical) return false;
@@ -329,14 +486,14 @@ function isDocumentTypeMatch(expected: string, detected: string): boolean {
 
 function getDocumentWorkflowStatus(status: ScanValidationStatus): string {
   if (status === "valid") return "verified";
-  if (status === "invalid") return "rejected";
-  return "needs_review";
+  if (status === "unclear") return "needs_review";
+  return "rejected";
 }
 
 function toFinalVerificationStatus(status: ScanValidationStatus): FinalVerificationStatus {
   if (status === "valid") return "Verified";
-  if (status === "invalid") return "Rejected";
-  return "Needs Review";
+  if (status === "unclear") return "Needs Review";
+  return "Rejected";
 }
 
 function sanitizeScanErrorMessage(message: string): string {
@@ -428,6 +585,84 @@ function extractFirst(source: string, patterns: RegExp[]): string | null {
   return null;
 }
 
+function normalizeOcrNicCandidate(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[OoQq]/g, "0")
+    .replace(/[Il|]/g, "1")
+    .replace(/Z/g, "2")
+    .replace(/S/g, "5")
+    .replace(/B/g, "8");
+}
+
+function formatDateFromYearAndDayOfYear(year: number, rawDayOfYear: number): string | null {
+  if (!Number.isInteger(year) || !Number.isInteger(rawDayOfYear) || year < 1900 || year > 2100) {
+    return null;
+  }
+
+  const isFemale = rawDayOfYear > 500;
+  const dayOfYear = isFemale ? rawDayOfYear - 500 : rawDayOfYear;
+  const maxDay = ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0) ? 366 : 365;
+
+  if (dayOfYear < 1 || dayOfYear > maxDay) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, 0, dayOfYear));
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function deriveDateOfBirthFromNic(nicNumber: string): string | null {
+  const normalized = normalizeOcrNicCandidate(nicNumber);
+
+  if (/^\d{9}[VX]$/i.test(normalized)) {
+    const year = 1900 + Number(normalized.slice(0, 2));
+    const dayOfYear = Number(normalized.slice(2, 5));
+    return formatDateFromYearAndDayOfYear(year, dayOfYear);
+  }
+
+  if (/^\d{12}$/.test(normalized)) {
+    const year = Number(normalized.slice(0, 4));
+    const dayOfYear = Number(normalized.slice(4, 7));
+    return formatDateFromYearAndDayOfYear(year, dayOfYear);
+  }
+
+  return null;
+}
+
+function extractSriLankanNicNumber(text: string): string | null {
+  const candidates = Array.from(
+    new Set(
+      text.match(/\b[A-Za-z0-9]{9,12}[VvXx]?\b/g) ?? [],
+    ),
+  );
+
+  for (const candidate of candidates) {
+    const normalized = normalizeOcrNicCandidate(candidate);
+    if (/^\d{9}[VX]$/i.test(normalized) || /^\d{12}$/.test(normalized)) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function inferDocumentTypeFromFields(fields: Record<string, unknown>): string | null {
+  if (toStringOrNull(fields.nic_number)) return "nic";
+  if (toStringOrNull(fields.passport_number)) return "passport";
+  if (toStringOrNull(fields.invoice_number)) return "invoice";
+  if (toStringOrNull(fields.registration_number)) return "business_registration";
+  if (toStringOrNull(fields.tin_number)) return "tin_tax";
+  if (toStringOrNull(fields.account_number)) return "bank_statement";
+  if (toStringOrNull(fields.certificate_number)) return "certificate";
+  return null;
+}
+
 function extractKeyFieldsFromText(text: string): Record<string, unknown> {
   const source = text || "";
   if (!source.trim()) {
@@ -456,7 +691,7 @@ function extractKeyFieldsFromText(text: string): Record<string, unknown> {
   ]);
   if (address) result.address = address;
 
-  const nicNumber = extractFirst(source, [
+  const nicNumber = extractSriLankanNicNumber(source) ?? extractFirst(source, [
     /\b(\d{9}[VvXx])\b/,
     /\b(\d{12})\b/,
   ]);
@@ -504,6 +739,13 @@ function extractKeyFieldsFromText(text: string): Record<string, unknown> {
     /\b(?:date of birth|dob)\s*[:\-]?\s*([0-3]?\d[\/\-.][0-1]?\d[\/\-.](?:19|20)\d{2}|(?:19|20)\d{2}[\/\-.][0-1]?\d[\/\-.][0-3]?\d|[A-Za-z]{3,9}\s+[0-3]?\d,\s*(?:19|20)\d{2})/i,
   ]);
   if (dateOfBirth) result.date_of_birth = dateOfBirth;
+
+  if (!result.date_of_birth && nicNumber) {
+    const derivedDateOfBirth = deriveDateOfBirthFromNic(nicNumber);
+    if (derivedDateOfBirth) {
+      result.date_of_birth = derivedDateOfBirth;
+    }
+  }
 
   const issueDate = extractIssueDateFromText(source, []);
   if (issueDate) result.issue_date = issueDate;
@@ -742,7 +984,7 @@ function applyDocumentRuleVerification(input: {
   }
 
   if (discrepancies.length === 0) {
-    notes.push("Document passed all configured verification rules.");
+    notes.push("Document analysis did not surface any additional rule-based warnings.");
   }
 
   return {
@@ -767,7 +1009,7 @@ async function buildAiDiscrepancySummary(input: {
 
   const fallbackSummary = (() => {
     if (significance === "none") {
-      return "No material discrepancies were detected. OCR values align with expected checks.";
+      return "The document was analyzed without major issues. Use this as guidance only while the bank completes its own review.";
     }
 
     const details: string[] = [];
@@ -781,7 +1023,7 @@ async function buildAiDiscrepancySummary(input: {
       ? `Detected type "${input.detectedType}" against expected "${input.declaredType}".`
       : `Detected type is unclear for expected "${input.declaredType}".`;
 
-    return `${typeSentence} ${details.join("; ")}. Recommended action: ${input.baseRecommendation}.`;
+    return `${typeSentence} ${details.join("; ")}. This is guidance only and may still need bank review.`;
   })();
 
   if (env.DOCUMENT_AI_PROVIDER !== "gemini") {
@@ -797,18 +1039,18 @@ async function buildAiDiscrepancySummary(input: {
 
   try {
     const prompt = [
-      "Summarize document verification discrepancies for underwriting audit.",
+      "Summarize document guidance points for applicant review.",
       `File: ${input.fileName}`,
       `Expected Type: ${input.declaredType}`,
       `Detected Type: ${input.detectedType ?? "unclear"}`,
       `Critical Issues: ${critical}`,
       `Minor Issues: ${minor}`,
       `Missing Fields: ${input.missingFields.join(", ") || "none"}`,
-      "Keep response under 80 words and include recommendation: Verified, Needs Review, or Rejected.",
+      "Keep response under 80 words. Explain the main guidance points and mention that final approval stays with the bank.",
     ].join("\n");
 
     const aiText = await aiService.generateChatResponse(
-      "You are a strict document verification analyst. Produce concise, auditable summaries.",
+      "You analyze uploaded loan documents for guidance only. Produce concise, auditable summaries.",
       [],
       prompt,
     );
@@ -833,6 +1075,188 @@ async function buildAiDiscrepancySummary(input: {
   }
 }
 
+async function buildAiDocumentAnalysis(input: {
+  fileName: string;
+  declaredType: string;
+  detectedType: string | null;
+  ocrText: string;
+  extractedFields: Record<string, unknown>;
+  requirementTitle: string;
+  requirementNotes: string | null;
+  acceptedFormats: string[];
+}): Promise<AiDocumentAnalysis> {
+  const typeMatched = input.detectedType
+    ? isDocumentTypeMatch(input.declaredType, input.detectedType)
+    : false;
+  const extractedInformation = summarizeExtractedInformation(input.declaredType, input.extractedFields);
+  const requirementMatch: AiDocumentAnalysis["requirement_match"] = [
+    {
+      status: typeMatched ? "match" : "warning",
+      message: typeMatched
+        ? `Document type appears to match the bank requirement for ${input.requirementTitle}.`
+        : `Document type could not be confidently matched to ${input.requirementTitle}.`,
+    },
+    {
+      status: extractedInformation.length > 0 ? "match" : "warning",
+      message: extractedInformation.length > 0
+        ? "Key information was extracted from the uploaded file."
+        : "Only limited information could be extracted from the uploaded file.",
+    },
+  ];
+
+  if (input.requirementNotes) {
+    requirementMatch.push({
+      status: "warning",
+      message: `Bank note: ${input.requirementNotes}`,
+    });
+  }
+
+  const fallback: AiDocumentAnalysis = {
+    document_type: formatDocumentTypeLabel(input.detectedType ?? input.declaredType),
+    extracted_information: extractedInformation,
+    requirement_match: requirementMatch.slice(0, 4),
+    summary: typeMatched
+      ? `The uploaded file appears to be a ${formatDocumentTypeLabel(input.detectedType ?? input.declaredType)} and generally aligns with the selected bank requirement.`
+      : "The uploaded file was analyzed, but the exact document type or requirement fit is still uncertain.",
+    eligibility_hint: typeMatched && extractedInformation.length > 0
+      ? "This document looks useful for SME loan review, but final approval still depends on the bank's internal process."
+      : "This upload is informational only. A clearer or more complete document may still be requested by the bank.",
+    source: "rule_engine",
+  };
+
+  if (env.DOCUMENT_AI_PROVIDER !== "gemini" || input.ocrText.trim().length < env.DOCUMENT_AI_MIN_OCR_CHARS) {
+    return fallback;
+  }
+
+  try {
+    const response = await aiService.generateChatResponse(
+      "You analyze uploaded loan documents for optional applicant guidance. Return strict JSON only.",
+      [],
+      [
+        "Return JSON only with this exact shape:",
+        '{"document_type": string, "extracted_information": [{"label": string, "value": string}], "requirement_match": [{"status": "match" | "warning", "message": string}], "summary": string, "eligibility_hint": string}',
+        "Rules:",
+        "- Use only the OCR text and bank requirement context provided.",
+        "- Keep extracted_information to at most 4 items.",
+        "- Keep requirement_match to at most 4 items.",
+        "- Do not claim final bank approval.",
+        `File: ${input.fileName}`,
+        `Expected document type: ${formatDocumentTypeLabel(input.declaredType)}`,
+        `Detected document type: ${formatDocumentTypeLabel(input.detectedType ?? input.declaredType)}`,
+        `Bank requirement: ${input.requirementTitle}`,
+        `Bank note: ${input.requirementNotes ?? "none"}`,
+        `Accepted formats: ${input.acceptedFormats.join(", ") || "pdf, jpg, jpeg, png"}`,
+        `Pre-extracted fields: ${JSON.stringify(extractedInformation)}`,
+        "OCR text:",
+        input.ocrText.slice(0, env.DOCUMENT_AI_MAX_TEXT_CHARS),
+      ].join("\n"),
+    );
+
+    const parsed = extractJsonObject(response);
+    if (!parsed) {
+      return fallback;
+    }
+
+    const parsedExtractedInformation = Array.isArray(parsed.extracted_information)
+      ? parsed.extracted_information
+        .map((item) => toRecord(item))
+        .map((item) => ({
+          label: toStringOrNull(item.label),
+          value: toStringOrNull(item.value),
+        }))
+        .filter((item): item is { label: string; value: string } => Boolean(item.label && item.value))
+        .slice(0, 4)
+      : fallback.extracted_information;
+
+    const parsedRequirementMatch = Array.isArray(parsed.requirement_match)
+      ? parsed.requirement_match
+        .map((item) => toRecord(item))
+        .map((item) => ({
+          status: item.status === "match" ? "match" : "warning",
+          message: toStringOrNull(item.message),
+        }))
+        .filter((item): item is { status: "match" | "warning"; message: string } => Boolean(item.message))
+        .slice(0, 4)
+      : fallback.requirement_match;
+
+    return {
+      document_type: toStringOrNull(parsed.document_type) ?? fallback.document_type,
+      extracted_information: parsedExtractedInformation.length > 0 ? parsedExtractedInformation : fallback.extracted_information,
+      requirement_match: parsedRequirementMatch.length > 0 ? parsedRequirementMatch : fallback.requirement_match,
+      summary: toStringOrNull(parsed.summary) ?? fallback.summary,
+      eligibility_hint: toStringOrNull(parsed.eligibility_hint) ?? fallback.eligibility_hint,
+      source: "gemini",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function buildAiComputedMetrics(input: {
+  declaredType: string;
+  ocrText: string;
+}): Promise<AiComputedMetrics> {
+  const declaredType = canonicalizeDocumentType(input.declaredType) ?? input.declaredType;
+  if (
+    env.DOCUMENT_AI_PROVIDER !== "gemini" ||
+    input.ocrText.trim().length < env.DOCUMENT_AI_MIN_OCR_CHARS ||
+    (declaredType !== "bank_statement" && declaredType !== "financial_statements")
+  ) {
+    return {};
+  }
+
+  try {
+    const prompt =
+      declaredType === "bank_statement"
+        ? [
+            "Read the OCR text of a bank statement and return strict JSON only.",
+            '{"total_deposits": number | null, "monthly_average_balance": number | null, "period_months": number | null}',
+            "Calculate total deposits and monthly average balance from the available statement period.",
+            input.ocrText.slice(0, env.DOCUMENT_AI_MAX_TEXT_CHARS),
+          ].join("\n")
+        : [
+            "Read the OCR text of financial statements and return strict JSON only.",
+            '{"annual_net_profit": number | null, "fiscal_year": string | null}',
+            "Extract the annual net profit for the most recent fiscal year.",
+            input.ocrText.slice(0, env.DOCUMENT_AI_MAX_TEXT_CHARS),
+          ].join("\n");
+
+    const response = await aiService.generateChatResponse(
+      "You are a precise financial document extraction engine. Return JSON only.",
+      [],
+      prompt,
+    );
+    const parsed = extractJsonObject(response);
+    if (!parsed) return {};
+
+    if (declaredType === "bank_statement") {
+      const totalDeposits = Number(parsed.total_deposits);
+      const monthlyAverageBalance = Number(parsed.monthly_average_balance);
+      const periodMonths = Number(parsed.period_months);
+      return {
+        bank_statement: {
+          total_deposits: Number.isFinite(totalDeposits) ? rounded(totalDeposits, 2) : null,
+          monthly_average_balance: Number.isFinite(monthlyAverageBalance) ? rounded(monthlyAverageBalance, 2) : null,
+          period_months: Number.isFinite(periodMonths) ? Math.round(periodMonths) : null,
+          source: "gemini",
+        },
+      };
+    }
+
+    return {
+      financial_statements: {
+        annual_net_profit: Number.isFinite(Number(parsed.annual_net_profit))
+          ? rounded(Number(parsed.annual_net_profit), 2)
+          : null,
+        fiscal_year: toStringOrNull(parsed.fiscal_year),
+        source: "gemini",
+      },
+    };
+  } catch {
+    return {};
+  }
+}
+
 function determineValidationStatus(input: {
   detectedTypeCanonical: string | null;
   declaredTypeCanonical: string;
@@ -840,21 +1264,24 @@ function determineValidationStatus(input: {
   confidenceScore: number;
   scanError: string | null;
 }): ScanValidationStatus {
-  if (input.scanError) return "unclear";
+  if (input.scanError) return "invalid";
 
   const criticalCount = input.discrepancies.filter((item) => item.severity === "critical").length;
-  const minorCount = input.discrepancies.length - criticalCount;
 
   if (criticalCount > 0) {
     return "invalid";
   }
 
-  if (!input.detectedTypeCanonical || input.confidenceScore < 70 || minorCount > 0) {
+  if (!input.detectedTypeCanonical || input.confidenceScore < 55) {
     return "unclear";
   }
 
   if (input.detectedTypeCanonical !== input.declaredTypeCanonical) {
-    return input.confidenceScore >= 70 ? "invalid" : "unclear";
+    return "unclear";
+  }
+
+  if (input.discrepancies.length > 0) {
+    return "unclear";
   }
 
   return "valid";
@@ -870,11 +1297,11 @@ function buildConfiguredExtractor(profile: Profile, application: LoanApplication
         endpoint: env.OCR_AZURE_ENDPOINT || "",
         apiKey: env.OCR_AZURE_API_KEY || "",
         apiVersion: env.OCR_AZURE_API_VERSION,
-        modelId: "prebuilt-document",
-        locale: "en-US",
-        pollIntervalMs: 1000,
-        pollTimeoutMs: 60000,
-        requestTimeoutMs: 15000,
+        modelId: env.OCR_AZURE_MODEL_ID,
+        locale: env.OCR_AZURE_LOCALE ?? null,
+        pollIntervalMs: env.OCR_AZURE_POLL_INTERVAL_MS,
+        pollTimeoutMs: env.OCR_AZURE_POLL_TIMEOUT_MS,
+        requestTimeoutMs: env.OCR_AZURE_REQUEST_TIMEOUT_MS,
       },
       detectDocumentTypeFromTokens,
       extractIssueDateFromText,
@@ -886,12 +1313,12 @@ function buildConfiguredExtractor(profile: Profile, application: LoanApplication
       profile,
       application,
       {
-        endpoint: "https://vision.googleapis.com/v1/images:annotate",
+        endpoint: `${env.OCR_GOOGLE_ENDPOINT.replace(/\/+$/, "")}/images:annotate`,
         apiKey: env.OCR_GOOGLE_API_KEY || "",
-        requestTimeoutMs: 20000,
-        pdfToPpmCommand: "pdftoppm",
-        pdfDpi: 200,
-        pdfMaxPages: 5,
+        requestTimeoutMs: env.OCR_GOOGLE_REQUEST_TIMEOUT_MS,
+        pdfToPpmCommand: env.OCR_PDFTOPPM_COMMAND,
+        pdfDpi: env.OCR_PDF_DPI,
+        pdfMaxPages: env.OCR_PDF_MAX_PAGES,
       },
       detectDocumentTypeFromTokens,
       extractIssueDateFromText,
@@ -902,14 +1329,14 @@ function buildConfiguredExtractor(profile: Profile, application: LoanApplication
     profile,
     application,
     {
-      command: "tesseract",
-      language: "eng+msa",
-      psm: 1,
-      oem: 3,
-      timeoutMs: 30000,
-      pdfToPpmCommand: "pdftoppm",
-      pdfDpi: 200,
-      pdfMaxPages: 5,
+      command: env.OCR_TESSERACT_COMMAND,
+      language: env.OCR_TESSERACT_LANGUAGE,
+      psm: env.OCR_TESSERACT_PSM,
+      oem: env.OCR_TESSERACT_OEM,
+      timeoutMs: env.OCR_TESSERACT_TIMEOUT_MS,
+      pdfToPpmCommand: env.OCR_PDFTOPPM_COMMAND,
+      pdfDpi: env.OCR_PDF_DPI,
+      pdfMaxPages: env.OCR_PDF_MAX_PAGES,
     },
     detectDocumentTypeFromTokens,
     extractIssueDateFromText,
@@ -995,7 +1422,7 @@ export async function scanApplicationDocuments(
   if (productIds.length > 0) {
     const requiredDocsResult = await supabaseAdmin
       .from("required_documents")
-      .select("product_id, document_type, display_name, is_required, verification_rules_json")
+      .select("product_id, document_type, display_name, is_required, notes, accepted_formats")
       .in("product_id", productIds);
 
     if (requiredDocsResult.error) {
@@ -1008,7 +1435,8 @@ export async function scanApplicationDocuments(
         document_type: String(row.document_type),
         display_name: String(row.display_name),
         required: Boolean(row.is_required),
-        verification_rules: parseVerificationRules(row.verification_rules_json),
+        notes: toStringOrNull(row.notes),
+        accepted_formats: toStringArray(row.accepted_formats),
       });
     }
   }
@@ -1043,12 +1471,21 @@ export async function scanApplicationDocuments(
   }
 
   const rows = documentsResult.data ?? [];
+  const latestRowsByType = new Map<string, typeof rows[number]>();
+  for (const row of rows) {
+    const key = String(row.document_type ?? "").trim().toLowerCase();
+    if (!key || latestRowsByType.has(key)) {
+      continue;
+    }
+    latestRowsByType.set(key, row);
+  }
+  const latestRows = Array.from(latestRowsByType.values());
   const extractor = buildConfiguredExtractor(profile, application);
 
   let scannedCount = 0;
   const workingDocs: WorkingDocument[] = [];
 
-  for (const row of rows) {
+  for (const row of latestRows) {
     const typedRow: DocumentDbRow = {
       id: String(row.id),
       application_id: String(row.application_id),
@@ -1069,6 +1506,7 @@ export async function scanApplicationDocuments(
 
     const existingExtracted = typedRow.extracted_json;
     const shouldRescan = Boolean(options.forceRescan) || !typedRow.ocr_text || Object.keys(existingExtracted).length === 0;
+    const declaredTypeCanonical = canonicalizeDocumentType(typedRow.document_type) ?? normalizeText(typedRow.document_type);
 
     let detectedDocType: string | null = typedRow.detected_doc_type;
     let ocrText = typedRow.ocr_text ?? "";
@@ -1108,6 +1546,14 @@ export async function scanApplicationDocuments(
           mergeExtractedFields(extractedFields, extractedWithAi.extractedFields),
           parsedFields,
         );
+        const inferredTypeFromFields = inferDocumentTypeFromFields(extractedFields);
+        if (!detectedDocType && inferredTypeFromFields) {
+          detectedDocType = inferredTypeFromFields;
+        }
+        if (declaredTypeCanonical === "nic" && toStringOrNull(extractedFields.nic_number)) {
+          detectedDocType = detectedDocType ?? "nic";
+          confidenceScore = Math.max(confidenceScore, 72);
+        }
         extractedFields.confidence_score = confidenceScore;
         extractedFields.extraction_engine = extractedWithAi.engine;
         extractedFields.detected_doc_type = detectedDocType;
@@ -1124,17 +1570,20 @@ export async function scanApplicationDocuments(
           confidence_score: 0,
           scan_error: { message: safeErrorMessage, at: new Date().toISOString() },
         };
-        notes = ["Manual review is required.", `Scan error: ${safeErrorMessage}`];
+        notes = ["AI guidance could not be completed for this file.", `Scan error: ${safeErrorMessage}`];
       }
     } else {
       const parsedFields = extractKeyFieldsFromText(ocrText);
       extractedFields = mergeExtractedFields(extractedFields, parsedFields);
+      const inferredTypeFromFields = inferDocumentTypeFromFields(extractedFields);
       detectedDocType = typedRow.detected_doc_type ?? toStringOrNull(extractedFields.detected_doc_type);
+      if (!detectedDocType && inferredTypeFromFields) {
+        detectedDocType = inferredTypeFromFields;
+      }
       confidenceScore = rounded(toNumber(extractedFields.confidence_score, 0));
       notes = ["Using previously scanned data."];
     }
 
-    const declaredTypeCanonical = canonicalizeDocumentType(typedRow.document_type) ?? normalizeText(typedRow.document_type);
     const requiredRule = requiredByType.get(declaredTypeCanonical) ?? null;
 
     workingDocs.push({
@@ -1171,6 +1620,10 @@ export async function scanApplicationDocuments(
     const discrepancies: DiscrepancyItem[] = [];
     const missingFields: string[] = [];
     const notes = [...doc.notes];
+    const verificationDisabled = doc.declaredTypeCanonical === "collateral_deed";
+    if (verificationDisabled) {
+      notes.push("Collateral documents are stored for reference. AI guidance is limited at this stage.");
+    }
 
     const expectedValues = buildExpectedValues({
       profile,
@@ -1228,21 +1681,9 @@ export async function scanApplicationDocuments(
       );
     }
 
-    const requiredFields = requiredFieldsForType(doc.declaredTypeCanonical, detectedTypeCanonical);
-    if (!doc.requiredRule && requiredFields.length === 0 && !isKnownDocumentType(doc.declaredTypeCanonical)) {
-      discrepancies.push(
-        makeDiscrepancy({
-          code: "NO_VERIFICATION_RULES_CONFIGURED",
-          field: "document_type",
-          extractedValue: doc.declaredTypeCanonical,
-          expectedValue: "configured verification rules or known document type mapping",
-          difference: "No validation rule profile exists for this document type, so automated verification cannot be trusted.",
-          severity: "minor",
-          confidence: 100,
-          source: "rule",
-        }),
-      );
-    }
+    const requiredFields = verificationDisabled
+      ? []
+      : requiredFieldsForType(doc.declaredTypeCanonical, detectedTypeCanonical);
 
     const duplicateKey = `${normalizeText(doc.row.file_name)}|${textFingerprint(doc.extractedText)}`;
     const duplicateTypes = duplicateFileTypeMap.get(duplicateKey);
@@ -1281,24 +1722,8 @@ export async function scanApplicationDocuments(
       }
     }
 
-    const ruleResult = applyDocumentRuleVerification({
-      rules: doc.requiredRule?.verification_rules ?? {
-        required_keywords: [],
-        forbidden_keywords: [],
-        min_text_length: null,
-        ai_instructions: null,
-      },
-      ocrText: doc.extractedText,
-      confidenceScore: doc.confidenceScore,
-    });
-
-    if (ruleResult) {
-      discrepancies.push(...ruleResult.discrepancies);
-      notes.push(...ruleResult.notes);
-    }
-
     const fullNameDoc = toStringOrNull(doc.extractedFields.full_name);
-    if (fullNameDoc && profile.full_name && !valuesMatch("full_name", fullNameDoc, profile.full_name)) {
+    if (doc.declaredTypeCanonical === "nic" && fullNameDoc && profile.full_name && !valuesMatch("full_name", fullNameDoc, profile.full_name)) {
       discrepancies.push(
         makeDiscrepancy({
           code: "PROFILE_FULL_NAME_MISMATCH",
@@ -1314,7 +1739,7 @@ export async function scanApplicationDocuments(
     }
 
     const businessNameDoc = toStringOrNull(doc.extractedFields.business_name);
-    if (businessNameDoc && profile.business_name && !valuesMatch("business_name", businessNameDoc, profile.business_name)) {
+    if (doc.declaredTypeCanonical === "business_registration" && businessNameDoc && profile.business_name && !valuesMatch("business_name", businessNameDoc, profile.business_name)) {
       discrepancies.push(
         makeDiscrepancy({
           code: "PROFILE_BUSINESS_NAME_MISMATCH",
@@ -1327,6 +1752,68 @@ export async function scanApplicationDocuments(
           source: "system_record",
         }),
       );
+    }
+
+    const computedMetrics = verificationDisabled ? {} : await buildAiComputedMetrics({
+      declaredType: doc.declaredTypeCanonical,
+      ocrText: doc.extractedText,
+    });
+    if (computedMetrics.bank_statement) {
+      doc.extractedFields.total_deposits = computedMetrics.bank_statement.total_deposits;
+      doc.extractedFields.monthly_average_balance = computedMetrics.bank_statement.monthly_average_balance;
+      doc.extractedFields.statement_period_months = computedMetrics.bank_statement.period_months;
+      notes.push(
+        `Bank statement totals: deposits=${computedMetrics.bank_statement.total_deposits ?? "unavailable"}, monthly average balance=${computedMetrics.bank_statement.monthly_average_balance ?? "unavailable"}.`,
+      );
+      if (computedMetrics.bank_statement.total_deposits == null) {
+        discrepancies.push(
+          makeDiscrepancy({
+            code: "BANK_STATEMENT_TOTAL_DEPOSITS_MISSING",
+            field: "total_deposits",
+            extractedValue: null,
+            expectedValue: "calculated total deposits",
+            difference: "Could not calculate total deposits from the bank statement.",
+            severity: "minor",
+            confidence: clamp(doc.confidenceScore, 20, 90),
+            source: "ai",
+          }),
+        );
+      }
+      if (computedMetrics.bank_statement.monthly_average_balance == null) {
+        discrepancies.push(
+          makeDiscrepancy({
+            code: "BANK_STATEMENT_MONTHLY_AVERAGE_BALANCE_MISSING",
+            field: "monthly_average_balance",
+            extractedValue: null,
+            expectedValue: "calculated monthly average balance",
+            difference: "Could not calculate monthly average balance from the bank statement.",
+            severity: "minor",
+            confidence: clamp(doc.confidenceScore, 20, 90),
+            source: "ai",
+          }),
+        );
+      }
+    }
+    if (computedMetrics.financial_statements) {
+      doc.extractedFields.annual_net_profit = computedMetrics.financial_statements.annual_net_profit;
+      doc.extractedFields.fiscal_year = computedMetrics.financial_statements.fiscal_year;
+      notes.push(
+        `Financial statements: annual net profit=${computedMetrics.financial_statements.annual_net_profit ?? "unavailable"} for fiscal year ${computedMetrics.financial_statements.fiscal_year ?? "unknown"}.`,
+      );
+      if (computedMetrics.financial_statements.annual_net_profit == null) {
+        discrepancies.push(
+          makeDiscrepancy({
+            code: "FINANCIAL_STATEMENT_ANNUAL_NET_PROFIT_MISSING",
+            field: "annual_net_profit",
+            extractedValue: null,
+            expectedValue: "annual net profit for most recent fiscal year",
+            difference: "Could not extract annual net profit from the financial statements.",
+            severity: "minor",
+            confidence: clamp(doc.confidenceScore, 20, 90),
+            source: "ai",
+          }),
+        );
+      }
     }
 
     const amountValue = doc.extractedFields.amount;
@@ -1349,7 +1836,7 @@ export async function scanApplicationDocuments(
       }
     }
 
-    for (const field of CONSISTENCY_FIELDS) {
+    for (const field of verificationDisabled ? [] : CONSISTENCY_FIELDS) {
       const current = toStringOrNull(doc.extractedFields[field]);
       const consensusValue = consensus.byField[field];
       const conflictValues = consensus.conflicts[field] ?? [];
@@ -1381,7 +1868,7 @@ export async function scanApplicationDocuments(
           field: "scan",
           extractedValue: doc.scanError,
           expectedValue: "successful scan",
-          difference: "OCR extraction failed. Manual review required.",
+          difference: "OCR extraction failed, so AI guidance could not be completed for this file.",
           severity: "critical",
           confidence: 100,
           source: "ocr",
@@ -1389,7 +1876,7 @@ export async function scanApplicationDocuments(
       );
     }
 
-    if (doc.confidenceScore < 55) {
+    if (!verificationDisabled && doc.confidenceScore < 55) {
       discrepancies.push(
         makeDiscrepancy({
           code: "LOW_OCR_CONFIDENCE",
@@ -1448,10 +1935,21 @@ export async function scanApplicationDocuments(
       missingFields,
       baseRecommendation: finalVerificationStatus,
     });
+    const aiDocumentAnalysis = await buildAiDocumentAnalysis({
+      fileName: doc.row.file_name,
+      declaredType: doc.declaredTypeCanonical,
+      detectedType: detectedTypeCanonical,
+      ocrText: doc.extractedText,
+      extractedFields: doc.extractedFields,
+      requirementTitle: doc.requiredRule?.display_name ?? formatDocumentTypeLabel(doc.declaredTypeCanonical),
+      requirementNotes: doc.requiredRule?.notes ?? null,
+      acceptedFormats: doc.requiredRule?.accepted_formats ?? ["pdf", "jpg", "jpeg", "png"],
+    });
 
     const extractedFieldsToStore = mergeExtractedFields(doc.extractedFields, {
       discrepancy_report: discrepancyReport,
       ai_discrepancy_summary: aiSummary,
+      ai_document_analysis: aiDocumentAnalysis,
       final_verification_status: finalVerificationStatus,
       confidence_score: rounded(doc.confidenceScore),
       detected_doc_type: detectedTypeCanonical ?? doc.detectedType,
@@ -1463,7 +1961,8 @@ export async function scanApplicationDocuments(
     const summaryNotes = uniqueStrings([
       ...notes,
       ...doc.warnings,
-      `Discrepancies detected: ${discrepancies.length} (critical: ${criticalCount}, minor: ${minorCount}).`,
+      `Guidance items noted: ${discrepancies.length} (critical: ${criticalCount}, minor: ${minorCount}).`,
+      aiDocumentAnalysis.summary,
       aiSummary.summary,
     ]);
 
@@ -1481,6 +1980,7 @@ export async function scanApplicationDocuments(
       ocr_preview: truncateText(doc.extractedText, 220),
       discrepancy_report: discrepancyReport,
       ai_discrepancy_summary: aiSummary,
+      ai_document_analysis: aiDocumentAnalysis,
       scanned: doc.scanned,
     };
 
@@ -1529,13 +2029,13 @@ export async function scanApplicationDocuments(
     const critical = summaries.reduce((sum, doc) => sum + doc.ai_discrepancy_summary.critical_discrepancies, 0);
     const minor = summaries.reduce((sum, doc) => sum + doc.ai_discrepancy_summary.minor_discrepancies, 0);
     const verified = summaries.filter((doc) => doc.final_verification_status === "Verified").length;
-    const needsReview = summaries.filter((doc) => doc.final_verification_status === "Needs Review").length;
     const rejected = summaries.filter((doc) => doc.final_verification_status === "Rejected").length;
+    const needsReview = summaries.filter((doc) => doc.final_verification_status === "Needs Review").length;
 
     return [
-      `Processed ${summaries.length} document(s).`,
-      `Verified: ${verified}, Needs Review: ${needsReview}, Rejected: ${rejected}.`,
-      `Discrepancies: ${critical} critical and ${minor} minor.`,
+      `Processed ${summaries.length} uploaded document(s).`,
+      `Clear matches: ${verified}, needs attention: ${rejected}, pending analysis: ${needsReview}.`,
+      `Guidance items: ${critical} critical and ${minor} minor.`,
     ].join(" ");
   })();
 

@@ -21,7 +21,7 @@ export type DocumentStatus =
 
 export type InstallmentStatus = "pending" | "paid" | "late";
 
-export type ChannelType = "whatsapp" | "email" | "sms" | "web";
+export type ChannelType = "whatsapp" | "telegram" | "email" | "sms" | "web";
 
 export type ChatSessionStatus = "active" | "closed" | "archived";
 
@@ -185,6 +185,18 @@ export type RecommendationItem = {
   rankingScore: number;
   rankPosition: number;
   whyRecommended: string[];
+  prediction?: {
+    source: "ml_model" | "rule_based_fallback";
+    fallback_mode: boolean;
+    model_id: string | null;
+    model_version: string | null;
+    confidence: {
+      score: number;
+      level: "low" | "medium" | "high";
+    };
+    rule_based_probability: number;
+    ml_probability: number | null;
+  };
 };
 
 export type TrackerSummary = {

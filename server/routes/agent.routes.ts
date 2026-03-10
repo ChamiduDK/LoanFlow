@@ -6,10 +6,13 @@ import { requireApprovedUser, requireAuth, requireFeatureAccess } from "../middl
 import { env } from "../config/env";
 import { badRequest, internalError, unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
+import { normalizeTelegramChatId } from "../lib/telegram";
+import { normalizePhoneNumber } from "../lib/whatsapp";
 import {
   agentContextParamsSchema,
   chatWebhookSchema,
   createAgentChatSessionSchema,
+  linkTelegramSchema,
   linkWhatsappSchema,
   logAgentActionSchema,
   sendAgentChatMessageSchema,
@@ -24,13 +27,6 @@ import {
 } from "../services/loanflow-chat.service";
 
 export const agentRouter = Router();
-
-function normalizePhoneNumber(value: string): string {
-  const trimmed = value.trim().replace(/^whatsapp:/i, "");
-  const hasPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
-  return `${hasPlus ? "+" : ""}${digits}`;
-}
 
 function stripSignaturePrefix(signature: string): string {
   return signature.replace(/^sha256=/i, "").trim().toLowerCase();
@@ -182,7 +178,66 @@ agentRouter.post(
       status: "pending_verification",
       phone_number: normalizedPhone,
       instructions:
-        "Send a WhatsApp message from this number to the configured LoanFlow Twilio number. Verification will be completed on first inbound message.",
+        env.WHATSAPP_PROVIDER === "whatsapp_web"
+          ? "Start the local LoanFlow WhatsApp Web client, scan the QR code, and send a WhatsApp message from this number. Verification will complete on the first inbound message."
+          : "Send a WhatsApp message from this number to the configured LoanFlow Twilio number. Verification will complete on the first inbound message.",
+    });
+  }),
+);
+
+agentRouter.post(
+  "/agent/link-telegram",
+  asyncHandler(async (req, res) => {
+    const payload = parseWithSchema(linkTelegramSchema, req.body);
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const normalizedChatId = normalizeTelegramChatId(payload.chat_id);
+    const { data, error } = await supabaseAdmin
+      .from("user_channel_links")
+      .upsert(
+        {
+          user_id: userId,
+          channel_type: "telegram",
+          channel_user_id: normalizedChatId,
+          is_verified: false,
+          metadata: {
+            link_state: "pending_verification",
+            telegram_chat_id: normalizedChatId,
+            requested_at: new Date().toISOString(),
+          },
+        },
+        {
+          onConflict: "user_id,channel_type",
+        },
+      )
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      throw internalError("Failed to start Telegram link flow", error);
+    }
+
+    await logAudit({
+      actorUserId: userId,
+      action: "agent.link_telegram.started",
+      entityType: "user_channel_links",
+      entityId: String(data.id),
+      payloadSummary: {
+        chat_id: normalizedChatId,
+      },
+      ipAddress: req.ip,
+    });
+
+    sendSuccess(res, {
+      link_id: data.id,
+      status: "pending_verification",
+      chat_id: normalizedChatId,
+      instructions:
+        "Open the LoanFlow Telegram bot and send any private message from this chat. Verification will complete on the first inbound message.",
     });
   }),
 );

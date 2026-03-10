@@ -5,6 +5,10 @@ export const linkWhatsappSchema = z.object({
   phone_number: z.string().min(7).max(24),
 });
 
+export const linkTelegramSchema = z.object({
+  chat_id: z.string().trim().min(1).max(40),
+});
+
 export const chatWebhookSchema = z.object({
   channel: z.string().min(2).max(40),
   event_type: z.string().min(2).max(100),

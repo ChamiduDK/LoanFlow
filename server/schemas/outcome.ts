@@ -16,6 +16,10 @@ export const upsertOutcomeSchema = z.object({
   consent_for_training: z.boolean().optional(),
 });
 
+export const updateOutcomeTrainingConsentSchema = z.object({
+  consent_for_training: z.boolean(),
+});
+
 export const createInstallmentSchema = z.object({
   due_date: z.string().date(),
   amount: amountSchema,

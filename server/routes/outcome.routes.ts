@@ -4,8 +4,8 @@ import { parseWithSchema } from "../lib/validation";
 import { requireAdmin, requireApprovedUser, requireAuth } from "../middleware/auth";
 import { unauthorized } from "../lib/errors";
 import { sendSuccess } from "../lib/response";
-import { outcomeParamsSchema, upsertOutcomeSchema } from "../schemas/outcome";
-import { getOutcome, upsertOutcome } from "../services/outcome.service";
+import { outcomeParamsSchema, updateOutcomeTrainingConsentSchema, upsertOutcomeSchema } from "../schemas/outcome";
+import { getOutcome, updateOutcomeTrainingConsent, upsertOutcome } from "../services/outcome.service";
 
 export const outcomeRouter = Router();
 
@@ -41,6 +41,30 @@ outcomeRouter.get(
     }
 
     const outcome = await getOutcome(userId, params.id);
+    sendSuccess(res, outcome);
+  }),
+);
+
+outcomeRouter.post(
+  "/applications/:id/outcome/training-consent",
+  requireAuth,
+  requireApprovedUser,
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(outcomeParamsSchema, req.params);
+    const payload = parseWithSchema(updateOutcomeTrainingConsentSchema, req.body ?? {});
+    const userId = req.auth?.user.id;
+
+    if (!userId) {
+      throw unauthorized();
+    }
+
+    const outcome = await updateOutcomeTrainingConsent(
+      userId,
+      params.id,
+      payload.consent_for_training,
+      req.ip,
+    );
+
     sendSuccess(res, outcome);
   }),
 );

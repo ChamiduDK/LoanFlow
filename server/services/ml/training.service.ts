@@ -2,11 +2,27 @@ import * as tf from "@tensorflow/tfjs";
 import { badRequest, internalError, notFound } from "../../lib/errors";
 import { supabaseAdmin } from "../../lib/supabase/client";
 import { logAudit } from "../audit.service";
-import { buildTrainingDatasetFromOutcomes, persistTrainingSamples } from "./data-prep.service";
+import { persistTrainingSamples, summarizeTrainingDataset, type MlTrainingDatasetSummary } from "./data-prep.service";
 import { evaluateBinaryClassification, type MlEvaluationMetrics } from "./metrics.service";
 import { fitPreprocessingMetadata, transformDataset } from "./preprocessing.service";
+import {
+  MIN_READY_MODEL_PER_CLASS_SUPPORT,
+  MIN_READY_MODEL_VALIDATION_SUPPORT,
+  MIN_TRAINING_SAMPLES,
+  MIN_TRAINING_SAMPLES_PER_CLASS,
+  RECOMMENDED_TRAINING_SAMPLES,
+  isSyntheticBootstrapTrainingEnabled,
+} from "./readiness";
 import { prepareModelArtifactPaths, savePreprocessingMetadata, saveTfjsModel } from "./storage.service";
 import type { MlFeatureSample, MlPreprocessingMetadata } from "./types";
+
+const MLP_STRATEGY_METADATA = {
+  strategy_family: "mlp",
+  strategy_role: "Research Comparator",
+  strategy_summary: "Research comparator; future extension after dataset grows.",
+  strategy_positioning:
+    "Flexible and extensible for multimodal features, but still higher-maintenance and more calibration-sensitive than the planned tabular production candidates.",
+} as const;
 
 export type TrainMlModelOptions = {
   epochs?: number;
@@ -28,6 +44,67 @@ export type TrainedModelSummary = {
     preprocessing: MlPreprocessingMetadata;
   };
 };
+
+export type MlTrainingReadiness = {
+  training_mode: {
+    code: "real_only" | "bootstrap_with_synthetic";
+    include_synthetic_bootstrap: boolean;
+    sample_label: string;
+    description: string;
+  };
+  requirements: {
+    min_total_samples: number;
+    min_samples_per_class: number;
+    recommended_total_samples: number;
+    min_validation_support: number;
+    min_validation_samples_per_class: number;
+  };
+  dataset: {
+    finalized_outcomes_total: number;
+    finalized_approved_count: number;
+    finalized_rejected_count: number;
+    consented_real_outcomes: number;
+    usable_training_samples: number;
+    usable_approved_samples: number;
+    usable_rejected_samples: number;
+    usable_real_training_samples: number;
+    usable_real_approved_samples: number;
+    usable_real_rejected_samples: number;
+    usable_synthetic_training_samples: number;
+    usable_synthetic_approved_samples: number;
+    usable_synthetic_rejected_samples: number;
+    non_consented_outcomes_excluded: number;
+    synthetic_outcomes_included: number;
+    synthetic_outcomes_excluded: number;
+    unusable_eligible_outcomes: number;
+    unusable_real_outcomes: number;
+    unusable_synthetic_outcomes: number;
+  };
+  ready_for_training: boolean;
+  remaining: {
+    total_samples: number;
+    approved_samples: number;
+    rejected_samples: number;
+    recommended_total_samples: number;
+  };
+  summary: string[];
+};
+
+function buildTrainingMode(includeSyntheticBootstrap: boolean): MlTrainingReadiness["training_mode"] {
+  return includeSyntheticBootstrap
+    ? {
+        code: "bootstrap_with_synthetic",
+        include_synthetic_bootstrap: true,
+        sample_label: "Training Samples",
+        description: "Local/demo training can use consented real outcomes plus synthetic bootstrap rows. Production still needs consented real outcomes.",
+      }
+    : {
+        code: "real_only",
+        include_synthetic_bootstrap: false,
+        sample_label: "Real Samples",
+        description: "Training uses only consented real outcomes and excludes synthetic bootstrap rows.",
+      };
+}
 
 type DatasetSplit = {
   trainInputs: number[][];
@@ -94,6 +171,103 @@ async function toProbabilities(model: tf.LayersModel, inputs: number[][]): Promi
   return values;
 }
 
+function toTrainingReadiness(
+  dataset: MlTrainingDatasetSummary,
+  includeSyntheticBootstrap: boolean,
+): MlTrainingReadiness {
+  const trainingMode = buildTrainingMode(includeSyntheticBootstrap);
+  const remaining = {
+    total_samples: Math.max(0, MIN_TRAINING_SAMPLES - dataset.usable_training_samples),
+    approved_samples: Math.max(0, MIN_TRAINING_SAMPLES_PER_CLASS - dataset.usable_approved_samples),
+    rejected_samples: Math.max(0, MIN_TRAINING_SAMPLES_PER_CLASS - dataset.usable_rejected_samples),
+    recommended_total_samples: Math.max(0, RECOMMENDED_TRAINING_SAMPLES - dataset.usable_training_samples),
+  };
+
+  const readyForTraining =
+    dataset.usable_training_samples >= MIN_TRAINING_SAMPLES &&
+    dataset.usable_approved_samples >= MIN_TRAINING_SAMPLES_PER_CLASS &&
+    dataset.usable_rejected_samples >= MIN_TRAINING_SAMPLES_PER_CLASS;
+
+  const summary = readyForTraining
+    ? [
+        includeSyntheticBootstrap
+          ? `Training pool is ready with ${dataset.usable_training_samples} usable samples (${dataset.usable_real_training_samples} real + ${dataset.usable_synthetic_training_samples} synthetic).`
+          : `Dataset is ready for training with ${dataset.usable_training_samples} consented real samples.`,
+        `${dataset.usable_approved_samples} approved and ${dataset.usable_rejected_samples} rejected samples are usable.`,
+      ]
+    : [
+        includeSyntheticBootstrap
+          ? `Usable training pool samples: ${dataset.usable_training_samples} (${dataset.usable_real_training_samples} real + ${dataset.usable_synthetic_training_samples} synthetic; ${dataset.usable_approved_samples} approved / ${dataset.usable_rejected_samples} rejected).`
+          : `Usable consented real samples: ${dataset.usable_training_samples} (${dataset.usable_approved_samples} approved / ${dataset.usable_rejected_samples} rejected).`,
+        `Need ${remaining.total_samples} more total samples, ${remaining.approved_samples} more approved, and ${remaining.rejected_samples} more rejected before training.`,
+      ];
+
+  if (dataset.non_consented_outcomes_excluded > 0) {
+    summary.push(
+      `${dataset.non_consented_outcomes_excluded} finalized real outcomes are excluded because training consent is off. Applicants can enable it in Application Tracker after approval or rejection.`,
+    );
+  }
+
+  if (includeSyntheticBootstrap && dataset.synthetic_outcomes_included > 0) {
+    summary.push(
+      `${dataset.synthetic_outcomes_included} synthetic bootstrap outcomes are currently included for local/demo ML training. Collect consented real outcomes before relying on production ML.`,
+    );
+  }
+
+  if (!includeSyntheticBootstrap && dataset.synthetic_outcomes_excluded > 0) {
+    summary.push(
+      `${dataset.synthetic_outcomes_excluded} synthetic bootstrap outcomes are excluded and will not count toward production ML training.`,
+    );
+  }
+
+  if (dataset.unusable_real_outcomes > 0) {
+    summary.push(
+      `${dataset.unusable_real_outcomes} consented real outcomes could not be converted into usable ML feature samples yet.`,
+    );
+  }
+
+  if (dataset.unusable_synthetic_outcomes > 0) {
+    summary.push(
+      `${dataset.unusable_synthetic_outcomes} synthetic bootstrap outcomes could not be converted into usable ML feature samples yet.`,
+    );
+  }
+
+  return {
+    training_mode: trainingMode,
+    requirements: {
+      min_total_samples: MIN_TRAINING_SAMPLES,
+      min_samples_per_class: MIN_TRAINING_SAMPLES_PER_CLASS,
+      recommended_total_samples: RECOMMENDED_TRAINING_SAMPLES,
+      min_validation_support: MIN_READY_MODEL_VALIDATION_SUPPORT,
+      min_validation_samples_per_class: MIN_READY_MODEL_PER_CLASS_SUPPORT,
+    },
+    dataset: {
+      finalized_outcomes_total: dataset.finalized_outcomes_total,
+      finalized_approved_count: dataset.finalized_approved_count,
+      finalized_rejected_count: dataset.finalized_rejected_count,
+      consented_real_outcomes: dataset.consented_real_outcomes,
+      usable_training_samples: dataset.usable_training_samples,
+      usable_approved_samples: dataset.usable_approved_samples,
+      usable_rejected_samples: dataset.usable_rejected_samples,
+      usable_real_training_samples: dataset.usable_real_training_samples,
+      usable_real_approved_samples: dataset.usable_real_approved_samples,
+      usable_real_rejected_samples: dataset.usable_real_rejected_samples,
+      usable_synthetic_training_samples: dataset.usable_synthetic_training_samples,
+      usable_synthetic_approved_samples: dataset.usable_synthetic_approved_samples,
+      usable_synthetic_rejected_samples: dataset.usable_synthetic_rejected_samples,
+      non_consented_outcomes_excluded: dataset.non_consented_outcomes_excluded,
+      synthetic_outcomes_included: dataset.synthetic_outcomes_included,
+      synthetic_outcomes_excluded: dataset.synthetic_outcomes_excluded,
+      unusable_eligible_outcomes: dataset.unusable_eligible_outcomes,
+      unusable_real_outcomes: dataset.unusable_real_outcomes,
+      unusable_synthetic_outcomes: dataset.unusable_synthetic_outcomes,
+    },
+    ready_for_training: readyForTraining,
+    remaining,
+    summary,
+  };
+}
+
 function toVersionTag(): string {
   const now = new Date();
   const yyyy = now.getUTCFullYear();
@@ -105,23 +279,45 @@ function toVersionTag(): string {
   return `tabular_mlp_${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
 }
 
+export async function getMlTrainingReadiness(): Promise<MlTrainingReadiness> {
+  const includeSyntheticBootstrap = isSyntheticBootstrapTrainingEnabled();
+  const dataset = await summarizeTrainingDataset({ includeSyntheticBootstrap });
+  return toTrainingReadiness(dataset, includeSyntheticBootstrap);
+}
+
 export async function trainMlApprovalModel(
   actorUserId: string | undefined,
   options: TrainMlModelOptions,
   ipAddress?: string | null,
 ): Promise<TrainedModelSummary> {
+  const includeSyntheticBootstrap = isSyntheticBootstrapTrainingEnabled();
   const epochs = Math.max(10, options.epochs ?? 120);
   const batchSize = Math.max(8, options.batch_size ?? 32);
   const validationSplit = Math.min(0.4, Math.max(0.1, options.validation_split ?? 0.2));
-  const minSamples = Math.max(20, options.min_samples ?? 50);
+  const minSamples = Math.max(MIN_TRAINING_SAMPLES, options.min_samples ?? MIN_TRAINING_SAMPLES);
+  const datasetSummary = await summarizeTrainingDataset({ includeSyntheticBootstrap });
+  const readiness = toTrainingReadiness(datasetSummary, includeSyntheticBootstrap);
+  const labeledSamples = datasetSummary.samples.filter((sample) => sample.label === 0 || sample.label === 1);
 
-  const samples = await buildTrainingDatasetFromOutcomes();
-  const persistedCount = await persistTrainingSamples(samples);
-
-  const labeledSamples = samples.filter((sample) => sample.label === 0 || sample.label === 1);
-  if (labeledSamples.length < minSamples) {
-    throw badRequest(`Not enough finalized training samples. Need at least ${minSamples}, found ${labeledSamples.length}.`);
+  if (
+    labeledSamples.length < minSamples ||
+    readiness.dataset.usable_approved_samples < MIN_TRAINING_SAMPLES_PER_CLASS ||
+    readiness.dataset.usable_rejected_samples < MIN_TRAINING_SAMPLES_PER_CLASS
+  ) {
+    throw badRequest(
+      [
+        includeSyntheticBootstrap
+          ? "Not enough training samples in the current bootstrap-enabled pool."
+          : "Not enough consented real training samples.",
+        `Need at least ${minSamples} total usable samples and ${MIN_TRAINING_SAMPLES_PER_CLASS} per class.`,
+        includeSyntheticBootstrap
+          ? `Current usable pool: ${readiness.dataset.usable_training_samples} total (${readiness.dataset.usable_real_training_samples} real + ${readiness.dataset.usable_synthetic_training_samples} synthetic), ${readiness.dataset.usable_approved_samples} approved, ${readiness.dataset.usable_rejected_samples} rejected.`
+          : `Current usable set: ${readiness.dataset.usable_training_samples} total, ${readiness.dataset.usable_approved_samples} approved, ${readiness.dataset.usable_rejected_samples} rejected.`,
+      ].join(" "),
+    );
   }
+
+  const persistedCount = await persistTrainingSamples(labeledSamples);
 
   const preprocessing = fitPreprocessingMetadata(labeledSamples);
   const transformed = transformDataset(labeledSamples, preprocessing);
@@ -225,6 +421,15 @@ export async function trainMlApprovalModel(
         batch_size: batchSize,
         validation_split: validationSplit,
         input_size: preprocessing.input_size,
+        ...MLP_STRATEGY_METADATA,
+        dataset_mode: readiness.training_mode.code,
+        synthetic_bootstrap_enabled: includeSyntheticBootstrap,
+        consented_real_outcome_count: datasetSummary.consented_real_outcomes,
+        usable_training_sample_count: readiness.dataset.usable_training_samples,
+        usable_real_sample_count: readiness.dataset.usable_real_training_samples,
+        usable_synthetic_sample_count: readiness.dataset.usable_synthetic_training_samples,
+        usable_approved_sample_count: readiness.dataset.usable_approved_samples,
+        usable_rejected_sample_count: readiness.dataset.usable_rejected_samples,
       },
       trained_sample_count: labeledSamples.length,
       is_active: !hasActiveModel,

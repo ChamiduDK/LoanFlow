@@ -9,15 +9,17 @@ type Props = {
 
 type State = {
   hasError: boolean;
+  error: Error | null;
 };
 
 export default class AppErrorBoundary extends Component<Props, State> {
   state: State = {
     hasError: false,
+    error: null,
   };
 
-  static getDerivedStateFromError(): State {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -43,6 +45,11 @@ export default class AppErrorBoundary extends Component<Props, State> {
               <p className="text-sm text-muted-foreground">
                 An unexpected runtime error blocked this page. Reload the app to recover.
               </p>
+              {import.meta.env.DEV && this.state.error ? (
+                <pre className="overflow-auto rounded-md border border-border/70 bg-muted/40 p-3 text-xs text-destructive">
+                  {this.state.error.message}
+                </pre>
+              ) : null}
               <Button onClick={this.handleReload}>
                 <RefreshCcw className="h-4 w-4" />
                 Reload App
