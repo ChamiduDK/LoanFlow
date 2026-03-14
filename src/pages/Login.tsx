@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LockKeyhole, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
+import { AuthPasswordField } from "@/components/auth/AuthPasswordField";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api/client";
 import { normalizeEmail, resolveAccessState, resolvePostAuthPath } from "@/lib/auth";
@@ -169,19 +170,13 @@ export default function Login() {
               />
             </div>
 
-            <div className="mt-3 flex h-11 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:mt-4 sm:h-12">
-              <LockKeyhole className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/80 outline-none"
-                required
-                autoComplete="current-password"
-              />
-            </div>
+            <AuthPasswordField
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
 
             <div className="mt-4 flex w-full flex-col items-start gap-2 text-muted-foreground min-[420px]:mt-5 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
               <div className="flex items-center gap-2">

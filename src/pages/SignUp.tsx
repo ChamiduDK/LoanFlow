@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LockKeyhole, Mail, Phone, User } from "lucide-react";
+import { Mail, Phone, User } from "lucide-react";
+import { AuthPasswordField } from "@/components/auth/AuthPasswordField";
 import { useToast } from "@/hooks/use-toast";
 import { supabaseClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api/client";
@@ -201,20 +202,14 @@ export default function SignUp() {
               />
             </div>
 
-            <div className="mt-3 flex h-11 w-full items-center gap-2 overflow-hidden rounded-full border border-input bg-background/70 pl-4 pr-3 sm:mt-4 sm:h-12">
-              <LockKeyhole className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="h-full w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/80 outline-none"
-                required
-                minLength={8}
-                autoComplete="new-password"
-              />
-            </div>
+            <AuthPasswordField
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+            />
 
             <button
               type="submit"
