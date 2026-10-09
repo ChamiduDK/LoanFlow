@@ -1,12 +1,47 @@
-node_modules
-deploy
+
+# ── Dependencies ────────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build output ─────────────────────────────────────────────────────────────────
+dist/
+deploy/
+
+# ── Environment variables (NEVER commit real .env files) ─────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Logs ────────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-tmp/railway-ci-check-*/
+reindex_log.txt
+build_error.txt
+build_error_utf8.txt
 
-# Environment variables
-.env
-.env.*
-!.env.example
+# ── Temp / debug / scratch files ─────────────────────────────────────────────────
+tmp/
+tmp_*/
+reindex_trigger.ts
+reindex.test.ts
+verify_knowledge.ts
+reindex_standalone.js
+models_list.json
+models_embed.json
+
+# ── ML artifacts (trained model files, large binary blobs) ───────────────────────
+ml-artifacts/
+
+# ── WhatsApp Web session data (contains auth tokens) ─────────────────────────────
+.wwebjs_auth/
+.wwebjs_cache/
+
+# ── OS / Editor ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+
+# ── Railway CI temp folders ───────────────────────────────────────────────────────
+tmp/railway-ci-check-*/
