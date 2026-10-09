@@ -67,6 +67,7 @@ const envSchema = z.object({
   AI_CHAT_PROVIDER: z.enum(["disabled", "gemini"]).default("gemini"),
   AI_CHAT_GEMINI_API_KEY: z.string().min(20).optional(),
   AI_CHAT_MODEL: z.string().min(3).default("gemini-2.5-flash"),
+  AI_EMBED_MODEL: z.string().min(3).default("gemini-embedding-001"),
   TELEGRAM_BOT_TOKEN: emptyStringToUndefined(z.string().min(20).optional()),
   TELEGRAM_BOT_USERNAME: emptyStringToUndefined(z.string().min(3).optional()),
   TELEGRAM_AUTO_START: booleanFromEnv.default(true),

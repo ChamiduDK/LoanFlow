@@ -133,7 +133,7 @@ export class AiService {
     return this.withRetry(async () => {
       const ai = this.getGenAI();
       const result = await ai.models.embedContent({
-        model: "gemini-embedding-001",
+        model: env.AI_EMBED_MODEL,
         contents: text
       });
       // @google/genai returns result.embeddings[0].values
