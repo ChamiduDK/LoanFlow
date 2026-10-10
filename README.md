@@ -1,4 +1,5 @@
 # LoanFlow
+Project Report - https://drive.google.com/drive/folders/1FuAfhUI_CvbbwOLvrT2qYELlcmM71Xoj?usp=drive_link
 
 ## An AI-Assisted Decision Support System for SME Loan Evaluation and Recommendation
 
